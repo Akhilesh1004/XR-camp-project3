@@ -33,6 +33,7 @@ public class WebSwinger : MonoBehaviour
 
     private SpringJoint joint;
     private Vector3 swingPoint;
+    public float continuousBoostForce = 5f; // 持續推力的強度
 
     void Start()
     {
@@ -66,6 +67,14 @@ public class WebSwinger : MonoBehaviour
         {
             lineRenderer.SetPosition(0, handTransform.position);
             lineRenderer.SetPosition(1, swingPoint);
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (joint != null)
+        {
+            ApplyContinuousForwardForce();
         }
     }
 
@@ -125,5 +134,23 @@ public class WebSwinger : MonoBehaviour
         {
             joint.maxDistance = minWebLength;
         }
+    }
+
+    void ApplyContinuousForwardForce()
+    {
+        // 1. 取得指向掛鉤點的方向
+        Vector3 toPoint = (swingPoint - playerRigidbody.position).normalized;
+        
+        // 2. 取得玩家目前的速度方向
+        Vector3 velocityDir = playerRigidbody.velocity.normalized;
+
+        // 3. 計算「切線方向」：這會讓玩家傾向於繞著點轉，而不是直衝向點
+        Vector3 tangentDir = Vector3.ProjectOnPlane(velocityDir, toPoint).normalized;
+
+        // 4. 給予切線推力 + 微微向外的力
+        float tangentBoost = continuousBoostForce;
+        float outwardPush = 2f; // 輕微把玩家往外推，防止貼牆
+
+        playerRigidbody.AddForce(tangentDir * tangentBoost + (-toPoint * outwardPush), ForceMode.Force);
     }
 }
