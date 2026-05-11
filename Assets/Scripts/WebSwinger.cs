@@ -11,13 +11,21 @@ public class WebSwinger : MonoBehaviour
 
     [Header("擺盪參數設定")]
     public LayerMask swingableLayer;  // 剛剛設定的 Swingable Layer
-    public float maxSwingDistance = 50f; // 蛛絲最遠射程
+    public float maxSwingDistance = 200f; // 蛛絲最遠射程
     
     // 影響手感的關鍵參數
-    public float springForce = 4.5f;     // 彈簧拉力
+    public float springForce = 10f;     // 彈簧拉力
     public float damper = 7f;            // 阻尼(避免無限彈跳)
     public float massScale = 4.5f;       // 質量影響
     public float releaseBoostForce = 5f; // 放開時的推進力
+
+    [Header("自動收線設定 (Auto-Reeling)")]
+    // 自動收線的速度
+    public float autoReelSpeed = 8f;     
+    // 蛛絲最短能收到多短 (避免收到 0 卡進牆壁裡)
+    public float minWebLength = 2f;      
+    // 是否啟用自動收線
+    public bool enableAutoReel = true;
 
     [Header("輸入設定 (Meta 控制器)")]
     public OVRInput.Button swingButton = OVRInput.Button.PrimaryIndexTrigger; // 食指扳機
@@ -44,6 +52,10 @@ public class WebSwinger : MonoBehaviour
         else if (OVRInput.GetUp(swingButton, controller))
         {
             StopSwing();
+        }
+        if (joint != null && enableAutoReel)
+        {
+            HandleAutoReeling();
         }
     }
 
@@ -74,12 +86,15 @@ public class WebSwinger : MonoBehaviour
             float distanceFromPoint = Vector3.Distance(playerRigidbody.position, swingPoint);
             
             // 【手感秘訣】將 maxDistance 設為稍微短於實際距離，這會立刻產生一股把玩家往上/往前拉的張力
-            joint.maxDistance = distanceFromPoint * 0.8f; 
-            joint.minDistance = distanceFromPoint * 0.2f;
+            joint.maxDistance = distanceFromPoint * 0.9f; 
+            joint.minDistance = distanceFromPoint * 0.1f;
 
             joint.spring = springForce;
             joint.damper = damper;
             joint.massScale = massScale;
+
+            Vector3 upBoost = Vector3.up * 5f; 
+            playerRigidbody.AddForce(upBoost, ForceMode.Impulse);
 
             // 顯示蛛絲
             lineRenderer.positionCount = 2;
@@ -96,6 +111,19 @@ public class WebSwinger : MonoBehaviour
             // 【手感秘訣】在放開的瞬間，順著當前的移動方向給予一個推力，產生「飛出去」的速度感
             Vector3 boostDirection = playerRigidbody.velocity.normalized;
             playerRigidbody.AddForce(boostDirection * releaseBoostForce, ForceMode.Impulse);
+        }
+    }
+
+    // 【新增】自動收線的方法
+    void HandleAutoReeling()
+    {
+        // 只要 joint 存在，就每幀自動減少 maxDistance
+        joint.maxDistance -= autoReelSpeed * Time.deltaTime;
+
+        // 確保繩子不會比 minWebLength 還短
+        if (joint.maxDistance < minWebLength)
+        {
+            joint.maxDistance = minWebLength;
         }
     }
 }
