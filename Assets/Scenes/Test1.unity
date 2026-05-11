@@ -18454,12 +18454,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerRigidbody: {fileID: 631885385}
   handTransform: {fileID: 2116241112}
+  trackingSpaceTransform: {fileID: 1133997076}
   wallLayer:
     serializedVersion: 2
     m_Bits: 1
+  handDetectRadius: 0.12
   controller: 2
   grabButton: 16384
   throwMultiplier: 1.2
+  maxThrowSpeed: 8
 --- !u!1 &1573659505
 GameObject:
   m_ObjectHideFlags: 0
@@ -19523,12 +19526,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerRigidbody: {fileID: 631885385}
   handTransform: {fileID: 1644529188}
+  trackingSpaceTransform: {fileID: 1133997076}
   wallLayer:
     serializedVersion: 2
     m_Bits: 1
+  handDetectRadius: 0.12
   controller: 1
   grabButton: 16384
   throwMultiplier: 1.2
+  maxThrowSpeed: 8
 --- !u!135 &1644529191
 SphereCollider:
   m_ObjectHideFlags: 0

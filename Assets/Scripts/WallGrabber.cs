@@ -1,111 +1,186 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class WallGrabber : MonoBehaviour
 {
     [Header("綁定物件")]
-    public Rigidbody playerRigidbody; // 玩家的 Rigidbody
+    public Rigidbody playerRigidbody;
+
+    [Tooltip("實際手部/控制器的 Transform，用來做 CheckSphere")]
     public Transform handTransform;
-    
+
+    [Tooltip("OVR CameraRig 裡的 TrackingSpace。沒有指定就使用 playerRigidbody.transform")]
+    public Transform trackingSpaceTransform;
+
     [Header("抓取設定")]
-    public LayerMask wallLayer;       // 牆壁的 Layer (也可以共用 Swingable)
-    public OVRInput.Controller controller; // LTouch 或 RTouch
-    public OVRInput.Button grabButton = OVRInput.Button.PrimaryHandTrigger; // 中指扳機
+    public LayerMask wallLayer;
+    public float handDetectRadius = 0.12f;
+
+    public OVRInput.Controller controller = OVRInput.Controller.RTouch;
+    public OVRInput.Button grabButton = OVRInput.Button.PrimaryHandTrigger;
 
     [Header("攀爬與甩動設定")]
-    public float throwMultiplier = 1.2f; // 甩出去的力道倍率 (越大飛越遠)
+    public float throwMultiplier = 1.2f;
+    public float maxThrowSpeed = 8f;
 
     private bool isTouchingWall = false;
     private bool isGrabbing = false;
-    private Vector3 previousHandWorldPos;
-    private Vector3 handWorldVelocity;
 
-    // 當手部碰撞體「碰到」牆壁時
-    void OnTriggerEnter(Collider other)
-    {
-        if (IsWall(other))
-        {
-            isTouchingWall = true;
-            Debug.Log("Hand touched wall: " + other.name);
-        }
-    }
+    private Vector3 previousHandLocalPos;
 
-    // 當手部碰撞體「離開」牆壁時
-    void OnTriggerExit(Collider other)
-    {
-        if (IsWall(other))
-        {
-            isTouchingWall = false;
-
-            // 先不要自動 Release，否則很容易一抓就立刻放開
-            Debug.Log("Hand left wall: " + other.name);
-        }
-    }
+    private static WallGrabber activeGrabber;
+    private static readonly List<WallGrabber> grabbingHands = new List<WallGrabber>();
 
     void Update()
     {
-        if (isTouchingWall && OVRInput.GetDown(grabButton, controller))
+        isTouchingWall = Physics.CheckSphere(
+            handTransform.position,
+            handDetectRadius,
+            wallLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (!isGrabbing && isTouchingWall && OVRInput.GetDown(grabButton, controller))
         {
             GrabWall();
         }
 
         if (isGrabbing && OVRInput.GetUp(grabButton, controller))
         {
-            ReleaseWall();
+            ReleaseWall(true);
         }
     }
 
     void FixedUpdate()
     {
-        // 物理移動必須寫在 FixedUpdate 裡才會平滑
-        if (isGrabbing)
+        if (isGrabbing && activeGrabber == this)
         {
             MovePlayerOnWall();
         }
     }
 
-    bool IsWall(Collider other)
-    {
-        return (wallLayer.value & (1 << other.gameObject.layer)) != 0;
-    }
-
-
     void GrabWall()
     {
-        Debug.Log("Grab wall");
+        if (isGrabbing)
+        {
+            return;
+        }
+
+        Debug.Log("Grab wall: " + gameObject.name);
 
         isGrabbing = true;
+
+        if (!grabbingHands.Contains(this))
+        {
+            grabbingHands.Add(this);
+        }
+
+        // 最新抓住的手成為主控手
+        SetAsActiveGrabber();
 
         playerRigidbody.useGravity = false;
         playerRigidbody.velocity = Vector3.zero;
         playerRigidbody.angularVelocity = Vector3.zero;
+    }
 
-        previousHandWorldPos = handTransform.position;
-        handWorldVelocity = Vector3.zero;
+    void SetAsActiveGrabber()
+    {
+        activeGrabber = this;
+
+        // 切換主控手時一定要重設 previous position
+        // 不然下一次 MovePlayerOnWall 會吃到舊 delta，造成瞬移
+        previousHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
     }
 
     void MovePlayerOnWall()
     {
-       Vector3 currentHandWorldPos = handTransform.position;
+        Vector3 currentHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
 
-        Vector3 delta = currentHandWorldPos - previousHandWorldPos;
+        Vector3 localDelta = currentHandLocalPos - previousHandLocalPos;
 
-        handWorldVelocity = delta / Time.fixedDeltaTime;
+        Vector3 worldDelta = LocalDirectionToWorld(localDelta);
 
-        // 手往下拉，身體往上移
-        playerRigidbody.MovePosition(playerRigidbody.position - delta);
+        // 手往下，玩家往上
+        // 手往右，玩家往左
+        playerRigidbody.MovePosition(playerRigidbody.position - worldDelta);
 
-        previousHandWorldPos = currentHandWorldPos;
+        previousHandLocalPos = currentHandLocalPos;
     }
 
-    void ReleaseWall()
+    void ReleaseWall(bool allowThrow)
     {
-        Debug.Log("Release wall");
+        if (!isGrabbing)
+        {
+            return;
+        }
+
+        Debug.Log("Release wall: " + gameObject.name);
+
+        bool wasActive = activeGrabber == this;
 
         isGrabbing = false;
+        grabbingHands.Remove(this);
 
+        if (grabbingHands.Count > 0)
+        {
+            // 還有另一隻手抓著牆
+            // 如果放開的是主控手，就把控制權交給最後一隻還抓著的手
+            if (wasActive)
+            {
+                WallGrabber nextGrabber = grabbingHands[grabbingHands.Count - 1];
+                nextGrabber.SetAsActiveGrabber();
+
+                playerRigidbody.velocity = Vector3.zero;
+                playerRigidbody.angularVelocity = Vector3.zero;
+            }
+
+            playerRigidbody.useGravity = false;
+            return;
+        }
+
+        // 沒有任何手抓牆了
+        activeGrabber = null;
         playerRigidbody.useGravity = true;
 
-        // 手往下甩，玩家往反方向飛
-        playerRigidbody.velocity = -handWorldVelocity * throwMultiplier;
+        if (allowThrow)
+        {
+            Vector3 localHandVelocity = OVRInput.GetLocalControllerVelocity(controller);
+            Vector3 worldHandVelocity = LocalDirectionToWorld(localHandVelocity);
+
+            Vector3 throwVelocity = -worldHandVelocity * throwMultiplier;
+
+            if (throwVelocity.magnitude > maxThrowSpeed)
+            {
+                throwVelocity = throwVelocity.normalized * maxThrowSpeed;
+            }
+
+            playerRigidbody.velocity = throwVelocity;
+        }
+    }
+
+    Vector3 LocalDirectionToWorld(Vector3 localDirection)
+    {
+        if (trackingSpaceTransform != null)
+        {
+            return trackingSpaceTransform.TransformDirection(localDirection);
+        }
+
+        return playerRigidbody.transform.TransformDirection(localDirection);
+    }
+
+    void OnDisable()
+    {
+        ReleaseWall(false);
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        if (handTransform == null)
+        {
+            return;
+        }
+
+        Gizmos.color = Color.green;
+        Gizmos.DrawWireSphere(handTransform.position, handDetectRadius);
     }
 }
