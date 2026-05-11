@@ -3230,6 +3230,7 @@ GameObject:
   - component: {fileID: 243227445}
   - component: {fileID: 241816669}
   - component: {fileID: 243227446}
+  - component: {fileID: 243227447}
   m_Layer: 0
   m_Name: 27
   m_TagString: Untagged
@@ -3289,6 +3290,28 @@ MeshFilter:
   m_GameObject: {fileID: 240086467}
   m_Mesh: {fileID: 4300000, guid: 6379b00f66e16cd49b9df04eece629a3, type: 3}
 --- !u!64 &243227446
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 240086467}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 4300000, guid: 6379b00f66e16cd49b9df04eece629a3, type: 3}
+--- !u!64 &243227447
 MeshCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3693,6 +3716,7 @@ GameObject:
   - component: {fileID: 305250873}
   - component: {fileID: 302374751}
   - component: {fileID: 303334187}
+  - component: {fileID: 305467374}
   m_Layer: 0
   m_Name: 1
   m_TagString: Untagged
@@ -3700,6 +3724,27 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 4294967295
   m_IsActive: 1
+--- !u!65 &305467374
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 305467373}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 21.359282, y: 20.619856, z: 6.446084}
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!33 &305750187
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -7828,7 +7873,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 631885379}
   serializedVersion: 4
-  m_Mass: 10
+  m_Mass: 1
   m_Drag: 0.5
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -11871,6 +11916,7 @@ GameObject:
   - component: {fileID: 933285996}
   - component: {fileID: 932447142}
   - component: {fileID: 931449992}
+  - component: {fileID: 933644981}
   m_Layer: 0
   m_Name: 13
   m_TagString: Untagged
@@ -11878,6 +11924,28 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 4294967295
   m_IsActive: 1
+--- !u!64 &933644981
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 933644980}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 4300000, guid: df5f660a0ad6ab24f8a986c2a33b341f, type: 3}
 --- !u!1 &933994562
 GameObject:
   m_ObjectHideFlags: 0
@@ -17198,6 +17266,7 @@ GameObject:
   - component: {fileID: 1555736384}
   - component: {fileID: 1552901812}
   - component: {fileID: 1553570910}
+  - component: {fileID: 1556085111}
   m_Layer: 0
   m_Name: 7
   m_TagString: Untagged
@@ -17205,6 +17274,27 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 4294967295
   m_IsActive: 1
+--- !u!65 &1556085111
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1556085110}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 12.617134, y: 31.057003, z: 12.523279}
+  m_Center: {x: -0.00000023841858, y: 0, z: 0}
 --- !u!1 &1558823694
 GameObject:
   m_ObjectHideFlags: 0
@@ -17370,6 +17460,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1573214319}
   - component: {fileID: 1573214320}
+  - component: {fileID: 1573214321}
   m_Layer: 0
   m_Name: RightControllerAnchor
   m_TagString: Untagged
@@ -17400,7 +17491,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1573214318}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22492f392d1ad4245a103e7e06a2f9d2, type: 3}
   m_Name: 
@@ -17418,6 +17509,33 @@ MonoBehaviour:
   releaseBoostForce: 5
   swingButton: 8192
   controller: 1
+--- !u!114 &1573214321
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1573214318}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad845934004d3ec41ad45c84fc313911, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerRigidbody: {fileID: 631885385}
+  handTransform: {fileID: 1573214319}
+  lineRenderer: {fileID: 1785593087}
+  swingableLayer:
+    serializedVersion: 2
+    m_Bits: 1
+  maxSwingDistance: 50
+  springForce: 4.5
+  damper: 7
+  massScale: 4.5
+  releaseBoostForce: 5
+  swingButton: 8192
+  controller: 2
+  segmentCount: 20
+  curveOffset: -0.5
 --- !u!23 &1573480726
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -17829,7 +17947,7 @@ LineRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 1
+        value: 0.11510849
         inSlope: 0
         outSlope: 0
         tangentMode: 0
@@ -17946,6 +18064,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1644529188}
   - component: {fileID: 1644529189}
+  - component: {fileID: 1644529190}
   m_Layer: 0
   m_Name: LeftControllerAnchor
   m_TagString: Untagged
@@ -17977,7 +18096,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1644529187}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 22492f392d1ad4245a103e7e06a2f9d2, type: 3}
   m_Name: 
@@ -17995,6 +18114,33 @@ MonoBehaviour:
   releaseBoostForce: 5
   swingButton: 8192
   controller: 2
+--- !u!114 &1644529190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1644529187}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad845934004d3ec41ad45c84fc313911, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerRigidbody: {fileID: 631885385}
+  handTransform: {fileID: 1644529188}
+  lineRenderer: {fileID: 1631731905}
+  swingableLayer:
+    serializedVersion: 2
+    m_Bits: 1
+  maxSwingDistance: 50
+  springForce: 4.5
+  damper: 7
+  massScale: 4.5
+  releaseBoostForce: 5
+  swingButton: 8192
+  controller: 3
+  segmentCount: 20
+  curveOffset: -0.5
 --- !u!23 &1648809257
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19813,7 +19959,7 @@ LineRenderer:
       m_Curve:
       - serializedVersion: 3
         time: 0
-        value: 1
+        value: 0.11510849
         inSlope: 0
         outSlope: 0
         tangentMode: 0

@@ -2,7 +2,7 @@ using System.Diagnostics;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-public class WebSwinger : MonoBehaviour
+public class WebSwingerFISH : MonoBehaviour
 {
     [Header("綁定物件")]
     public Rigidbody playerRigidbody; // 你的玩家根物件 (帶有 Rigidbody 的那層)
@@ -14,7 +14,7 @@ public class WebSwinger : MonoBehaviour
     public float maxSwingDistance = 50f; // 蛛絲最遠射程
     
     // 影響手感的關鍵參數
-    public float springForce = 4.5f;     // 彈簧拉力
+    public float springForce = 10f;     // 彈簧拉力
     public float damper = 7f;            // 阻尼(避免無限彈跳)
     public float massScale = 4.5f;       // 質量影響
     public float releaseBoostForce = 5f; // 放開時的推進力
@@ -22,6 +22,10 @@ public class WebSwinger : MonoBehaviour
     [Header("輸入設定 (Meta 控制器)")]
     public OVRInput.Button swingButton = OVRInput.Button.PrimaryIndexTrigger; // 食指扳機
     public OVRInput.Controller controller = OVRInput.Controller.RTouch;       // 右手
+
+    [Header("貝茲曲線設定")]
+    public int segmentCount = 20;
+    public float curveOffset = -0.5f;
 
     private SpringJoint joint;
     private Vector3 swingPoint;
@@ -49,11 +53,33 @@ public class WebSwinger : MonoBehaviour
 
     void LateUpdate()
     {
-        // 如果正在擺盪，每幀更新蛛絲的視覺起終點
         if (joint != null)
         {
-            lineRenderer.SetPosition(0, handTransform.position);
-            lineRenderer.SetPosition(1, swingPoint);
+            DrawSwingingCurve(handTransform.position, swingPoint);
+        }
+        else
+        {
+            lineRenderer.positionCount = 0; // 沒在擺盪時隱藏
+        }
+    }
+
+    void DrawSwingingCurve(Vector3 start, Vector3 end)
+    {
+        lineRenderer.positionCount = segmentCount;
+        
+        // 計算控制點：取中點並向下偏移
+        // 你也可以根據繩索長度動態調整偏移量，讓長繩子垂得更厲害
+        Vector3 midPoint = (start + end) / 2f;
+        Vector3 controlPoint = midPoint + Vector3.up * curveOffset;
+
+        for (int i = 0; i < segmentCount; i++)
+        {
+            float t = i / (float)(segmentCount - 1);
+            // 二次貝茲曲線公式
+            Vector3 point = Mathf.Pow(1 - t, 2) * start + 
+                            2 * (1 - t) * t * controlPoint + 
+                            Mathf.Pow(t, 2) * end;
+            lineRenderer.SetPosition(i, point);
         }
     }
 
@@ -74,12 +100,15 @@ public class WebSwinger : MonoBehaviour
             float distanceFromPoint = Vector3.Distance(playerRigidbody.position, swingPoint);
             
             // 【手感秘訣】將 maxDistance 設為稍微短於實際距離，這會立刻產生一股把玩家往上/往前拉的張力
-            joint.maxDistance = distanceFromPoint * 0.8f; 
+            joint.maxDistance = distanceFromPoint * 0.6f; 
             joint.minDistance = distanceFromPoint * 0.2f;
 
             joint.spring = springForce;
             joint.damper = damper;
             joint.massScale = massScale;
+
+            Vector3 upBoost = Vector3.up * 5f; 
+            playerRigidbody.AddForce(upBoost, ForceMode.Impulse);
 
             // 顯示蛛絲
             lineRenderer.positionCount = 2;
