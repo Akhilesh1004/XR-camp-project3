@@ -5703,7 +5703,7 @@ GameObject:
   - component: {fileID: 493411477}
   - component: {fileID: 493411476}
   - component: {fileID: 493411475}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6890,6 +6890,7 @@ GameObject:
   - component: {fileID: 631885380}
   - component: {fileID: 631885386}
   - component: {fileID: 631885385}
+  - component: {fileID: 631885387}
   m_Layer: 0
   m_Name: '[BuildingBlock] Camera Rig'
   m_TagString: Untagged
@@ -7113,6 +7114,31 @@ CapsuleCollider:
   m_Height: 1
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &631885387
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 631885379}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68fcd1da5a02a4344b822f236a94cb4e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  playerRigidbody: {fileID: 631885385}
+  headCamera: {fileID: 1791752589}
+  leftController: 1
+  rightController: 2
+  swingMultiplier: 2.5
+  maxMoveSpeed: 10
+  activationThreshold: 0.5
+  deceleration: 5
+  accelerationSmooth: 4
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 8
+  groundCheckDistance: 1.1
 --- !u!1 &638469553
 GameObject:
   m_ObjectHideFlags: 0
@@ -18406,7 +18432,7 @@ MonoBehaviour:
   lineRenderer: {fileID: 1785593087}
   swingableLayer:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 9
   maxSwingDistance: 200
   springForce: 10
   damper: 7
@@ -18418,6 +18444,7 @@ MonoBehaviour:
   swingButton: 8192
   controller: 2
   continuousBoostForce: 5
+  outwardPushForce: 2
 --- !u!114 &1573214322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -18433,9 +18460,12 @@ MonoBehaviour:
   playerRigidbody: {fileID: 631885385}
   handTransform: {fileID: 2116241112}
   trackingSpaceTransform: {fileID: 1133997076}
+  webSwingers:
+  - {fileID: 1573214320}
+  - {fileID: 1644529189}
   wallLayer:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 9
   handDetectRadius: 0.12
   controller: 2
   grabButton: 16384
@@ -19477,7 +19507,7 @@ MonoBehaviour:
   lineRenderer: {fileID: 1631731905}
   swingableLayer:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 9
   maxSwingDistance: 200
   springForce: 10
   damper: 7
@@ -19489,6 +19519,7 @@ MonoBehaviour:
   swingButton: 8192
   controller: 1
   continuousBoostForce: 5
+  outwardPushForce: 2
 --- !u!114 &1644529190
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19504,9 +19535,12 @@ MonoBehaviour:
   playerRigidbody: {fileID: 631885385}
   handTransform: {fileID: 1644529188}
   trackingSpaceTransform: {fileID: 1133997076}
+  webSwingers:
+  - {fileID: 1644529189}
+  - {fileID: 1573214320}
   wallLayer:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 9
   handDetectRadius: 0.12
   controller: 1
   grabButton: 16384
