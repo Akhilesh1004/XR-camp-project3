@@ -6,11 +6,15 @@ public class WallGrabber : MonoBehaviour
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
 
-    [Tooltip("實際手部/控制器的 Transform，用來做 CheckSphere")]
+    [Tooltip("實際手部 / 控制器 Transform，用來做 CheckSphere")]
     public Transform handTransform;
 
-    [Tooltip("OVR CameraRig 裡的 TrackingSpace。沒有指定就使用 playerRigidbody.transform")]
+    [Tooltip("OVR CameraRig 裡的 TrackingSpace。建議指定；沒有指定就使用 playerRigidbody.transform")]
     public Transform trackingSpaceTransform;
+
+    [Header("互斥系統")]
+    [Tooltip("把左右手的 WebSwinger 都拖進來。正在擺盪時抓牆會暫停蛛絲。")]
+    public WebSwinger[] webSwingers;
 
     [Header("抓取設定")]
     public LayerMask wallLayer;
@@ -30,6 +34,18 @@ public class WallGrabber : MonoBehaviour
 
     private static WallGrabber activeGrabber;
     private static readonly List<WallGrabber> grabbingHands = new List<WallGrabber>();
+
+    public static bool IsGrabbing
+    {
+        get { return grabbingHands.Count > 0; }
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        activeGrabber = null;
+        grabbingHands.Clear();
+    }
 
     void Update()
     {
@@ -66,6 +82,20 @@ public class WallGrabber : MonoBehaviour
             return;
         }
 
+        // 如果正在蛛絲擺盪中抓牆：
+        // 停掉 active SpringJoint。
+        // 如果蛛絲鍵還按著，WebSwinger 會自動轉成 pending swing。
+        if (webSwingers != null)
+        {
+            foreach (WebSwinger swinger in webSwingers)
+            {
+                if (swinger != null)
+                {
+                    swinger.SuspendActiveSwingForWallGrab();
+                }
+            }
+        }
+
         Debug.Log("Grab wall: " + gameObject.name);
 
         isGrabbing = true;
@@ -75,7 +105,6 @@ public class WallGrabber : MonoBehaviour
             grabbingHands.Add(this);
         }
 
-        // 最新抓住的手成為主控手
         SetAsActiveGrabber();
 
         playerRigidbody.useGravity = false;
@@ -87,8 +116,8 @@ public class WallGrabber : MonoBehaviour
     {
         activeGrabber = this;
 
-        // 切換主控手時一定要重設 previous position
-        // 不然下一次 MovePlayerOnWall 會吃到舊 delta，造成瞬移
+        // 切換主控手時，一定要重設 previous position
+        // 不然會吃到舊 delta，造成瞬移
         previousHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
     }
 
@@ -97,11 +126,10 @@ public class WallGrabber : MonoBehaviour
         Vector3 currentHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
 
         Vector3 localDelta = currentHandLocalPos - previousHandLocalPos;
-
         Vector3 worldDelta = LocalDirectionToWorld(localDelta);
 
-        // 手往下，玩家往上
-        // 手往右，玩家往左
+        // 手往下拉，玩家往上
+        // 手往右拉，玩家往左
         playerRigidbody.MovePosition(playerRigidbody.position - worldDelta);
 
         previousHandLocalPos = currentHandLocalPos;
