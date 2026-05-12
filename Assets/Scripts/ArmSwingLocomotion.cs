@@ -78,12 +78,6 @@ public class ArmSwingLocomotion : MonoBehaviour
             groundLayer,
             QueryTriggerInteraction.Ignore
         );
-
-        // Debug.DrawRay(
-        //     playerRigidbody.position,
-        //     Vector3.down * groundCheckDistance,
-        //     isGrounded ? Color.green : Color.red
-        // );
     }
 
     void ProcessArmSwing()
@@ -110,11 +104,6 @@ public class ArmSwingLocomotion : MonoBehaviour
             Vector3 rightForward = rightControllerAnchor.forward;
             Vector3 combinedForward = (leftForward + rightForward) * 0.5f;
             combinedForward.y = 0f;
-            if (combinedForward.sqrMagnitude < 0.01f)
-            {
-                combinedForward = Camera.main.transform.forward;
-                combinedForward.y = 0f;
-            }
 
             Vector3 moveDirection = combinedForward.normalized;
 

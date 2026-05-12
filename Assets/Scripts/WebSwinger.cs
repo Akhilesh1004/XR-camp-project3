@@ -656,7 +656,6 @@ public class WebSwinger : MonoBehaviour
         }
         else if (controller == OVRInput.Controller.RTouch)
         {
-            // 右手：按住 A (One) 且 扣下扳機 (PrimaryIndexTrigger)
             return OVRInput.Get(OVRInput.Button.One, controller) && 
                 OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, controller);
         }
