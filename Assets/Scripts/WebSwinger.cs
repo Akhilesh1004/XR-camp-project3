@@ -11,9 +11,11 @@ public class WebSwinger : MonoBehaviour
     public Rigidbody playerRigidbody;
     public Transform handTransform;
     public LineRenderer lineRenderer;
+    private GameObject currentHitObject;
 
     [Header("擺盪參數設定")]
     public LayerMask swingableLayer;
+    public LayerMask GroundLayer;
     public float maxSwingDistance = 200f;
 
     public float springForce = 10f;
@@ -49,6 +51,14 @@ public class WebSwinger : MonoBehaviour
     private GameObject spawnedReticle;
     public float minScale = 0.05f;
     public float scaleFactor = 0.01f;
+
+    [Header("射擊設定")]
+    public GameObject bulletPrefab;
+    public Transform firePoint;
+    public float bulletSpeed = 50f;
+    public float shootCooldown = 0.2f;
+    private float lastShootTime;
+    private bool canShoot = false;
 
     private SpringJoint joint;
     private Vector3 swingPoint;
@@ -96,16 +106,31 @@ public class WebSwinger : MonoBehaviour
     {
         if (OVRInput.GetDown(swingButton, controller))
         {
-            if (WallGrabber.IsGrabbing)
+            if (!canShoot)
             {
-                StartPendingSwing();
-            }
-            else
-            {
-                StartSwing();
+                if (WallGrabber.IsGrabbing)
+                {
+                    StartPendingSwing();
+                }
+                else
+                {
+                    StartSwing();
+                }
             }
             OnEnableR();
             swingStartTime = Time.time;
+        }
+
+        if (controller == OVRInput.Controller.LTouch && OVRInput.GetDown(OVRInput.Button.Three) || 
+            controller == OVRInput.Controller.RTouch && OVRInput.GetDown(OVRInput.Button.One))
+        {
+            canShoot = true;
+        }
+
+        if (controller == OVRInput.Controller.LTouch && OVRInput.GetUp(OVRInput.Button.Three) || 
+            controller == OVRInput.Controller.RTouch && OVRInput.GetUp(OVRInput.Button.One))
+        {
+            canShoot = false;
         }
 
         if (OVRInput.GetUp(swingButton, controller))
@@ -133,14 +158,23 @@ public class WebSwinger : MonoBehaviour
             HandleAutoReeling();
         }
 
-        // slow motion for better aiming when按著 A 鍵
-        if (OVRInput.GetDown(OVRInput.Button.One) && controller == OVRInput.Controller.RTouch) 
+        // slow motion for better aiming when按著 B 鍵
+        if (OVRInput.GetDown(OVRInput.Button.Two) && controller == OVRInput.Controller.RTouch) 
         {
             StartSlowMotion();
         }
-        if (OVRInput.GetUp(OVRInput.Button.One) && controller == OVRInput.Controller.RTouch)
+        if (OVRInput.GetUp(OVRInput.Button.Two) && controller == OVRInput.Controller.RTouch)
         {
             StopSlowMotion();
+        }
+
+        if (CheckShootInput())
+        {
+            if (Time.time - lastShootTime >= shootCooldown)
+            {
+                Shoot();
+                lastShootTime = Time.time;
+            }
         }
 
         // 預瞄指示
@@ -183,6 +217,7 @@ public class WebSwinger : MonoBehaviour
         if (Physics.Raycast(handTransform.position, handTransform.forward, out RaycastHit hit, maxSwingDistance, swingableLayer))
         {
             ArmSwingLocomotion instance = ArmSwingLocomotion.Instance;
+            currentHitObject = hit.collider.gameObject;
             if (instance.ReturnGrounded())
             {
                 CreateSwingJoint(hit.point, true);
@@ -300,7 +335,50 @@ public class WebSwinger : MonoBehaviour
 
         if (applyStartBoost)
         {
-            playerRigidbody.AddForce(Vector3.up * 5f, ForceMode.Impulse);
+            float powerMultiplier = 5f; // 預設單手推力
+            bool isSlingshot = false;
+
+            if (activeSwingCount >= 2)
+            {
+                float angle = GetAngleBetweenWebs();
+                int boostLayer = LayerMask.NameToLayer("Ground");
+
+                bool bothOnBoostLayer = true;
+                Vector3 combinedWebDir = Vector3.zero;
+
+                foreach (var script in activeSwingerScripts)
+                {
+                    if (script.joint != null)
+                    {
+                        if (script.currentHitObject == null || script.currentHitObject.layer != boostLayer)
+                        {
+                            bothOnBoostLayer = false;
+                        }
+                        combinedWebDir += (script.swingPoint - playerRigidbody.position).normalized;
+                    }
+                }
+
+                if (angle < 50f && ArmSwingLocomotion.Instance.ReturnGrounded() && bothOnBoostLayer)
+                {
+                    isSlingshot = true;
+                    powerMultiplier = 20f;
+                    
+                    Vector3 shootDirection = combinedWebDir.normalized;
+                    shootDirection.y = Mathf.Max(shootDirection.y, 0.1f);
+
+                    playerRigidbody.AddForce(shootDirection * powerMultiplier, ForceMode.Impulse);
+
+                    foreach (var script in activeSwingerScripts)
+                    {
+                        script.ForceStopSwing(false);
+                    }
+                }
+            }
+
+            if (!isSlingshot)
+            {
+                playerRigidbody.AddForce(Vector3.up * powerMultiplier, ForceMode.Impulse);
+            }
         }
 
         if (lineRenderer != null)
@@ -434,7 +512,24 @@ public class WebSwinger : MonoBehaviour
             }
             else
             {
-                powerMultiplier = 0.5f;
+                ArmSwingLocomotion instance = ArmSwingLocomotion.Instance;
+                bool bothOnBoostLayer = true;
+                int boostLayer = LayerMask.NameToLayer("Ground");
+                foreach (var script in activeSwingerScripts)
+                {
+                    if (script.joint != null)
+                    {
+                        if (script.currentHitObject == null || script.currentHitObject.layer != boostLayer)
+                        {
+                            bothOnBoostLayer = false;
+                            break;
+                        }
+                    }
+                }
+                if (angle < 50f && instance.ReturnGrounded() && bothOnBoostLayer)
+                {
+                    powerMultiplier = 20f;
+                }
             }
         }
         
@@ -532,7 +627,9 @@ public class WebSwinger : MonoBehaviour
         {
             spawnedReticle.SetActive(true);
         
-            spawnedReticle.transform.position = hit.point + (hit.normal * 0.05f);
+            // spawnedReticle.transform.position = hit.point + (hit.normal * 0.05f);
+            Vector3 targetPos = hit.point + (hit.normal * 0.05f);
+            spawnedReticle.transform.position = Vector3.Lerp(spawnedReticle.transform.position, targetPos, 0.5f);
             spawnedReticle.transform.rotation = Quaternion.LookRotation(-hit.normal);
 
             float distance = Vector3.Distance(handTransform.position, hit.point);
@@ -545,5 +642,45 @@ public class WebSwinger : MonoBehaviour
         {
             spawnedReticle.SetActive(false);
         }
+    }
+
+    private bool CheckShootInput()
+    {
+        if (controller == OVRInput.Controller.LTouch)
+        {
+            return OVRInput.Get(OVRInput.Button.One, controller) && 
+                OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, controller);
+        }
+        else if (controller == OVRInput.Controller.RTouch)
+        {
+            // 右手：按住 A (One) 且 扣下扳機 (PrimaryIndexTrigger)
+            return OVRInput.Get(OVRInput.Button.One, controller) && 
+                OVRInput.GetDown(OVRInput.Button.PrimaryIndexTrigger, controller);
+        }
+
+        return false;
+    }
+
+    void Shoot()
+    {
+        if (bulletPrefab == null || firePoint == null) return;
+
+        GameObject bullet = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
+        
+        Rigidbody rb = bullet.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.velocity = firePoint.forward * bulletSpeed;
+        }
+
+        Destroy(bullet, 3f);
+
+        OVRInput.SetControllerVibration(0.1f, 0.1f, controller);
+        Invoke("StopVibration", 0.1f);
+    }
+
+    void StopVibration()
+    {
+        OVRInput.SetControllerVibration(0, 0, controller);
     }
 }

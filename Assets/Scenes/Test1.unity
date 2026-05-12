@@ -7133,7 +7133,7 @@ MonoBehaviour:
   leftControllerAnchor: {fileID: 0}
   rightControllerAnchor: {fileID: 0}
   swingMultiplier: 2.5
-  maxMoveSpeed: 30
+  maxMoveSpeed: 70
   activationThreshold: 0.5
   deceleration: 5
   accelerationSmooth: 4
@@ -18484,6 +18484,9 @@ MonoBehaviour:
   swingableLayer:
     serializedVersion: 2
     m_Bits: 72
+  GroundLayer:
+    serializedVersion: 2
+    m_Bits: 0
   maxSwingDistance: 200
   springForce: 10
   damper: 7
@@ -18503,6 +18506,11 @@ MonoBehaviour:
     type: 3}
   minScale: 0.05
   scaleFactor: 0.01
+  bulletPrefab: {fileID: 2395565336794774746, guid: 0d284ff9511e2504d95977d41fb73c73,
+    type: 3}
+  firePoint: {fileID: 79486503}
+  bulletSpeed: 50
+  shootCooldown: 0.2
 --- !u!114 &1573214322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19566,6 +19574,9 @@ MonoBehaviour:
   swingableLayer:
     serializedVersion: 2
     m_Bits: 72
+  GroundLayer:
+    serializedVersion: 2
+    m_Bits: 0
   maxSwingDistance: 200
   springForce: 10
   damper: 7
@@ -19585,6 +19596,11 @@ MonoBehaviour:
     type: 3}
   minScale: 0.05
   scaleFactor: 0.01
+  bulletPrefab: {fileID: 2395565336794774746, guid: 0d284ff9511e2504d95977d41fb73c73,
+    type: 3}
+  firePoint: {fileID: 742669403}
+  bulletSpeed: 50
+  shootCooldown: 0.2
 --- !u!114 &1644529190
 MonoBehaviour:
   m_ObjectHideFlags: 0
