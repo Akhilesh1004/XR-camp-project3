@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
+using Debug = UnityEngine.Debug;
 
 public class WallGrabber : MonoBehaviour
 {
@@ -58,6 +60,8 @@ public class WallGrabber : MonoBehaviour
 
         if (!isGrabbing && isTouchingWall && OVRInput.GetDown(grabButton, controller))
         {
+            OVRInput.SetControllerVibration(0.1f, 0.3f, controller);
+            Invoke("StopVibration", 0.1f);
             GrabWall();
         }
 
@@ -81,6 +85,8 @@ public class WallGrabber : MonoBehaviour
         {
             return;
         }
+
+        Debug.Log("Try grab wall: " + gameObject.name);
 
         // 如果正在蛛絲擺盪中抓牆：
         // 停掉 active SpringJoint。
@@ -210,5 +216,10 @@ public class WallGrabber : MonoBehaviour
 
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(handTransform.position, handDetectRadius);
+    }
+
+    void StopVibration()
+    {
+        OVRInput.SetControllerVibration(0, 0, controller);
     }
 }

@@ -145,6 +145,7 @@ public class WebSwinger : MonoBehaviour
                 CancelPendingSwing();
             }
             OnDisableR();
+            StopVibration();
         }
 
         // 抓牆時預掛蛛絲，放開牆後才真正啟動 SpringJoint
@@ -315,6 +316,8 @@ public class WebSwinger : MonoBehaviour
         {
             return;
         }
+
+        OVRInput.SetControllerVibration(0.1f, 0.07f, controller);
 
         swingPoint = point;
 
@@ -675,7 +678,7 @@ public class WebSwinger : MonoBehaviour
 
         Destroy(bullet, 3f);
 
-        OVRInput.SetControllerVibration(0.1f, 0.1f, controller);
+        OVRInput.SetControllerVibration(0.7f, 0.5f, controller);
         Invoke("StopVibration", 0.1f);
     }
 
