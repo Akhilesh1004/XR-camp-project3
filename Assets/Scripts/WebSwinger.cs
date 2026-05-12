@@ -1,5 +1,9 @@
 using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using System.Diagnostics;
+using Debug = UnityEngine.Debug;
 
 public class WebSwinger : MonoBehaviour
 {
@@ -36,6 +40,16 @@ public class WebSwinger : MonoBehaviour
     public float slowTimeScale = 0.3f;
     private float normalFixedDeltaTime;
 
+    [Header("URP 後處理")]
+    public Volume globalVolume; 
+    private ColorAdjustments colorAdjustments;
+
+    [Header("預瞄指示設定")]
+    public GameObject reticlePrefab;
+    private GameObject spawnedReticle;
+    public float minScale = 0.05f;
+    public float scaleFactor = 0.01f;
+
     private SpringJoint joint;
     private Vector3 swingPoint;
 
@@ -67,6 +81,15 @@ public class WebSwinger : MonoBehaviour
             lineRenderer.positionCount = 0;
         }
         normalFixedDeltaTime = Time.fixedDeltaTime;
+        if (reticlePrefab != null)
+        {
+            spawnedReticle = Instantiate(reticlePrefab);
+            spawnedReticle.SetActive(false); // 初始隱藏
+        }
+        if (globalVolume != null && globalVolume.profile.TryGet(out colorAdjustments))
+        {
+            Debug.Log("ColorAdjustments found in Volume profile.");
+        }
     }
 
     void Update()
@@ -119,6 +142,9 @@ public class WebSwinger : MonoBehaviour
         {
             StopSlowMotion();
         }
+
+        // 預瞄指示
+        UpdateReticle();
     }
 
     void LateUpdate()
@@ -195,12 +221,20 @@ public class WebSwinger : MonoBehaviour
         Time.timeScale = slowTimeScale;
         // 必須縮小 fixedDeltaTime，物理才不會卡頓
         Time.fixedDeltaTime = normalFixedDeltaTime * Time.timeScale;
+        if (colorAdjustments != null)
+        {
+            colorAdjustments.saturation.value = -100f;
+        }
     }
 
     void StopSlowMotion()
     {
         Time.timeScale = 1f;
         Time.fixedDeltaTime = normalFixedDeltaTime;
+        if (colorAdjustments != null)
+        {
+            colorAdjustments.saturation.value = 0f;
+        }
     }
 
     void ActivatePendingSwing()
@@ -481,5 +515,35 @@ public class WebSwinger : MonoBehaviour
     void OnDisable()
     {
         ForceStopSwing(false);
+    }
+
+    void UpdateReticle()
+    {
+        if (spawnedReticle == null) return;
+
+        if (joint != null || hasPendingSwing)
+        {
+            spawnedReticle.SetActive(false);
+            return;
+        }
+
+        RaycastHit hit;
+        if (Physics.Raycast(handTransform.position, handTransform.forward, out hit, maxSwingDistance, swingableLayer))
+        {
+            spawnedReticle.SetActive(true);
+        
+            spawnedReticle.transform.position = hit.point + (hit.normal * 0.05f);
+            spawnedReticle.transform.rotation = Quaternion.LookRotation(-hit.normal);
+
+            float distance = Vector3.Distance(handTransform.position, hit.point);
+            
+            float currentScale = minScale + (distance * scaleFactor);
+            
+            spawnedReticle.transform.localScale = new Vector3(currentScale, currentScale, currentScale);
+        }
+        else
+        {
+            spawnedReticle.SetActive(false);
+        }
     }
 }
