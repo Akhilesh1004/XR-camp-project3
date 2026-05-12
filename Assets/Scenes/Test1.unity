@@ -7130,8 +7130,10 @@ MonoBehaviour:
   headCamera: {fileID: 1791752589}
   leftController: 1
   rightController: 2
+  leftControllerAnchor: {fileID: 0}
+  rightControllerAnchor: {fileID: 0}
   swingMultiplier: 2.5
-  maxMoveSpeed: 10
+  maxMoveSpeed: 20
   activationThreshold: 0.5
   deceleration: 5
   accelerationSmooth: 4
@@ -18445,6 +18447,7 @@ MonoBehaviour:
   controller: 2
   continuousBoostForce: 5
   outwardPushForce: 2
+  slowTimeScale: 0.1
 --- !u!114 &1573214322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -19520,6 +19523,7 @@ MonoBehaviour:
   controller: 1
   continuousBoostForce: 5
   outwardPushForce: 2
+  slowTimeScale: 0.3
 --- !u!114 &1644529190
 MonoBehaviour:
   m_ObjectHideFlags: 0

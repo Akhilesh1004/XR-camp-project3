@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class ArmSwingLocomotion : MonoBehaviour
 {
+    public static ArmSwingLocomotion Instance { get; private set; }
+
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
 
@@ -11,6 +13,8 @@ public class ArmSwingLocomotion : MonoBehaviour
     [Header("控制器設定")]
     public OVRInput.Controller leftController = OVRInput.Controller.LTouch;
     public OVRInput.Controller rightController = OVRInput.Controller.RTouch;
+    public Transform leftControllerAnchor;
+    public Transform rightControllerAnchor;
 
     [Header("跑步參數")]
     public float swingMultiplier = 2.5f;
@@ -22,8 +26,25 @@ public class ArmSwingLocomotion : MonoBehaviour
     [Header("地面偵測")]
     public LayerMask groundLayer;
     public float groundCheckDistance = 1.1f;
-
     private bool isGrounded;
+
+    private void Awake()
+    {
+        // 初始化單例
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+
+        if (leftControllerAnchor == null)
+            leftControllerAnchor = GameObject.Find("LeftHandAnchor").transform;
+        if (rightControllerAnchor == null)
+            rightControllerAnchor = GameObject.Find("RightHandAnchor").transform;
+    }
 
     void FixedUpdate()
     {
@@ -40,6 +61,12 @@ public class ArmSwingLocomotion : MonoBehaviour
         }
 
         ProcessArmSwing();
+    }
+
+    public bool ReturnGrounded()
+    {
+        CheckGrounded();
+        return isGrounded;
     }
 
     void CheckGrounded()
@@ -71,15 +98,25 @@ public class ArmSwingLocomotion : MonoBehaviour
 
         if (totalSwingSpeed > activationThreshold)
         {
-            Vector3 moveDirection = headCamera.forward;
-            moveDirection.y = 0f;
+            // Vector3 forwardDirection = Camera.main.transform.forward;
+            // forwardDirection.y = 0f;
+            // forwardDirection.Normalize();
 
-            if (moveDirection.sqrMagnitude < 0.001f)
+            // Vector3 moveDirection = forwardDirection;
+
+            // moveDirection.Normalize();
+
+            Vector3 leftForward = leftControllerAnchor.forward;
+            Vector3 rightForward = rightControllerAnchor.forward;
+            Vector3 combinedForward = (leftForward + rightForward) * 0.5f;
+            combinedForward.y = 0f;
+            if (combinedForward.sqrMagnitude < 0.01f)
             {
-                return;
+                combinedForward = Camera.main.transform.forward;
+                combinedForward.y = 0f;
             }
 
-            moveDirection.Normalize();
+            Vector3 moveDirection = combinedForward.normalized;
 
             float targetSpeed = Mathf.Clamp(
                 totalSwingSpeed * swingMultiplier,
