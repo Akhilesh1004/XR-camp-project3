@@ -7,6 +7,7 @@ public class WallGrabber : MonoBehaviour
 {
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
+    public Transform headCamera;
 
     [Tooltip("實際手部 / 控制器 Transform，用來做 CheckSphere")]
     public Transform handTransform;
@@ -232,14 +233,6 @@ public class WallGrabber : MonoBehaviour
             return;
         }
 
-        float handDownSpeed = -handWorldDelta.y / Time.fixedDeltaTime;
-
-        if (handDownSpeed < mantlePullDownSpeed)
-        {
-            Debug.Log("Mantle fail: handDownSpeed too low = " + handDownSpeed);
-            return;
-        }
-
         Vector3 forward = GetFlatForward();
 
         if (forward.sqrMagnitude < 0.001f)
@@ -305,7 +298,7 @@ public class WallGrabber : MonoBehaviour
 
     Vector3 GetFlatForward()
     {
-        Transform forwardSource = trackingSpaceTransform;
+        Transform forwardSource = headCamera != null ? headCamera : trackingSpaceTransform;
 
         if (forwardSource != null)
         {

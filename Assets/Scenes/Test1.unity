@@ -7142,7 +7142,7 @@ MonoBehaviour:
     m_Bits: 72
   groundCheckDistance: 1.1
   groundCheckRadius: 0.25
-  maxGroundAngle: 30
+  maxGroundAngle: 60
 --- !u!1 &638469553
 GameObject:
   m_ObjectHideFlags: 0
@@ -18526,6 +18526,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerRigidbody: {fileID: 631885385}
+  headCamera: {fileID: 1791752589}
   handTransform: {fileID: 2116241112}
   trackingSpaceTransform: {fileID: 1133997076}
   webSwingers:
@@ -18539,7 +18540,7 @@ MonoBehaviour:
   grabButton: 16384
   throwMultiplier: 1.2
   maxThrowSpeed: 8
-  enableMantle: 0
+  enableMantle: 1
   mantleWalkableLayer:
     serializedVersion: 2
     m_Bits: 64
@@ -18547,9 +18548,9 @@ MonoBehaviour:
   mantleForwardProbe: 0.45
   mantleUpProbe: 0.8
   mantleDownProbe: 1.4
-  mantleForwardMove: 1.5
-  mantleUpMove: 1.5
-  maxMantleSurfaceAngle: 30
+  mantleForwardMove: 0.5
+  mantleUpMove: 3
+  maxMantleSurfaceAngle: 60
   mantleCooldown: 0.4
   playerCapsule: {fileID: 631885386}
   collisionLayer:
@@ -19634,6 +19635,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerRigidbody: {fileID: 631885385}
+  headCamera: {fileID: 1791752589}
   handTransform: {fileID: 1644529188}
   trackingSpaceTransform: {fileID: 1133997076}
   webSwingers:
@@ -19655,9 +19657,9 @@ MonoBehaviour:
   mantleForwardProbe: 0.45
   mantleUpProbe: 0.8
   mantleDownProbe: 1.4
-  mantleForwardMove: 1.5
-  mantleUpMove: 1.5
-  maxMantleSurfaceAngle: 30
+  mantleForwardMove: 0.5
+  mantleUpMove: 3
+  maxMantleSurfaceAngle: 60
   mantleCooldown: 0.4
   playerCapsule: {fileID: 631885386}
   collisionLayer:
