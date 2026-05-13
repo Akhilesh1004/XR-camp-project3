@@ -7139,8 +7139,10 @@ MonoBehaviour:
   accelerationSmooth: 4
   groundLayer:
     serializedVersion: 2
-    m_Bits: 8
+    m_Bits: 72
   groundCheckDistance: 1.1
+  groundCheckRadius: 0.25
+  maxGroundAngle: 30
 --- !u!1 &638469553
 GameObject:
   m_ObjectHideFlags: 0
@@ -18532,11 +18534,29 @@ MonoBehaviour:
   wallLayer:
     serializedVersion: 2
     m_Bits: 72
-  handDetectRadius: 0.12
+  handDetectRadius: 0.3
   controller: 2
   grabButton: 16384
   throwMultiplier: 1.2
   maxThrowSpeed: 8
+  enableMantle: 0
+  mantleWalkableLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  mantlePullDownSpeed: 0.35
+  mantleForwardProbe: 0.45
+  mantleUpProbe: 0.8
+  mantleDownProbe: 1.4
+  mantleForwardMove: 1.5
+  mantleUpMove: 1.5
+  maxMantleSurfaceAngle: 30
+  mantleCooldown: 0.4
+  playerCapsule: {fileID: 631885386}
+  collisionLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  skinWidth: 0.05
+  maxClimbStepPerFixedUpdate: 0.18
 --- !u!1 &1573659505
 GameObject:
   m_ObjectHideFlags: 0
@@ -19622,11 +19642,29 @@ MonoBehaviour:
   wallLayer:
     serializedVersion: 2
     m_Bits: 72
-  handDetectRadius: 0.12
+  handDetectRadius: 0.3
   controller: 1
   grabButton: 16384
   throwMultiplier: 1.2
   maxThrowSpeed: 8
+  enableMantle: 1
+  mantleWalkableLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  mantlePullDownSpeed: 0.35
+  mantleForwardProbe: 0.45
+  mantleUpProbe: 0.8
+  mantleDownProbe: 1.4
+  mantleForwardMove: 1.5
+  mantleUpMove: 1.5
+  maxMantleSurfaceAngle: 30
+  mantleCooldown: 0.4
+  playerCapsule: {fileID: 631885386}
+  collisionLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  skinWidth: 0.05
+  maxClimbStepPerFixedUpdate: 0.18
 --- !u!1 &1647589187
 GameObject:
   m_ObjectHideFlags: 0

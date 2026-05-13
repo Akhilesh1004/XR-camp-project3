@@ -28,6 +28,22 @@ public class WallGrabber : MonoBehaviour
     [Header("攀爬與甩動設定")]
     public float throwMultiplier = 1.2f;
     public float maxThrowSpeed = 8f;
+    public bool enableMantle = true;
+    public LayerMask mantleWalkableLayer;
+    public float mantlePullDownSpeed = 0.35f;
+    public float mantleForwardProbe = 0.45f;
+    public float mantleUpProbe = 0.8f;
+    public float mantleDownProbe = 1.4f;
+    public float mantleForwardMove = 0.75f;
+    public float mantleUpMove = 0.55f;
+    public float maxMantleSurfaceAngle = 30f;
+    public float mantleCooldown = 0.4f;
+    public CapsuleCollider playerCapsule;
+    public LayerMask collisionLayer;
+    public float skinWidth = 0.05f;
+    public float maxClimbStepPerFixedUpdate = 0.18f;
+
+    private float lastMantleTime = -999f;
 
     private bool isTouchingWall = false;
     private bool isGrabbing = false;
@@ -134,11 +150,173 @@ public class WallGrabber : MonoBehaviour
         Vector3 localDelta = currentHandLocalPos - previousHandLocalPos;
         Vector3 worldDelta = LocalDirectionToWorld(localDelta);
 
-        // 手往下拉，玩家往上
-        // 手往右拉，玩家往左
-        playerRigidbody.MovePosition(playerRigidbody.position - worldDelta);
+        Vector3 desiredMove = -worldDelta;
+
+        if (desiredMove.magnitude > maxClimbStepPerFixedUpdate)
+        {
+            desiredMove = desiredMove.normalized * maxClimbStepPerFixedUpdate;
+        }
+
+        SafeMovePlayer(desiredMove);
+
+        TryMantle(worldDelta);
 
         previousHandLocalPos = currentHandLocalPos;
+    }
+
+    void SafeMovePlayer(Vector3 move)
+    {
+        if (move.sqrMagnitude < 0.000001f)
+        {
+            return;
+        }
+
+        if (playerCapsule == null)
+        {
+            playerRigidbody.MovePosition(playerRigidbody.position + move);
+            return;
+        }
+
+        GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius);
+
+        Vector3 direction = move.normalized;
+        float distance = move.magnitude;
+
+        if (Physics.CapsuleCast(
+            p1,
+            p2,
+            radius,
+            direction,
+            out RaycastHit hit,
+            distance + skinWidth,
+            collisionLayer,
+            QueryTriggerInteraction.Ignore))
+        {
+            float safeDistance = Mathf.Max(0f, hit.distance - skinWidth);
+            playerRigidbody.MovePosition(playerRigidbody.position + direction * safeDistance);
+        }
+        else
+        {
+            playerRigidbody.MovePosition(playerRigidbody.position + move);
+        }
+    }
+
+    void GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius)
+    {
+        float scaleY = Mathf.Abs(playerCapsule.transform.lossyScale.y);
+        float scaleX = Mathf.Abs(playerCapsule.transform.lossyScale.x);
+        float scaleZ = Mathf.Abs(playerCapsule.transform.lossyScale.z);
+
+        radius = playerCapsule.radius * Mathf.Max(scaleX, scaleZ);
+        float height = Mathf.Max(playerCapsule.height * scaleY, radius * 2f);
+
+        Vector3 center = playerCapsule.transform.TransformPoint(playerCapsule.center);
+
+        float halfHeight = Mathf.Max(0f, height * 0.5f - radius);
+
+        p1 = center + Vector3.up * halfHeight;
+        p2 = center - Vector3.up * halfHeight;
+    }
+
+    void TryMantle(Vector3 handWorldDelta)
+    {
+        if (!enableMantle)
+        {
+            Debug.Log("Mantle fail: enableMantle is false");
+            return;
+        }
+
+        if (Time.time - lastMantleTime < mantleCooldown)
+        {
+            Debug.Log("Mantle fail: cooldown");
+            return;
+        }
+
+        float handDownSpeed = -handWorldDelta.y / Time.fixedDeltaTime;
+
+        if (handDownSpeed < mantlePullDownSpeed)
+        {
+            Debug.Log("Mantle fail: handDownSpeed too low = " + handDownSpeed);
+            return;
+        }
+
+        Vector3 forward = GetFlatForward();
+
+        if (forward.sqrMagnitude < 0.001f)
+        {
+            Debug.Log("Mantle fail: forward invalid");
+            return;
+        }
+
+        Vector3 probeOrigin =
+            handTransform.position +
+            forward * mantleForwardProbe +
+            Vector3.up * mantleUpProbe;
+
+        Debug.DrawRay(
+            probeOrigin,
+            Vector3.down * (mantleUpProbe + mantleDownProbe),
+            Color.yellow,
+            0.2f
+        );
+
+        if (!Physics.SphereCast(
+            probeOrigin,
+            0.18f,
+            Vector3.down,
+            out RaycastHit hit,
+            mantleUpProbe + mantleDownProbe,
+            mantleWalkableLayer,
+            QueryTriggerInteraction.Ignore))
+        {
+            Debug.Log("Mantle fail: no walkable surface hit");
+            return;
+        }
+
+        float surfaceAngle = Vector3.Angle(hit.normal, Vector3.up);
+
+        Debug.Log(
+            "Mantle hit: " + hit.collider.name +
+            ", angle = " + surfaceAngle +
+            ", layer = " + LayerMask.LayerToName(hit.collider.gameObject.layer)
+        );
+
+        if (surfaceAngle > maxMantleSurfaceAngle)
+        {
+            Debug.Log("Mantle fail: surface angle too steep = " + surfaceAngle);
+            return;
+        }
+
+        lastMantleTime = Time.time;
+
+        Vector3 upMove = Vector3.up * mantleUpMove;
+        Vector3 forwardMove = forward * mantleForwardMove;
+
+        SafeMovePlayer(upMove);
+        SafeMovePlayer(forwardMove);
+
+        playerRigidbody.velocity = forward * 1.5f;
+        playerRigidbody.angularVelocity = Vector3.zero;
+
+        Debug.Log("Mantle success onto roof: " + hit.collider.name);
+
+        ReleaseWall(false);
+    }
+
+    Vector3 GetFlatForward()
+    {
+        Transform forwardSource = trackingSpaceTransform;
+
+        if (forwardSource != null)
+        {
+            Vector3 forward = forwardSource.forward;
+            forward.y = 0f;
+            return forward.normalized;
+        }
+
+        Vector3 fallback = playerRigidbody.transform.forward;
+        fallback.y = 0f;
+        return fallback.normalized;
     }
 
     void ReleaseWall(bool allowThrow)
@@ -216,6 +394,23 @@ public class WallGrabber : MonoBehaviour
 
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(handTransform.position, handDetectRadius);
+
+        if (enableMantle)
+        {
+            Vector3 forward = GetFlatForward();
+
+            Vector3 probeOrigin =
+                handTransform.position +
+                forward * mantleForwardProbe +
+                Vector3.up * mantleUpProbe;
+
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(probeOrigin, 0.08f);
+            Gizmos.DrawLine(
+                probeOrigin,
+                probeOrigin + Vector3.down * (mantleUpProbe + mantleDownProbe)
+            );
+        }
     }
 
     void StopVibration()

@@ -619,7 +619,7 @@ public class WebSwinger : MonoBehaviour
     {
         if (spawnedReticle == null) return;
 
-        if (joint != null || hasPendingSwing)
+        if (joint != null || hasPendingSwing || WallGrabber.IsGrabbing)
         {
             spawnedReticle.SetActive(false);
             return;

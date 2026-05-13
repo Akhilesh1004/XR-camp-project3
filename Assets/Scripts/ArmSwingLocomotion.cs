@@ -26,7 +26,10 @@ public class ArmSwingLocomotion : MonoBehaviour
     [Header("地面偵測")]
     public LayerMask groundLayer;
     public float groundCheckDistance = 1.1f;
+    public float groundCheckRadius = 0.25f;
+    public float maxGroundAngle = 30f;
     private bool isGrounded;
+    private Vector3 groundNormal = Vector3.up;
 
     private void Awake()
     {
@@ -71,13 +74,29 @@ public class ArmSwingLocomotion : MonoBehaviour
 
     void CheckGrounded()
     {
-        isGrounded = Physics.Raycast(
-            playerRigidbody.position,
+        Vector3 origin = playerRigidbody.position + Vector3.up * 0.1f;
+
+        if (Physics.SphereCast(
+            origin,
+            groundCheckRadius,
             Vector3.down,
+            out RaycastHit hit,
             groundCheckDistance,
             groundLayer,
-            QueryTriggerInteraction.Ignore
-        );
+            QueryTriggerInteraction.Ignore))
+        {
+            float groundAngle = Vector3.Angle(hit.normal, Vector3.up);
+
+            if (groundAngle <= maxGroundAngle)
+            {
+                isGrounded = true;
+                groundNormal = hit.normal;
+                return;
+            }
+        }
+
+        isGrounded = false;
+        groundNormal = Vector3.up;
     }
 
     void ProcessArmSwing()
@@ -103,9 +122,15 @@ public class ArmSwingLocomotion : MonoBehaviour
             Vector3 leftForward = leftControllerAnchor.forward;
             Vector3 rightForward = rightControllerAnchor.forward;
             Vector3 combinedForward = (leftForward + rightForward) * 0.5f;
-            combinedForward.y = 0f;
+            
+            Vector3 moveDirection = Vector3.ProjectOnPlane(combinedForward, groundNormal);
 
-            Vector3 moveDirection = combinedForward.normalized;
+            if (moveDirection.sqrMagnitude < 0.001f)
+            {
+                return;
+            }
+
+            moveDirection.Normalize();
 
             float targetSpeed = Mathf.Clamp(
                 totalSwingSpeed * swingMultiplier,
@@ -115,17 +140,18 @@ public class ArmSwingLocomotion : MonoBehaviour
 
             Vector3 targetVelocity = moveDirection * targetSpeed;
 
-            Vector3 newHorizontalVelocity = Vector3.Lerp(
+            Vector3 newVelocity = Vector3.Lerp(
                 currentHorizontalVelocity,
                 targetVelocity,
                 Time.fixedDeltaTime * accelerationSmooth
             );
 
-            playerRigidbody.velocity = new Vector3(
-                newHorizontalVelocity.x,
-                playerRigidbody.velocity.y,
-                newHorizontalVelocity.z
-            );
+            if (isGrounded && newVelocity.y > 0f)
+            {
+                newVelocity.y = Mathf.Min(newVelocity.y, 1f);
+            }
+
+            playerRigidbody.velocity = newVelocity;
         }
         else
         {
@@ -144,5 +170,19 @@ public class ArmSwingLocomotion : MonoBehaviour
                 );
             }
         }
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        if (playerRigidbody == null)
+        {
+            return;
+        }
+
+        Gizmos.color = isGrounded ? Color.green : Color.red;
+        Gizmos.DrawWireSphere(
+            playerRigidbody.position + Vector3.down * groundCheckDistance,
+            groundCheckRadius
+        );
     }
 }
