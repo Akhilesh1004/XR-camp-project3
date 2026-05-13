@@ -59,6 +59,7 @@ public class WebSwinger : MonoBehaviour
     public float shootCooldown = 0.2f;
     private float lastShootTime;
     private bool canShoot = false;
+    private bool ThisHandGrabbing = false;
 
     private SpringJoint joint;
     private Vector3 swingPoint;
@@ -176,6 +177,15 @@ public class WebSwinger : MonoBehaviour
                 Shoot();
                 lastShootTime = Time.time;
             }
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, controller))
+        {
+            ThisHandGrabbing = true;
+        }
+        if (OVRInput.GetUp(OVRInput.Button.PrimaryHandTrigger, controller))
+        {
+            ThisHandGrabbing = false;
         }
 
         // 預瞄指示
@@ -619,7 +629,7 @@ public class WebSwinger : MonoBehaviour
     {
         if (spawnedReticle == null) return;
 
-        if (joint != null || hasPendingSwing || WallGrabber.IsGrabbing)
+        if (joint != null || hasPendingSwing || ThisHandGrabbing)
         {
             spawnedReticle.SetActive(false);
             return;
