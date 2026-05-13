@@ -44,6 +44,24 @@ public class DroneNPC : MonoBehaviour
     public bool dealDamage = false;
     public int damageAmount = 20;
 
+    [Header("簡易避障")]
+    public bool enableObstacleAvoidance = true;
+
+    [Tooltip("建築物 / 牆壁 / 障礙物所在 Layer")]
+    public LayerMask obstacleLayer;
+
+    [Tooltip("無人機前方多遠開始偵測障礙物")]
+    public float obstacleDetectDistance = 4f;
+
+    [Tooltip("SphereCast 半徑，越大越不容易貼牆")]
+    public float obstacleAvoidRadius = 0.6f;
+
+    [Tooltip("避障轉向強度")]
+    public float obstacleAvoidStrength = 2.5f;
+
+    [Tooltip("遇到障礙物時往上繞的傾向")]
+    public float upwardAvoidStrength = 1.2f;
+
     private DroneState state = DroneState.Idle;
 
     private Transform player;
@@ -155,14 +173,21 @@ public class DroneNPC : MonoBehaviour
 
     void MoveTowards(Vector3 targetPosition, float speed)
     {
-        Vector3 direction = targetPosition - transform.position;
+        // 不固定高度：直接追玩家實際位置
+        Vector3 toTarget = targetPosition - transform.position;
 
-        if (direction.sqrMagnitude < 0.001f)
+        if (toTarget.sqrMagnitude < 0.001f)
         {
             return;
         }
 
-        Vector3 moveDirection = direction.normalized;
+        Vector3 moveDirection = toTarget.normalized;
+
+        if (enableObstacleAvoidance)
+        {
+            moveDirection = GetAvoidedDirection(moveDirection, targetPosition);
+        }
+
         Vector3 nextPosition = transform.position + moveDirection * speed * Time.deltaTime;
 
         if (rb != null)
@@ -175,6 +200,52 @@ public class DroneNPC : MonoBehaviour
         }
 
         RotateTowards(moveDirection);
+    }
+
+    Vector3 GetAvoidedDirection(Vector3 desiredDirection, Vector3 targetPosition)
+    {
+        bool blocked = Physics.SphereCast(
+            transform.position,
+            obstacleAvoidRadius,
+            desiredDirection,
+            out RaycastHit hit,
+            obstacleDetectDistance,
+            obstacleLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (!blocked)
+        {
+            return desiredDirection;
+        }
+
+        // 沿著障礙物表面滑開，而不是直直撞上去
+        Vector3 slideDirection = Vector3.ProjectOnPlane(desiredDirection, hit.normal);
+
+        if (slideDirection.sqrMagnitude < 0.001f)
+        {
+            slideDirection = transform.right;
+        }
+
+        slideDirection.Normalize();
+
+        // 左右兩個方向，選比較接近目標的那一邊
+        Vector3 rightAvoid = Vector3.Cross(Vector3.up, hit.normal).normalized;
+        Vector3 leftAvoid = -rightAvoid;
+
+        Vector3 toTarget = (targetPosition - transform.position).normalized;
+
+        if (Vector3.Dot(leftAvoid, toTarget) > Vector3.Dot(rightAvoid, toTarget))
+        {
+            rightAvoid = leftAvoid;
+        }
+
+        Vector3 avoidDirection =
+            slideDirection +
+            rightAvoid * obstacleAvoidStrength +
+            Vector3.up * upwardAvoidStrength;
+
+        return avoidDirection.normalized;
     }
 
     void RotateTowards(Vector3 direction)

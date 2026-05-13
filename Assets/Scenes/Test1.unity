@@ -19783,8 +19783,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerTag: Player
-  detectRange: 10
-  giveUpRange: 18
+  detectRange: 60
+  giveUpRange: 50
   chaseSpeed: 5
   returnSpeed: 3
   rotateSpeed: 8
@@ -19793,6 +19793,14 @@ MonoBehaviour:
   respawnDelay: 3
   dealDamage: 0
   damageAmount: 20
+  enableObstacleAvoidance: 1
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 72
+  obstacleDetectDistance: 4
+  obstacleAvoidRadius: 0.6
+  obstacleAvoidStrength: 2.5
+  upwardAvoidStrength: 1.2
 --- !u!135 &1652143423
 SphereCollider:
   m_ObjectHideFlags: 0
