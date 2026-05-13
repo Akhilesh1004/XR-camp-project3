@@ -62,6 +62,9 @@ public class DroneNPC : MonoBehaviour
     [Tooltip("遇到障礙物時往上繞的傾向")]
     public float upwardAvoidStrength = 1.2f;
 
+    [Header("子彈設定")]
+    public string bulletTag = "Bullet";
+
     private DroneState state = DroneState.Idle;
 
     private Transform player;
@@ -283,6 +286,18 @@ public class DroneNPC : MonoBehaviour
         StartCoroutine(RespawnRoutine());
     }
 
+    void ExplodeWithDamage()
+    {
+        state = DroneState.Exploded;
+
+        if (explosionPrefab != null)
+        {
+            Instantiate(explosionPrefab, transform.position, Quaternion.identity);
+        }
+
+        StartCoroutine(RespawnRoutine());
+    }
+
     IEnumerator RespawnRoutine()
     {
         SetDroneVisible(false);
@@ -354,5 +369,18 @@ public class DroneNPC : MonoBehaviour
 
         Gizmos.color = Color.magenta;
         Gizmos.DrawWireSphere(transform.position, explodeRange);
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (state == DroneState.Exploded)
+        {
+            return;
+        }
+
+        if (other.CompareTag(bulletTag))
+        {
+            ExplodeWithDamage();
+        }
     }
 }

@@ -638,14 +638,20 @@ public class WebSwinger : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(handTransform.position, handTransform.forward, out hit, maxSwingDistance, swingableLayer))
         {
+
+            float distance = Vector3.Distance(handTransform.position, hit.point);
+            float minShowDistance = 3f;
+            if (distance < minShowDistance)
+            {
+                spawnedReticle.SetActive(false);
+                return;
+            }
             spawnedReticle.SetActive(true);
         
             // spawnedReticle.transform.position = hit.point + (hit.normal * 0.05f);
             Vector3 targetPos = hit.point + (hit.normal * 0.05f);
             spawnedReticle.transform.position = Vector3.Lerp(spawnedReticle.transform.position, targetPos, 0.5f);
             spawnedReticle.transform.rotation = Quaternion.LookRotation(-hit.normal);
-
-            float distance = Vector3.Distance(handTransform.position, hit.point);
             
             float currentScale = minScale + (distance * scaleFactor);
             
