@@ -1,0 +1,287 @@
+using System.Collections;
+using UnityEngine;
+
+public class DroneNPC : MonoBehaviour
+{
+    private enum DroneState
+    {
+        Idle,
+        Chasing,
+        Returning,
+        Exploded
+    }
+
+    [Header("目標設定")]
+    public string playerTag = "Player";
+
+    [Header("偵測與追逐")]
+    [Tooltip("Player 進入這個範圍後，無人機開始追逐")]
+    public float detectRange = 10f;
+
+    [Tooltip("Player 拉開超過這個距離後，無人機放棄追逐並回原點")]
+    public float giveUpRange = 18f;
+
+    [Tooltip("追逐玩家的速度")]
+    public float chaseSpeed = 5f;
+
+    [Tooltip("回到原點的速度")]
+    public float returnSpeed = 3f;
+
+    [Tooltip("旋轉面向目標的速度")]
+    public float rotateSpeed = 8f;
+
+    [Header("爆炸設定")]
+    [Tooltip("距離玩家小於這個距離時爆炸")]
+    public float explodeRange = 1.2f;
+
+    [Tooltip("爆炸特效 Prefab，可不填")]
+    public GameObject explosionPrefab;
+
+    [Tooltip("爆炸後幾秒重新生成")]
+    public float respawnDelay = 3f;
+
+    [Header("可選：傷害設定")]
+    public bool dealDamage = false;
+    public int damageAmount = 20;
+
+    private DroneState state = DroneState.Idle;
+
+    private Transform player;
+    private Vector3 originPosition;
+    private Quaternion originRotation;
+
+    private Rigidbody rb;
+    private Renderer[] renderers;
+    private Collider[] colliders;
+
+    void Start()
+    {
+        originPosition = transform.position;
+        originRotation = transform.rotation;
+
+        rb = GetComponent<Rigidbody>();
+        renderers = GetComponentsInChildren<Renderer>();
+        colliders = GetComponentsInChildren<Collider>();
+
+        FindPlayer();
+    }
+
+    void Update()
+    {
+        if (state == DroneState.Exploded)
+        {
+            return;
+        }
+
+        if (player == null)
+        {
+            FindPlayer();
+            return;
+        }
+
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+
+        switch (state)
+        {
+            case DroneState.Idle:
+                HandleIdle(distanceToPlayer);
+                break;
+
+            case DroneState.Chasing:
+                HandleChasing(distanceToPlayer);
+                break;
+
+            case DroneState.Returning:
+                HandleReturning(distanceToPlayer);
+                break;
+        }
+    }
+
+    void FindPlayer()
+    {
+        GameObject playerObject = GameObject.FindGameObjectWithTag(playerTag);
+
+        if (playerObject != null)
+        {
+            player = playerObject.transform;
+        }
+    }
+
+    void HandleIdle(float distanceToPlayer)
+    {
+        if (distanceToPlayer <= detectRange)
+        {
+            state = DroneState.Chasing;
+        }
+    }
+
+    void HandleChasing(float distanceToPlayer)
+    {
+        if (distanceToPlayer >= giveUpRange)
+        {
+            state = DroneState.Returning;
+            return;
+        }
+
+        if (distanceToPlayer <= explodeRange)
+        {
+            Explode();
+            return;
+        }
+
+        MoveTowards(player.position, chaseSpeed);
+    }
+
+    void HandleReturning(float distanceToPlayer)
+    {
+        // 回原點途中，如果玩家又靠近，重新追逐
+        if (distanceToPlayer <= detectRange)
+        {
+            state = DroneState.Chasing;
+            return;
+        }
+
+        float distanceToOrigin = Vector3.Distance(transform.position, originPosition);
+
+        if (distanceToOrigin <= 0.1f)
+        {
+            SetPositionAndRotation(originPosition, originRotation);
+            state = DroneState.Idle;
+            return;
+        }
+
+        MoveTowards(originPosition, returnSpeed);
+    }
+
+    void MoveTowards(Vector3 targetPosition, float speed)
+    {
+        Vector3 direction = targetPosition - transform.position;
+
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            return;
+        }
+
+        Vector3 moveDirection = direction.normalized;
+        Vector3 nextPosition = transform.position + moveDirection * speed * Time.deltaTime;
+
+        if (rb != null)
+        {
+            rb.MovePosition(nextPosition);
+        }
+        else
+        {
+            transform.position = nextPosition;
+        }
+
+        RotateTowards(moveDirection);
+    }
+
+    void RotateTowards(Vector3 direction)
+    {
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            return;
+        }
+
+        Quaternion targetRotation = Quaternion.LookRotation(direction, Vector3.up);
+
+        transform.rotation = Quaternion.Slerp(
+            transform.rotation,
+            targetRotation,
+            Time.deltaTime * rotateSpeed
+        );
+    }
+
+    void Explode()
+    {
+        state = DroneState.Exploded;
+
+        if (explosionPrefab != null)
+        {
+            Instantiate(explosionPrefab, transform.position, Quaternion.identity);
+        }
+
+        if (dealDamage && player != null)
+        {
+            // 如果你的 Player 有 Health 腳本，可以在這裡改成你的傷害函式
+            // 範例：
+            // player.GetComponent<PlayerHealth>()?.TakeDamage(damageAmount);
+        }
+
+        StartCoroutine(RespawnRoutine());
+    }
+
+    IEnumerator RespawnRoutine()
+    {
+        SetDroneVisible(false);
+        SetDroneCollision(false);
+
+        if (rb != null)
+        {
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        yield return new WaitForSeconds(respawnDelay);
+
+        SetPositionAndRotation(originPosition, originRotation);
+
+        if (rb != null)
+        {
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
+        SetDroneVisible(true);
+        SetDroneCollision(true);
+
+        state = DroneState.Idle;
+    }
+
+    void SetPositionAndRotation(Vector3 position, Quaternion rotation)
+    {
+        if (rb != null)
+        {
+            rb.position = position;
+            rb.rotation = rotation;
+        }
+
+        transform.position = position;
+        transform.rotation = rotation;
+    }
+
+    void SetDroneVisible(bool visible)
+    {
+        foreach (Renderer r in renderers)
+        {
+            if (r != null)
+            {
+                r.enabled = visible;
+            }
+        }
+    }
+
+    void SetDroneCollision(bool enabled)
+    {
+        foreach (Collider c in colliders)
+        {
+            if (c != null)
+            {
+                c.enabled = enabled;
+            }
+        }
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(transform.position, detectRange);
+
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, giveUpRange);
+
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(transform.position, explodeRange);
+    }
+}
