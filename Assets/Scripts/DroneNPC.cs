@@ -9,6 +9,12 @@ public class DroneNPC : MonoBehaviour
         Exploding
     }
 
+    public enum PatrolMode
+    {
+        Sequential,
+        Random
+    }
+
     [Header("目標設定")]
     public string playerTag = "Player";
 
@@ -38,14 +44,19 @@ public class DroneNPC : MonoBehaviour
     public GameObject explosionPrefab;
 
     [Header("Waypoint 巡邏 / 導航")]
+    public PatrolMode patrolMode = PatrolMode.Sequential;
+
     [Tooltip("到 waypoint 多近時，視為抵達")]
     public float waypointReachDistance = 1.5f;
 
     [Tooltip("追逐時每隔多久重新選一次導航 waypoint")]
     public float repathInterval = 0.25f;
 
-    [Tooltip("巡邏時如果卡住或路徑不通，每隔多久重新選點")]
-    public float patrolRepathInterval = 1.0f;
+    [Tooltip("巡邏時如果卡住或路徑不通，每隔多久重新檢查")]
+    public float patrolRepathInterval = 2.0f;
+
+    [Tooltip("巡邏時，如果目前 waypoint 路徑被擋住，是否允許跳到下一個 waypoint")]
+    public bool repathPatrolWhenBlocked = true;
 
     [Tooltip("如果路徑被這些 Layer 擋住，就改走 waypoint")]
     public LayerMask obstacleLayer;
@@ -56,7 +67,7 @@ public class DroneNPC : MonoBehaviour
     [Tooltip("Waypoint 太遠時是否仍可選。0 代表不限制")]
     public float maxWaypointSelectDistance = 45f;
 
-    [Tooltip("允許 waypoint 比目前位置更遠離目標多少距離。越小越積極追玩家")]
+    [Tooltip("允許追逐 waypoint 比目前位置更遠離目標多少距離。越小越積極追玩家")]
     public float maxDetourExtraDistance = 12f;
 
     [Tooltip("如果直線看得到玩家，就直接追玩家")]
@@ -94,8 +105,14 @@ public class DroneNPC : MonoBehaviour
 
     private Transform[] waypoints;
 
+    // 追逐時用的導航 waypoint
     private Transform currentNavigationWaypoint;
+
+    // 巡邏時用的 waypoint
     private Transform currentPatrolWaypoint;
+
+    // Sequential 巡邏用
+    private int currentPatrolIndex = -1;
 
     private Vector3 currentMoveDirection;
 
@@ -134,6 +151,10 @@ public class DroneNPC : MonoBehaviour
 
         currentNavigationWaypoint = null;
         currentPatrolWaypoint = null;
+
+        // 讓 Sequential 巡邏從自己的出生點開始，下一個目標會是 spawnIndex + 1
+        currentPatrolIndex = spawnIndex;
+
         currentMoveDirection = transform.forward;
 
         lastRepathTime = -999f;
@@ -178,10 +199,19 @@ public class DroneNPC : MonoBehaviour
         }
 
         state = DroneState.Patrol;
+
+        currentNavigationWaypoint = null;
+        currentPatrolWaypoint = null;
+
         currentMoveDirection = transform.forward;
+
+        lastRepathTime = -999f;
+        lastPatrolRepathTime = -999f;
+
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
         isStuck = false;
+
         outOfRangeTimer = 0f;
     }
 
@@ -256,10 +286,6 @@ public class DroneNPC : MonoBehaviour
         {
             MoveTowards(currentPatrolWaypoint.position, patrolSpeed);
         }
-        else
-        {
-            MoveTowards(originPosition, patrolSpeed);
-        }
     }
 
     bool NeedNewPatrolWaypoint()
@@ -276,12 +302,12 @@ public class DroneNPC : MonoBehaviour
 
         if (Time.time - lastPatrolRepathTime >= patrolRepathInterval)
         {
-            if (!HasClearPath(transform.position, currentPatrolWaypoint.position))
+            if (isStuck)
             {
                 return true;
             }
 
-            if (isStuck)
+            if (repathPatrolWhenBlocked && !HasClearPath(transform.position, currentPatrolWaypoint.position))
             {
                 return true;
             }
@@ -297,6 +323,107 @@ public class DroneNPC : MonoBehaviour
             return null;
         }
 
+        switch (patrolMode)
+        {
+            case PatrolMode.Sequential:
+                return ChooseSequentialPatrolWaypoint();
+
+            case PatrolMode.Random:
+                return ChooseRandomPatrolWaypoint();
+        }
+
+        return ChooseSequentialPatrolWaypoint();
+    }
+
+    Transform ChooseSequentialPatrolWaypoint()
+    {
+        if (waypoints == null || waypoints.Length == 0)
+        {
+            return null;
+        }
+
+        if (currentPatrolIndex < 0 || currentPatrolIndex >= waypoints.Length)
+        {
+            currentPatrolIndex = 0;
+        }
+
+        int waypointCount = waypoints.Length;
+
+        // 第一輪：優先找「下一個順序 waypoint」且路徑清楚的點
+        for (int i = 0; i < waypointCount; i++)
+        {
+            int nextIndex = currentPatrolIndex + 1 + i;
+
+            if (nextIndex >= waypointCount)
+            {
+                nextIndex %= waypointCount;
+            }
+
+            Transform candidate = waypoints[nextIndex];
+
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            float distance = Vector3.Distance(transform.position, candidate.position);
+
+            if (distance <= waypointReachDistance)
+            {
+                continue;
+            }
+
+            if (maxWaypointSelectDistance > 0f && distance > maxWaypointSelectDistance)
+            {
+                continue;
+            }
+
+            if (HasClearPath(transform.position, candidate.position))
+            {
+                currentPatrolIndex = nextIndex;
+                return candidate;
+            }
+        }
+
+        // 第二輪：如果每個 waypoint 都被擋住，仍然照順序選下一個。
+        // 之後靠 local avoidance 慢慢繞，不要原地瘋狂換點。
+        for (int i = 0; i < waypointCount; i++)
+        {
+            int nextIndex = currentPatrolIndex + 1 + i;
+
+            if (nextIndex >= waypointCount)
+            {
+                nextIndex %= waypointCount;
+            }
+
+            Transform candidate = waypoints[nextIndex];
+
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            float distance = Vector3.Distance(transform.position, candidate.position);
+
+            if (distance <= waypointReachDistance)
+            {
+                continue;
+            }
+
+            if (maxWaypointSelectDistance > 0f && distance > maxWaypointSelectDistance)
+            {
+                continue;
+            }
+
+            currentPatrolIndex = nextIndex;
+            return candidate;
+        }
+
+        return null;
+    }
+
+    Transform ChooseRandomPatrolWaypoint()
+    {
         Transform bestWaypoint = null;
         float bestScore = -999999f;
 
@@ -330,6 +457,7 @@ public class DroneNPC : MonoBehaviour
             }
 
             float distanceScore = -distanceToWaypoint * 0.05f;
+            float randomScore = Random.Range(0f, 2f);
 
             float forwardScore = 0f;
 
@@ -345,8 +473,6 @@ public class DroneNPC : MonoBehaviour
             {
                 heightScore = 0.3f;
             }
-
-            float randomScore = Random.Range(0f, 2f);
 
             float stuckBonus = 0f;
 
@@ -369,7 +495,8 @@ public class DroneNPC : MonoBehaviour
             }
         }
 
-        if (bestWaypoint == null)
+        // 如果找不到路徑清楚的 waypoint，隨機挑一個，避免完全停住
+        if (bestWaypoint == null && waypoints.Length > 0)
         {
             bestWaypoint = waypoints[Random.Range(0, waypoints.Length)];
         }
