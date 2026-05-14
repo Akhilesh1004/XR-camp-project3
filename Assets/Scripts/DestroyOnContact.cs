@@ -5,6 +5,7 @@ public class DestroyOnContact : MonoBehaviour
     [Header("設定目標圖層")]
     [Tooltip("選擇碰到哪些 Layer 後物件會消失 (可以複選)")]
     public LayerMask targetLayers;
+    public float lifetimeLimit = 5f;
 
     private void Start()
     {
