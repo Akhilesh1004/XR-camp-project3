@@ -6,6 +6,11 @@ public class DestroyOnContact : MonoBehaviour
     [Tooltip("選擇碰到哪些 Layer 後物件會消失 (可以複選)")]
     public LayerMask targetLayers;
 
+    private void Start()
+    {
+        Destroy(gameObject, lifetimeLimit);
+    }
+
     private void OnCollisionEnter(Collision collision)
     {
         if ((targetLayers.value & (1 << collision.gameObject.layer)) > 0)
