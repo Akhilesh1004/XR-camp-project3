@@ -1,55 +1,88 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 public class WallGrabber : MonoBehaviour
 {
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
-    public Transform headCamera;
+
+    [Tooltip("玩家身上的 CapsuleCollider，用來防止爬牆 / 上屋頂時穿模")]
+    public CapsuleCollider playerCapsule;
 
     [Tooltip("實際手部 / 控制器 Transform，用來做 CheckSphere")]
     public Transform handTransform;
 
-    [Tooltip("OVR CameraRig 裡的 TrackingSpace。建議指定；沒有指定就使用 playerRigidbody.transform")]
+    [Tooltip("OVR CameraRig 裡的 TrackingSpace")]
     public Transform trackingSpaceTransform;
 
+    [Tooltip("頭盔攝影機，例如 CenterEyeAnchor。用來決定爬上屋頂的前方")]
+    public Transform headCamera;
+
     [Header("互斥系統")]
-    [Tooltip("把左右手的 WebSwinger 都拖進來。正在擺盪時抓牆會暫停蛛絲。")]
+    [Tooltip("把左右手的 WebSwinger 都拖進來。正在擺盪時抓牆會暫停蛛絲")]
     public WebSwinger[] webSwingers;
 
-    [Header("抓取設定")]
+    [Header("抓牆設定")]
     public LayerMask wallLayer;
     public float handDetectRadius = 0.12f;
 
     public OVRInput.Controller controller = OVRInput.Controller.RTouch;
     public OVRInput.Button grabButton = OVRInput.Button.PrimaryHandTrigger;
 
-    [Header("攀爬與甩動設定")]
-    public float throwMultiplier = 1.2f;
-    public float maxThrowSpeed = 8f;
-    public bool enableMantle = true;
-    public LayerMask mantleWalkableLayer;
-    public float mantlePullDownSpeed = 0.35f;
-    public float mantleForwardProbe = 0.45f;
-    public float mantleUpProbe = 0.8f;
-    public float mantleDownProbe = 1.4f;
-    public float mantleForwardMove = 0.75f;
-    public float mantleUpMove = 0.55f;
-    public float maxMantleSurfaceAngle = 30f;
-    public float mantleCooldown = 0.4f;
-    public CapsuleCollider playerCapsule;
+    [Header("玩家碰撞設定")]
+    [Tooltip("玩家移動時不能穿過的 Layer。通常是 Building / Wall / Roof / Ground。不要包含 Player / Hand")]
     public LayerMask collisionLayer;
+
     public float skinWidth = 0.05f;
     public float maxClimbStepPerFixedUpdate = 0.18f;
 
-    private float lastMantleTime = -999f;
+    [Header("攀爬與甩動設定")]
+    public float throwMultiplier = 1.2f;
+    public float maxThrowSpeed = 8f;
+
+    [Header("自動爬上一般牆頂")]
+    public bool enableAutoClimbOver = true;
+
+    [Tooltip("可站立表面，例如 Roof / Ground / Building")]
+    public LayerMask walkableLayer;
+
+    [Tooltip("從手的前方多少距離開始往下找屋頂")]
+    public float ledgeForwardProbe = 0.55f;
+
+    [Tooltip("從手的上方多少高度開始往下找屋頂")]
+    public float ledgeUpProbe = 0.35f;
+
+    [Tooltip("往下找屋頂的距離")]
+    public float ledgeDownProbe = 1.2f;
+
+    [Tooltip("找屋頂時的 SphereCast 半徑。比 Raycast 穩")]
+    public float ledgeProbeRadius = 0.18f;
+
+    [Tooltip("成功爬上屋頂後，往前推一點，避免卡在邊緣")]
+    public float climbForwardNudge = 0.45f;
+
+    [Tooltip("玩家腳底離屋頂表面的安全高度")]
+    public float climbUpClearance = 0.06f;
+
+    [Tooltip("屋頂 / 可站立表面的最大角度")]
+    public float maxWalkableSurfaceAngle = 60f;
+
+    [Tooltip("爬上屋頂後的水平速度")]
+    public float climbOverExitSpeed = 1.2f;
+
+    [Tooltip("避免連續觸發 climb over")]
+    public float climbOverCooldown = 0.35f;
+
+    [Header("震動")]
+    public float grabVibrationFrequency = 0.1f;
+    public float grabVibrationAmplitude = 0.3f;
+    public float grabVibrationDuration = 0.1f;
 
     private bool isTouchingWall = false;
     private bool isGrabbing = false;
 
     private Vector3 previousHandLocalPos;
+    private float lastClimbOverTime = -999f;
 
     private static WallGrabber activeGrabber;
     private static readonly List<WallGrabber> grabbingHands = new List<WallGrabber>();
@@ -66,8 +99,21 @@ public class WallGrabber : MonoBehaviour
         grabbingHands.Clear();
     }
 
+    void Awake()
+    {
+        if (playerCapsule == null && playerRigidbody != null)
+        {
+            playerCapsule = playerRigidbody.GetComponent<CapsuleCollider>();
+        }
+    }
+
     void Update()
     {
+        if (playerRigidbody == null || handTransform == null)
+        {
+            return;
+        }
+
         isTouchingWall = Physics.CheckSphere(
             handTransform.position,
             handDetectRadius,
@@ -77,8 +123,7 @@ public class WallGrabber : MonoBehaviour
 
         if (!isGrabbing && isTouchingWall && OVRInput.GetDown(grabButton, controller))
         {
-            OVRInput.SetControllerVibration(0.1f, 0.3f, controller);
-            Invoke("StopVibration", 0.1f);
+            StartGrabVibration();
             GrabWall();
         }
 
@@ -103,11 +148,6 @@ public class WallGrabber : MonoBehaviour
             return;
         }
 
-        Debug.Log("Try grab wall: " + gameObject.name);
-
-        // 如果正在蛛絲擺盪中抓牆：
-        // 停掉 active SpringJoint。
-        // 如果蛛絲鍵還按著，WebSwinger 會自動轉成 pending swing。
         if (webSwingers != null)
         {
             foreach (WebSwinger swinger in webSwingers)
@@ -138,9 +178,6 @@ public class WallGrabber : MonoBehaviour
     void SetAsActiveGrabber()
     {
         activeGrabber = this;
-
-        // 切換主控手時，一定要重設 previous position
-        // 不然會吃到舊 delta，造成瞬移
         previousHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
     }
 
@@ -158,11 +195,102 @@ public class WallGrabber : MonoBehaviour
             desiredMove = desiredMove.normalized * maxClimbStepPerFixedUpdate;
         }
 
+        // 一般牆面：照常用手拉來爬
         SafeMovePlayer(desiredMove);
 
-        TryMantle(worldDelta);
+        // 一般牆頂：偵測前方屋頂平面，成功就自動爬上去
+        if (enableAutoClimbOver)
+        {
+            TryAutoClimbOverLedge();
+        }
 
         previousHandLocalPos = currentHandLocalPos;
+    }
+
+    bool TryAutoClimbOverLedge()
+    {
+        if (Time.time - lastClimbOverTime < climbOverCooldown)
+        {
+            return false;
+        }
+
+        Vector3 forward = GetFlatForward();
+
+        if (forward.sqrMagnitude < 0.001f)
+        {
+            return false;
+        }
+
+        Vector3 probeOrigin =
+            handTransform.position +
+            forward * ledgeForwardProbe +
+            Vector3.up * ledgeUpProbe;
+
+        Debug.DrawRay(
+            probeOrigin,
+            Vector3.down * ledgeDownProbe,
+            Color.yellow,
+            0.1f
+        );
+
+        if (!Physics.SphereCast(
+            probeOrigin,
+            ledgeProbeRadius,
+            Vector3.down,
+            out RaycastHit hit,
+            ledgeDownProbe,
+            walkableLayer,
+            QueryTriggerInteraction.Ignore))
+        {
+            return false;
+        }
+
+        float surfaceAngle = Vector3.Angle(hit.normal, Vector3.up);
+
+        if (surfaceAngle > maxWalkableSurfaceAngle)
+        {
+            return false;
+        }
+
+        Vector3 targetPosition = CalculateStandingPositionOnSurface(hit.point, forward);
+
+        if (!IsCapsuleClearAt(targetPosition))
+        {
+            Debug.Log("Auto climb blocked: no room for player capsule");
+            return false;
+        }
+
+        lastClimbOverTime = Time.time;
+
+        playerRigidbody.MovePosition(targetPosition);
+        playerRigidbody.velocity = forward * climbOverExitSpeed;
+        playerRigidbody.angularVelocity = Vector3.zero;
+
+        Debug.Log("Auto climb over ledge onto: " + hit.collider.name);
+
+        ReleaseWall(false);
+        return true;
+    }
+
+    Vector3 CalculateStandingPositionOnSurface(Vector3 surfacePoint, Vector3 forward)
+    {
+        if (playerCapsule == null)
+        {
+            return playerRigidbody.position +
+                   Vector3.up * 0.6f +
+                   forward * climbForwardNudge;
+        }
+
+        GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius);
+
+        float currentBottomY = Mathf.Min(p1.y, p2.y) - radius;
+        float targetBottomY = surfacePoint.y + climbUpClearance;
+
+        float deltaY = targetBottomY - currentBottomY;
+
+        return playerRigidbody.position +
+               Vector3.up * deltaY +
+               forward * climbForwardNudge;
     }
 
     void SafeMovePlayer(Vector3 move)
@@ -183,10 +311,12 @@ public class WallGrabber : MonoBehaviour
         Vector3 direction = move.normalized;
         float distance = move.magnitude;
 
+        float castRadius = Mathf.Max(0.01f, radius - 0.02f);
+
         if (Physics.CapsuleCast(
             p1,
             p2,
-            radius,
+            castRadius,
             direction,
             out RaycastHit hit,
             distance + skinWidth,
@@ -200,6 +330,29 @@ public class WallGrabber : MonoBehaviour
         {
             playerRigidbody.MovePosition(playerRigidbody.position + move);
         }
+    }
+
+    bool IsCapsuleClearAt(Vector3 targetRootPosition)
+    {
+        if (playerCapsule == null)
+        {
+            return true;
+        }
+
+        GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius);
+
+        Vector3 offset = targetRootPosition - playerRigidbody.position;
+        float checkRadius = Mathf.Max(0.01f, radius - 0.03f);
+
+        bool blocked = Physics.CheckCapsule(
+            p1 + offset,
+            p2 + offset,
+            checkRadius,
+            collisionLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        return !blocked;
     }
 
     void GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius)
@@ -219,81 +372,14 @@ public class WallGrabber : MonoBehaviour
         p2 = center - Vector3.up * halfHeight;
     }
 
-    void TryMantle(Vector3 handWorldDelta)
+    Vector3 LocalDirectionToWorld(Vector3 localDirection)
     {
-        if (!enableMantle)
+        if (trackingSpaceTransform != null)
         {
-            Debug.Log("Mantle fail: enableMantle is false");
-            return;
+            return trackingSpaceTransform.TransformDirection(localDirection);
         }
 
-        if (Time.time - lastMantleTime < mantleCooldown)
-        {
-            Debug.Log("Mantle fail: cooldown");
-            return;
-        }
-
-        Vector3 forward = GetFlatForward();
-
-        if (forward.sqrMagnitude < 0.001f)
-        {
-            Debug.Log("Mantle fail: forward invalid");
-            return;
-        }
-
-        Vector3 probeOrigin =
-            handTransform.position +
-            forward * mantleForwardProbe +
-            Vector3.up * mantleUpProbe;
-
-        Debug.DrawRay(
-            probeOrigin,
-            Vector3.down * (mantleUpProbe + mantleDownProbe),
-            Color.yellow,
-            0.2f
-        );
-
-        if (!Physics.SphereCast(
-            probeOrigin,
-            0.18f,
-            Vector3.down,
-            out RaycastHit hit,
-            mantleUpProbe + mantleDownProbe,
-            mantleWalkableLayer,
-            QueryTriggerInteraction.Ignore))
-        {
-            Debug.Log("Mantle fail: no walkable surface hit");
-            return;
-        }
-
-        float surfaceAngle = Vector3.Angle(hit.normal, Vector3.up);
-
-        Debug.Log(
-            "Mantle hit: " + hit.collider.name +
-            ", angle = " + surfaceAngle +
-            ", layer = " + LayerMask.LayerToName(hit.collider.gameObject.layer)
-        );
-
-        if (surfaceAngle > maxMantleSurfaceAngle)
-        {
-            Debug.Log("Mantle fail: surface angle too steep = " + surfaceAngle);
-            return;
-        }
-
-        lastMantleTime = Time.time;
-
-        Vector3 upMove = Vector3.up * mantleUpMove;
-        Vector3 forwardMove = forward * mantleForwardMove;
-
-        SafeMovePlayer(upMove);
-        SafeMovePlayer(forwardMove);
-
-        playerRigidbody.velocity = forward * 1.5f;
-        playerRigidbody.angularVelocity = Vector3.zero;
-
-        Debug.Log("Mantle success onto roof: " + hit.collider.name);
-
-        ReleaseWall(false);
+        return playerRigidbody.transform.TransformDirection(localDirection);
     }
 
     Vector3 GetFlatForward()
@@ -304,12 +390,22 @@ public class WallGrabber : MonoBehaviour
         {
             Vector3 forward = forwardSource.forward;
             forward.y = 0f;
-            return forward.normalized;
+
+            if (forward.sqrMagnitude > 0.001f)
+            {
+                return forward.normalized;
+            }
         }
 
         Vector3 fallback = playerRigidbody.transform.forward;
         fallback.y = 0f;
-        return fallback.normalized;
+
+        if (fallback.sqrMagnitude > 0.001f)
+        {
+            return fallback.normalized;
+        }
+
+        return Vector3.forward;
     }
 
     void ReleaseWall(bool allowThrow)
@@ -328,8 +424,6 @@ public class WallGrabber : MonoBehaviour
 
         if (grabbingHands.Count > 0)
         {
-            // 還有另一隻手抓著牆
-            // 如果放開的是主控手，就把控制權交給最後一隻還抓著的手
             if (wasActive)
             {
                 WallGrabber nextGrabber = grabbingHands[grabbingHands.Count - 1];
@@ -343,7 +437,6 @@ public class WallGrabber : MonoBehaviour
             return;
         }
 
-        // 沒有任何手抓牆了
         activeGrabber = null;
         playerRigidbody.useGravity = true;
 
@@ -363,19 +456,27 @@ public class WallGrabber : MonoBehaviour
         }
     }
 
-    Vector3 LocalDirectionToWorld(Vector3 localDirection)
-    {
-        if (trackingSpaceTransform != null)
-        {
-            return trackingSpaceTransform.TransformDirection(localDirection);
-        }
-
-        return playerRigidbody.transform.TransformDirection(localDirection);
-    }
-
     void OnDisable()
     {
+        StopVibration();
         ReleaseWall(false);
+    }
+
+    void StartGrabVibration()
+    {
+        OVRInput.SetControllerVibration(
+            grabVibrationFrequency,
+            grabVibrationAmplitude,
+            controller
+        );
+
+        CancelInvoke(nameof(StopVibration));
+        Invoke(nameof(StopVibration), grabVibrationDuration);
+    }
+
+    void StopVibration()
+    {
+        OVRInput.SetControllerVibration(0f, 0f, controller);
     }
 
     void OnDrawGizmosSelected()
@@ -388,26 +489,21 @@ public class WallGrabber : MonoBehaviour
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(handTransform.position, handDetectRadius);
 
-        if (enableMantle)
+        if (enableAutoClimbOver)
         {
             Vector3 forward = GetFlatForward();
 
             Vector3 probeOrigin =
                 handTransform.position +
-                forward * mantleForwardProbe +
-                Vector3.up * mantleUpProbe;
+                forward * ledgeForwardProbe +
+                Vector3.up * ledgeUpProbe;
 
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(probeOrigin, 0.08f);
+            Gizmos.DrawWireSphere(probeOrigin, ledgeProbeRadius);
             Gizmos.DrawLine(
                 probeOrigin,
-                probeOrigin + Vector3.down * (mantleUpProbe + mantleDownProbe)
+                probeOrigin + Vector3.down * ledgeDownProbe
             );
         }
-    }
-
-    void StopVibration()
-    {
-        OVRInput.SetControllerVibration(0, 0, controller);
     }
 }
