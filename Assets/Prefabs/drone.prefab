@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 4621439349273917143}
   - component: {fileID: 3646364202654621512}
   - component: {fileID: 1850616855156242069}
+  - component: {fileID: 6402550702250572462}
   m_Layer: 0
   m_Name: drone
   m_TagString: Untagged
@@ -102,9 +103,36 @@ MonoBehaviour:
   stuckCheckInterval: 0.5
   stuckMoveThreshold: 0.25
   stuckUpwardEscapeWeight: 2.5
-  limitFlightHeight: 0
-  minFlightY: 1.5
-  maxFlightY: 80
+  limitFlightHeight: 1
+  minFlightY: 399
+  maxFlightY: 700
+--- !u!54 &6402550702250572462
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3204975962083783771}
+  serializedVersion: 4
+  m_Mass: 1
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 3
 --- !u!1001 &3860226118963739687
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -165,7 +193,19 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    - target: {fileID: 64118127417307940, guid: 2623fcc4ae72bed4681324fdc889e468,
+        type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 64856508888091972, guid: 2623fcc4ae72bed4681324fdc889e468,
+        type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents:
+    - {fileID: 64118127417307940, guid: 2623fcc4ae72bed4681324fdc889e468, type: 3}
+    - {fileID: 64856508888091972, guid: 2623fcc4ae72bed4681324fdc889e468, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
