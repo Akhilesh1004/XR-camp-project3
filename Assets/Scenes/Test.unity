@@ -11097,6 +11097,11 @@ PrefabInstance:
       propertyPath: _centerEyeCamera
       value: 
       objectReference: {fileID: 1791752590}
+    - target: {fileID: 702507761490558278, guid: 0a7d2469f24041c4284c66706f84c45e,
+        type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
     - target: {fileID: 2336446269904782542, guid: 0a7d2469f24041c4284c66706f84c45e,
         type: 3}
       propertyPath: _leftEyeAnchor
@@ -11112,6 +11117,11 @@ PrefabInstance:
       propertyPath: _centerEyeCamera
       value: 
       objectReference: {fileID: 1791752590}
+    - target: {fileID: 3469981918431717162, guid: 0a7d2469f24041c4284c66706f84c45e,
+        type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
     - target: {fileID: 3903482226883268838, guid: 0a7d2469f24041c4284c66706f84c45e,
         type: 3}
       propertyPath: m_IsActive
@@ -18354,13 +18364,31 @@ MonoBehaviour:
   swingableLayer:
     serializedVersion: 2
     m_Bits: 1
+  GroundLayer:
+    serializedVersion: 2
+    m_Bits: 0
   maxSwingDistance: 50
   springForce: 4.5
   damper: 7
   massScale: 4.5
   releaseBoostForce: 5
+  boostDuration: 5
+  autoReelSpeed: 8
+  minWebLength: 2
+  enableAutoReel: 1
   swingButton: 8192
   controller: 1
+  continuousBoostForce: 5
+  outwardPushForce: 2
+  slowTimeScale: 0.3
+  globalVolume: {fileID: 0}
+  reticlePrefab: {fileID: 0}
+  minScale: 0.05
+  scaleFactor: 0.01
+  bulletPrefab: {fileID: 0}
+  firePoint: {fileID: 0}
+  bulletSpeed: 50
+  shootCooldown: 0.2
 --- !u!23 &1573480726
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -18931,13 +18959,31 @@ MonoBehaviour:
   swingableLayer:
     serializedVersion: 2
     m_Bits: 1
+  GroundLayer:
+    serializedVersion: 2
+    m_Bits: 0
   maxSwingDistance: 50
   springForce: 4.5
   damper: 7
   massScale: 4.5
   releaseBoostForce: 5
+  boostDuration: 5
+  autoReelSpeed: 8
+  minWebLength: 2
+  enableAutoReel: 1
   swingButton: 8192
   controller: 2
+  continuousBoostForce: 5
+  outwardPushForce: 2
+  slowTimeScale: 0.3
+  globalVolume: {fileID: 0}
+  reticlePrefab: {fileID: 0}
+  minScale: 0.05
+  scaleFactor: 0.01
+  bulletPrefab: {fileID: 0}
+  firePoint: {fileID: 0}
+  bulletSpeed: 50
+  shootCooldown: 0.2
 --- !u!23 &1648809257
 MeshRenderer:
   m_ObjectHideFlags: 0
