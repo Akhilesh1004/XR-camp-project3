@@ -36,7 +36,6 @@ public class DroneNPC : MonoBehaviour
     public float collisionExplodeRadius = 0.45f;
 
     public GameObject explosionPrefab;
-    public bool destroyAfterExplode = true;
 
     [Header("Waypoint 巡邏 / 導航")]
     [Tooltip("到 waypoint 多近時，視為抵達")]
@@ -95,10 +94,7 @@ public class DroneNPC : MonoBehaviour
 
     private Transform[] waypoints;
 
-    // 追逐時用的導航 waypoint
     private Transform currentNavigationWaypoint;
-
-    // 巡邏時用的 waypoint
     private Transform currentPatrolWaypoint;
 
     private Vector3 currentMoveDirection;
@@ -111,6 +107,13 @@ public class DroneNPC : MonoBehaviour
     private bool isStuck;
 
     private float outOfRangeTimer = 0f;
+
+    private bool hasBeenInitialized = false;
+
+    public int SpawnIndex
+    {
+        get { return originSpawnIndex; }
+    }
 
     public void Initialize(
         DroneGameManager owner,
@@ -133,10 +136,27 @@ public class DroneNPC : MonoBehaviour
         currentPatrolWaypoint = null;
         currentMoveDirection = transform.forward;
 
+        lastRepathTime = -999f;
+        lastPatrolRepathTime = -999f;
+
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
+        isStuck = false;
+
+        outOfRangeTimer = 0f;
 
         state = DroneState.Patrol;
+        hasBeenInitialized = true;
+
+        FindPlayer();
+
+        if (rb != null)
+        {
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+            rb.position = originPosition;
+            rb.rotation = originRotation;
+        }
     }
 
     void Awake()
@@ -150,23 +170,19 @@ public class DroneNPC : MonoBehaviour
         }
     }
 
-    void Start()
+    void OnEnable()
     {
-        if (originPosition == Vector3.zero)
+        if (!hasBeenInitialized)
         {
-            originPosition = transform.position;
-            originRotation = transform.rotation;
+            return;
         }
 
-        if (currentMoveDirection.sqrMagnitude < 0.001f)
-        {
-            currentMoveDirection = transform.forward;
-        }
-
+        state = DroneState.Patrol;
+        currentMoveDirection = transform.forward;
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
-
-        FindPlayer();
+        isStuck = false;
+        outOfRangeTimer = 0f;
     }
 
     void FixedUpdate()
@@ -242,7 +258,6 @@ public class DroneNPC : MonoBehaviour
         }
         else
         {
-            // 沒有 waypoint 可用時，回到出生點附近
             MoveTowards(originPosition, patrolSpeed);
         }
     }
@@ -354,7 +369,6 @@ public class DroneNPC : MonoBehaviour
             }
         }
 
-        // 如果找不到看得到的 waypoint，就退而求其次隨機選一個
         if (bestWaypoint == null)
         {
             bestWaypoint = waypoints[Random.Range(0, waypoints.Length)];
@@ -447,7 +461,6 @@ public class DroneNPC : MonoBehaviour
         }
 
         Vector3 finalDirection = toFinalTarget.normalized;
-
         float currentDistanceToGoal = Vector3.Distance(transform.position, finalTarget);
 
         foreach (Transform waypoint in waypoints)
@@ -491,7 +504,6 @@ public class DroneNPC : MonoBehaviour
             float directionScore = Vector3.Dot(toWaypoint.normalized, finalDirection) * 4f;
             float distanceToGoalScore = -waypointDistanceToGoal * 0.1f;
             float waypointDistancePenalty = -distanceToWaypoint * 0.03f;
-
             float clearToGoalBonus = HasClearPath(waypoint.position, finalTarget) ? 8f : 0f;
 
             float stuckBonus = 0f;
@@ -813,12 +825,7 @@ public class DroneNPC : MonoBehaviour
 
         if (manager != null)
         {
-            manager.NotifyDroneDestroyed(this, originSpawnIndex);
-        }
-
-        if (destroyAfterExplode)
-        {
-            Destroy(gameObject);
+            manager.NotifyDroneExploded(this, originSpawnIndex);
         }
         else
         {
@@ -826,18 +833,21 @@ public class DroneNPC : MonoBehaviour
         }
     }
 
-    void SetPositionAndRotation(Vector3 position, Quaternion rotation)
+    public void PrepareForPool()
     {
+        state = DroneState.Exploding;
+
+        currentNavigationWaypoint = null;
+        currentPatrolWaypoint = null;
+
+        outOfRangeTimer = 0f;
+        isStuck = false;
+
         if (rb != null)
         {
-            rb.position = position;
-            rb.rotation = rotation;
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
         }
-
-        transform.position = position;
-        transform.rotation = rotation;
     }
 
     void OnDrawGizmosSelected()
