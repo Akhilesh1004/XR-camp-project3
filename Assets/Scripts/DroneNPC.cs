@@ -1,95 +1,177 @@
-using System.Collections;
 using UnityEngine;
 
 public class DroneNPC : MonoBehaviour
 {
     private enum DroneState
     {
-        Idle,
+        Patrol,
         Chasing,
-        Returning,
-        Exploded
+        Exploding
     }
 
     [Header("目標設定")]
     public string playerTag = "Player";
 
     [Header("偵測與追逐")]
-    [Tooltip("Player 進入這個範圍後，無人機開始追逐")]
-    public float detectRange = 10f;
+    public float detectRange = 40f;
+    public float giveUpRange = 100f;
 
-    [Tooltip("Player 拉開超過這個距離後，無人機放棄追逐並回原點")]
-    public float giveUpRange = 18f;
+    [Tooltip("超過 giveUpRange 後，持續幾秒才真正放棄追逐")]
+    public float giveUpDelay = 3f;
 
-    [Tooltip("追逐玩家的速度")]
-    public float chaseSpeed = 5f;
+    public float chaseSpeed = 8f;
+    public float patrolSpeed = 4f;
+    public float rotateSpeed = 10f;
 
-    [Tooltip("回到原點的速度")]
-    public float returnSpeed = 3f;
-
-    [Tooltip("旋轉面向目標的速度")]
-    public float rotateSpeed = 8f;
+    [Tooltip("追玩家時的目標偏移，例如 y=1 會追玩家上半身")]
+    public Vector3 playerTargetOffset = new Vector3(0f, 1f, 0f);
 
     [Header("爆炸設定")]
-    [Tooltip("距離玩家小於這個距離時爆炸")]
-    public float explodeRange = 1.2f;
+    public float explodeRange = 1.3f;
 
-    [Tooltip("爆炸特效 Prefab，可不填")]
+    [Tooltip("撞到這些 Layer 會爆炸，例如 Building / Wall / Ground")]
+    public LayerMask explodeOnCollisionLayer;
+
+    [Tooltip("主動偵測碰撞爆炸用的半徑")]
+    public float collisionExplodeRadius = 0.45f;
+
     public GameObject explosionPrefab;
+    public bool destroyAfterExplode = true;
 
-    [Tooltip("爆炸後幾秒重新生成")]
-    public float respawnDelay = 3f;
+    [Header("Waypoint 巡邏 / 導航")]
+    [Tooltip("到 waypoint 多近時，視為抵達")]
+    public float waypointReachDistance = 1.5f;
 
-    [Header("可選：傷害設定")]
-    public bool dealDamage = false;
-    public int damageAmount = 20;
+    [Tooltip("追逐時每隔多久重新選一次導航 waypoint")]
+    public float repathInterval = 0.25f;
 
-    [Header("簡易避障")]
-    public bool enableObstacleAvoidance = true;
+    [Tooltip("巡邏時如果卡住或路徑不通，每隔多久重新選點")]
+    public float patrolRepathInterval = 1.0f;
 
-    [Tooltip("建築物 / 牆壁 / 障礙物所在 Layer")]
+    [Tooltip("如果路徑被這些 Layer 擋住，就改走 waypoint")]
     public LayerMask obstacleLayer;
 
-    [Tooltip("無人機前方多遠開始偵測障礙物")]
-    public float obstacleDetectDistance = 4f;
+    [Tooltip("路徑檢查用 SphereCast 半徑，建議接近無人機半徑")]
+    public float pathCheckRadius = 0.6f;
 
-    [Tooltip("SphereCast 半徑，越大越不容易貼牆")]
-    public float obstacleAvoidRadius = 0.6f;
+    [Tooltip("Waypoint 太遠時是否仍可選。0 代表不限制")]
+    public float maxWaypointSelectDistance = 45f;
 
-    [Tooltip("避障轉向強度")]
-    public float obstacleAvoidStrength = 2.5f;
+    [Tooltip("允許 waypoint 比目前位置更遠離目標多少距離。越小越積極追玩家")]
+    public float maxDetourExtraDistance = 12f;
 
-    [Tooltip("遇到障礙物時往上繞的傾向")]
-    public float upwardAvoidStrength = 1.2f;
+    [Tooltip("如果直線看得到玩家，就直接追玩家")]
+    public bool directChaseWhenPathClear = true;
 
-    [Header("子彈設定")]
-    public string bulletTag = "Bullet";
+    [Header("近距離避障")]
+    public bool enableLocalAvoidance = true;
+    public float obstacleDetectDistance = 7f;
+    public float obstacleAvoidRadius = 0.8f;
+    public float obstacleAvoidWeight = 2f;
+    public float upwardAvoidWeight = 1.1f;
+    public float candidateCheckDistance = 4f;
+    public float steeringSmooth = 6.5f;
 
-    private DroneState state = DroneState.Idle;
+    [Header("卡住脫困")]
+    public float stuckCheckInterval = 0.5f;
+    public float stuckMoveThreshold = 0.25f;
+    public float stuckUpwardEscapeWeight = 2.5f;
 
+    [Header("高度限制，可選")]
+    [Tooltip("不是固定高度，只是防止飛太低或飛太高")]
+    public bool limitFlightHeight = false;
+    public float minFlightY = 1.5f;
+    public float maxFlightY = 80f;
+
+    private DroneState state = DroneState.Patrol;
+
+    private DroneGameManager manager;
     private Transform player;
+    private Rigidbody rb;
+
     private Vector3 originPosition;
     private Quaternion originRotation;
+    private int originSpawnIndex = -1;
 
-    private Rigidbody rb;
-    private Renderer[] renderers;
-    private Collider[] colliders;
+    private Transform[] waypoints;
+
+    // 追逐時用的導航 waypoint
+    private Transform currentNavigationWaypoint;
+
+    // 巡邏時用的 waypoint
+    private Transform currentPatrolWaypoint;
+
+    private Vector3 currentMoveDirection;
+
+    private float lastRepathTime = -999f;
+    private float lastPatrolRepathTime = -999f;
+
+    private Vector3 lastStuckCheckPosition;
+    private float lastStuckCheckTime;
+    private bool isStuck;
+
+    private float outOfRangeTimer = 0f;
+
+    public void Initialize(
+        DroneGameManager owner,
+        Vector3 spawnPosition,
+        Quaternion spawnRotation,
+        int spawnIndex,
+        Transform[] sharedWaypoints
+    )
+    {
+        manager = owner;
+        originPosition = spawnPosition;
+        originRotation = spawnRotation;
+        originSpawnIndex = spawnIndex;
+        waypoints = sharedWaypoints;
+
+        transform.position = originPosition;
+        transform.rotation = originRotation;
+
+        currentNavigationWaypoint = null;
+        currentPatrolWaypoint = null;
+        currentMoveDirection = transform.forward;
+
+        lastStuckCheckPosition = transform.position;
+        lastStuckCheckTime = Time.time;
+
+        state = DroneState.Patrol;
+    }
+
+    void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+
+        if (rb != null)
+        {
+            rb.useGravity = false;
+            rb.angularVelocity = Vector3.zero;
+        }
+    }
 
     void Start()
     {
-        originPosition = transform.position;
-        originRotation = transform.rotation;
+        if (originPosition == Vector3.zero)
+        {
+            originPosition = transform.position;
+            originRotation = transform.rotation;
+        }
 
-        rb = GetComponent<Rigidbody>();
-        renderers = GetComponentsInChildren<Renderer>();
-        colliders = GetComponentsInChildren<Collider>();
+        if (currentMoveDirection.sqrMagnitude < 0.001f)
+        {
+            currentMoveDirection = transform.forward;
+        }
+
+        lastStuckCheckPosition = transform.position;
+        lastStuckCheckTime = Time.time;
 
         FindPlayer();
     }
 
-    void Update()
+    void FixedUpdate()
     {
-        if (state == DroneState.Exploded)
+        if (state == DroneState.Exploding)
         {
             return;
         }
@@ -97,23 +179,31 @@ public class DroneNPC : MonoBehaviour
         if (player == null)
         {
             FindPlayer();
+        }
+
+        CheckCollisionExplosion();
+        CheckStuck();
+
+        if (state == DroneState.Exploding)
+        {
             return;
         }
 
-        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        float distanceToPlayer = Mathf.Infinity;
+
+        if (player != null)
+        {
+            distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        }
 
         switch (state)
         {
-            case DroneState.Idle:
-                HandleIdle(distanceToPlayer);
+            case DroneState.Patrol:
+                HandlePatrol(distanceToPlayer);
                 break;
 
             case DroneState.Chasing:
                 HandleChasing(distanceToPlayer);
-                break;
-
-            case DroneState.Returning:
-                HandleReturning(distanceToPlayer);
                 break;
         }
     }
@@ -128,19 +218,156 @@ public class DroneNPC : MonoBehaviour
         }
     }
 
-    void HandleIdle(float distanceToPlayer)
+    void HandlePatrol(float distanceToPlayer)
     {
-        if (distanceToPlayer <= detectRange)
+        outOfRangeTimer = 0f;
+        currentNavigationWaypoint = null;
+
+        if (player != null && distanceToPlayer <= detectRange)
         {
+            currentPatrolWaypoint = null;
             state = DroneState.Chasing;
+            return;
         }
+
+        if (NeedNewPatrolWaypoint())
+        {
+            currentPatrolWaypoint = ChoosePatrolWaypoint();
+            lastPatrolRepathTime = Time.time;
+        }
+
+        if (currentPatrolWaypoint != null)
+        {
+            MoveTowards(currentPatrolWaypoint.position, patrolSpeed);
+        }
+        else
+        {
+            // 沒有 waypoint 可用時，回到出生點附近
+            MoveTowards(originPosition, patrolSpeed);
+        }
+    }
+
+    bool NeedNewPatrolWaypoint()
+    {
+        if (currentPatrolWaypoint == null)
+        {
+            return true;
+        }
+
+        if (Vector3.Distance(transform.position, currentPatrolWaypoint.position) <= waypointReachDistance)
+        {
+            return true;
+        }
+
+        if (Time.time - lastPatrolRepathTime >= patrolRepathInterval)
+        {
+            if (!HasClearPath(transform.position, currentPatrolWaypoint.position))
+            {
+                return true;
+            }
+
+            if (isStuck)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    Transform ChoosePatrolWaypoint()
+    {
+        if (waypoints == null || waypoints.Length == 0)
+        {
+            return null;
+        }
+
+        Transform bestWaypoint = null;
+        float bestScore = -999999f;
+
+        foreach (Transform waypoint in waypoints)
+        {
+            if (waypoint == null)
+            {
+                continue;
+            }
+
+            if (waypoint == currentPatrolWaypoint)
+            {
+                continue;
+            }
+
+            float distanceToWaypoint = Vector3.Distance(transform.position, waypoint.position);
+
+            if (distanceToWaypoint <= waypointReachDistance)
+            {
+                continue;
+            }
+
+            if (maxWaypointSelectDistance > 0f && distanceToWaypoint > maxWaypointSelectDistance)
+            {
+                continue;
+            }
+
+            if (!HasClearPath(transform.position, waypoint.position))
+            {
+                continue;
+            }
+
+            float distanceScore = -distanceToWaypoint * 0.05f;
+
+            float forwardScore = 0f;
+
+            if (currentMoveDirection.sqrMagnitude > 0.001f)
+            {
+                Vector3 toWaypoint = (waypoint.position - transform.position).normalized;
+                forwardScore = Vector3.Dot(currentMoveDirection.normalized, toWaypoint) * 2f;
+            }
+
+            float heightScore = 0f;
+
+            if (waypoint.position.y > transform.position.y)
+            {
+                heightScore = 0.3f;
+            }
+
+            float randomScore = Random.Range(0f, 2f);
+
+            float stuckBonus = 0f;
+
+            if (isStuck && waypoint.position.y > transform.position.y)
+            {
+                stuckBonus = stuckUpwardEscapeWeight;
+            }
+
+            float score =
+                distanceScore +
+                forwardScore +
+                heightScore +
+                randomScore +
+                stuckBonus;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestWaypoint = waypoint;
+            }
+        }
+
+        // 如果找不到看得到的 waypoint，就退而求其次隨機選一個
+        if (bestWaypoint == null)
+        {
+            bestWaypoint = waypoints[Random.Range(0, waypoints.Length)];
+        }
+
+        return bestWaypoint;
     }
 
     void HandleChasing(float distanceToPlayer)
     {
-        if (distanceToPlayer >= giveUpRange)
+        if (player == null)
         {
-            state = DroneState.Returning;
+            state = DroneState.Patrol;
             return;
         }
 
@@ -150,33 +377,179 @@ public class DroneNPC : MonoBehaviour
             return;
         }
 
-        MoveTowards(player.position, chaseSpeed);
+        if (distanceToPlayer >= giveUpRange)
+        {
+            outOfRangeTimer += Time.fixedDeltaTime;
+
+            if (outOfRangeTimer >= giveUpDelay)
+            {
+                outOfRangeTimer = 0f;
+                currentNavigationWaypoint = null;
+                currentPatrolWaypoint = null;
+                state = DroneState.Patrol;
+                return;
+            }
+        }
+        else
+        {
+            outOfRangeTimer = 0f;
+        }
+
+        Vector3 finalTarget = player.position + playerTargetOffset;
+        Vector3 navigationTarget = GetNavigationTarget(finalTarget);
+
+        MoveTowards(navigationTarget, chaseSpeed);
     }
 
-    void HandleReturning(float distanceToPlayer)
+    Vector3 GetNavigationTarget(Vector3 finalTarget)
     {
-        // 回原點途中，如果玩家又靠近，重新追逐
-        if (distanceToPlayer <= detectRange)
+        if (directChaseWhenPathClear && HasClearPath(transform.position, finalTarget))
         {
-            state = DroneState.Chasing;
-            return;
+            currentNavigationWaypoint = null;
+            return finalTarget;
         }
 
-        float distanceToOrigin = Vector3.Distance(transform.position, originPosition);
+        bool needRepath =
+            currentNavigationWaypoint == null ||
+            Time.time - lastRepathTime >= repathInterval ||
+            Vector3.Distance(transform.position, currentNavigationWaypoint.position) <= waypointReachDistance ||
+            !HasClearPath(transform.position, currentNavigationWaypoint.position);
 
-        if (distanceToOrigin <= 0.1f)
+        if (needRepath)
         {
-            SetPositionAndRotation(originPosition, originRotation);
-            state = DroneState.Idle;
-            return;
+            currentNavigationWaypoint = ChooseBestWaypoint(finalTarget);
+            lastRepathTime = Time.time;
         }
 
-        MoveTowards(originPosition, returnSpeed);
+        if (currentNavigationWaypoint != null)
+        {
+            return currentNavigationWaypoint.position;
+        }
+
+        return finalTarget;
+    }
+
+    Transform ChooseBestWaypoint(Vector3 finalTarget)
+    {
+        if (waypoints == null || waypoints.Length == 0)
+        {
+            return null;
+        }
+
+        Transform bestWaypoint = null;
+        float bestScore = -999999f;
+
+        Vector3 toFinalTarget = finalTarget - transform.position;
+
+        if (toFinalTarget.sqrMagnitude < 0.001f)
+        {
+            return null;
+        }
+
+        Vector3 finalDirection = toFinalTarget.normalized;
+
+        float currentDistanceToGoal = Vector3.Distance(transform.position, finalTarget);
+
+        foreach (Transform waypoint in waypoints)
+        {
+            if (waypoint == null)
+            {
+                continue;
+            }
+
+            float distanceToWaypoint = Vector3.Distance(transform.position, waypoint.position);
+
+            if (distanceToWaypoint <= waypointReachDistance)
+            {
+                continue;
+            }
+
+            if (maxWaypointSelectDistance > 0f && distanceToWaypoint > maxWaypointSelectDistance)
+            {
+                continue;
+            }
+
+            float waypointDistanceToGoal = Vector3.Distance(waypoint.position, finalTarget);
+
+            if (waypointDistanceToGoal > currentDistanceToGoal + maxDetourExtraDistance)
+            {
+                continue;
+            }
+
+            if (!HasClearPath(transform.position, waypoint.position))
+            {
+                continue;
+            }
+
+            Vector3 toWaypoint = waypoint.position - transform.position;
+
+            if (toWaypoint.sqrMagnitude < 0.001f)
+            {
+                continue;
+            }
+
+            float directionScore = Vector3.Dot(toWaypoint.normalized, finalDirection) * 4f;
+            float distanceToGoalScore = -waypointDistanceToGoal * 0.1f;
+            float waypointDistancePenalty = -distanceToWaypoint * 0.03f;
+
+            float clearToGoalBonus = HasClearPath(waypoint.position, finalTarget) ? 8f : 0f;
+
+            float stuckBonus = 0f;
+
+            if (isStuck && waypoint.position.y > transform.position.y)
+            {
+                stuckBonus = stuckUpwardEscapeWeight;
+            }
+
+            float score =
+                directionScore +
+                distanceToGoalScore +
+                waypointDistancePenalty +
+                clearToGoalBonus +
+                stuckBonus;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestWaypoint = waypoint;
+            }
+        }
+
+        return bestWaypoint;
+    }
+
+    bool HasClearPath(Vector3 from, Vector3 to)
+    {
+        if (obstacleLayer.value == 0)
+        {
+            return true;
+        }
+
+        Vector3 direction = to - from;
+        float distance = direction.magnitude;
+
+        if (distance < 0.01f)
+        {
+            return true;
+        }
+
+        direction.Normalize();
+
+        bool blocked = Physics.SphereCast(
+            from,
+            pathCheckRadius,
+            direction,
+            out RaycastHit hit,
+            distance,
+            obstacleLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        return !blocked;
     }
 
     void MoveTowards(Vector3 targetPosition, float speed)
     {
-        // 不固定高度：直接追玩家實際位置
         Vector3 toTarget = targetPosition - transform.position;
 
         if (toTarget.sqrMagnitude < 0.001f)
@@ -184,14 +557,35 @@ public class DroneNPC : MonoBehaviour
             return;
         }
 
-        Vector3 moveDirection = toTarget.normalized;
+        Vector3 desiredDirection = toTarget.normalized;
+        Vector3 steeredDirection = desiredDirection;
 
-        if (enableObstacleAvoidance)
+        if (enableLocalAvoidance)
         {
-            moveDirection = GetAvoidedDirection(moveDirection, targetPosition);
+            steeredDirection = GetAvoidedDirection(desiredDirection, targetPosition);
         }
 
-        Vector3 nextPosition = transform.position + moveDirection * speed * Time.deltaTime;
+        if (currentMoveDirection.sqrMagnitude < 0.001f)
+        {
+            currentMoveDirection = steeredDirection;
+        }
+        else
+        {
+            currentMoveDirection = Vector3.Slerp(
+                currentMoveDirection,
+                steeredDirection,
+                Time.fixedDeltaTime * steeringSmooth
+            ).normalized;
+        }
+
+        Vector3 nextPosition =
+            transform.position +
+            currentMoveDirection * speed * Time.fixedDeltaTime;
+
+        if (limitFlightHeight)
+        {
+            nextPosition.y = Mathf.Clamp(nextPosition.y, minFlightY, maxFlightY);
+        }
 
         if (rb != null)
         {
@@ -202,12 +596,17 @@ public class DroneNPC : MonoBehaviour
             transform.position = nextPosition;
         }
 
-        RotateTowards(moveDirection);
+        RotateTowards(currentMoveDirection);
     }
 
     Vector3 GetAvoidedDirection(Vector3 desiredDirection, Vector3 targetPosition)
     {
-        bool blocked = Physics.SphereCast(
+        if (obstacleLayer.value == 0)
+        {
+            return desiredDirection;
+        }
+
+        bool frontBlocked = Physics.SphereCast(
             transform.position,
             obstacleAvoidRadius,
             desiredDirection,
@@ -217,38 +616,102 @@ public class DroneNPC : MonoBehaviour
             QueryTriggerInteraction.Ignore
         );
 
-        if (!blocked)
+        if (!frontBlocked && !isStuck)
         {
             return desiredDirection;
         }
 
-        // 沿著障礙物表面滑開，而不是直直撞上去
-        Vector3 slideDirection = Vector3.ProjectOnPlane(desiredDirection, hit.normal);
-
-        if (slideDirection.sqrMagnitude < 0.001f)
-        {
-            slideDirection = transform.right;
-        }
-
-        slideDirection.Normalize();
-
-        // 左右兩個方向，選比較接近目標的那一邊
-        Vector3 rightAvoid = Vector3.Cross(Vector3.up, hit.normal).normalized;
-        Vector3 leftAvoid = -rightAvoid;
-
         Vector3 toTarget = (targetPosition - transform.position).normalized;
 
-        if (Vector3.Dot(leftAvoid, toTarget) > Vector3.Dot(rightAvoid, toTarget))
+        Vector3 right = Vector3.Cross(Vector3.up, desiredDirection).normalized;
+
+        if (right.sqrMagnitude < 0.001f)
         {
-            rightAvoid = leftAvoid;
+            right = transform.right;
         }
 
-        Vector3 avoidDirection =
-            slideDirection +
-            rightAvoid * obstacleAvoidStrength +
-            Vector3.up * upwardAvoidStrength;
+        Vector3[] candidateDirections =
+        {
+            desiredDirection,
+            (desiredDirection + right * obstacleAvoidWeight).normalized,
+            (desiredDirection - right * obstacleAvoidWeight).normalized,
+            (desiredDirection + Vector3.up * upwardAvoidWeight).normalized,
+            (desiredDirection + right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
+            (desiredDirection - right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
+            (desiredDirection - Vector3.up * 0.35f).normalized,
+            (desiredDirection + right * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
+            (desiredDirection - right * obstacleAvoidWeight - Vector3.up * 0.25f).normalized
+        };
 
-        return avoidDirection.normalized;
+        Vector3 bestDirection = desiredDirection;
+        float bestScore = -99999f;
+
+        foreach (Vector3 candidate in candidateDirections)
+        {
+            if (candidate.sqrMagnitude < 0.001f)
+            {
+                continue;
+            }
+
+            float clearDistance = GetClearDistance(candidate.normalized);
+            float targetScore = Vector3.Dot(candidate.normalized, toTarget);
+            float clearanceScore = clearDistance / candidateCheckDistance;
+
+            float stuckBonus = 0f;
+
+            if (isStuck && candidate.y > 0f)
+            {
+                stuckBonus = stuckUpwardEscapeWeight;
+            }
+
+            float heightPenalty = 0f;
+
+            if (limitFlightHeight)
+            {
+                float predictedY = transform.position.y + candidate.y * candidateCheckDistance;
+
+                if (predictedY < minFlightY || predictedY > maxFlightY)
+                {
+                    heightPenalty = 3f;
+                }
+            }
+
+            float score =
+                targetScore * 1.2f +
+                clearanceScore * 2.0f +
+                stuckBonus -
+                heightPenalty;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestDirection = candidate.normalized;
+            }
+        }
+
+        return bestDirection.normalized;
+    }
+
+    float GetClearDistance(Vector3 direction)
+    {
+        if (obstacleLayer.value == 0)
+        {
+            return candidateCheckDistance;
+        }
+
+        if (Physics.SphereCast(
+            transform.position,
+            obstacleAvoidRadius,
+            direction,
+            out RaycastHit hit,
+            candidateCheckDistance,
+            obstacleLayer,
+            QueryTriggerInteraction.Ignore))
+        {
+            return hit.distance;
+        }
+
+        return candidateCheckDistance;
     }
 
     void RotateTowards(Vector3 direction)
@@ -260,69 +723,107 @@ public class DroneNPC : MonoBehaviour
 
         Quaternion targetRotation = Quaternion.LookRotation(direction, Vector3.up);
 
-        transform.rotation = Quaternion.Slerp(
+        Quaternion nextRotation = Quaternion.Slerp(
             transform.rotation,
             targetRotation,
-            Time.deltaTime * rotateSpeed
+            Time.fixedDeltaTime * rotateSpeed
         );
+
+        if (rb != null)
+        {
+            rb.MoveRotation(nextRotation);
+        }
+        else
+        {
+            transform.rotation = nextRotation;
+        }
+    }
+
+    void CheckCollisionExplosion()
+    {
+        if (explodeOnCollisionLayer.value == 0)
+        {
+            return;
+        }
+
+        bool touchingExplosionLayer = Physics.CheckSphere(
+            transform.position,
+            collisionExplodeRadius,
+            explodeOnCollisionLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (touchingExplosionLayer)
+        {
+            Explode();
+        }
+    }
+
+    void CheckStuck()
+    {
+        if (Time.time - lastStuckCheckTime < stuckCheckInterval)
+        {
+            return;
+        }
+
+        float movedDistance = Vector3.Distance(transform.position, lastStuckCheckPosition);
+
+        isStuck =
+            movedDistance < stuckMoveThreshold &&
+            state != DroneState.Exploding;
+
+        lastStuckCheckPosition = transform.position;
+        lastStuckCheckTime = Time.time;
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        if (IsInLayerMask(collision.gameObject.layer, explodeOnCollisionLayer))
+        {
+            Explode();
+        }
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (IsInLayerMask(other.gameObject.layer, explodeOnCollisionLayer))
+        {
+            Explode();
+        }
+    }
+
+    bool IsInLayerMask(int layer, LayerMask mask)
+    {
+        return (mask.value & (1 << layer)) != 0;
     }
 
     void Explode()
     {
-        state = DroneState.Exploded;
+        if (state == DroneState.Exploding)
+        {
+            return;
+        }
+
+        state = DroneState.Exploding;
 
         if (explosionPrefab != null)
         {
             Instantiate(explosionPrefab, transform.position, Quaternion.identity);
         }
 
-        if (dealDamage && player != null)
+        if (manager != null)
         {
-            // 如果你的 Player 有 Health 腳本，可以在這裡改成你的傷害函式
-            // 範例：
-            // player.GetComponent<PlayerHealth>()?.TakeDamage(damageAmount);
+            manager.NotifyDroneDestroyed(this, originSpawnIndex);
         }
 
-        StartCoroutine(RespawnRoutine());
-    }
-
-    void ExplodeWithDamage()
-    {
-        state = DroneState.Exploded;
-
-        if (explosionPrefab != null)
+        if (destroyAfterExplode)
         {
-            Instantiate(explosionPrefab, transform.position, Quaternion.identity);
+            Destroy(gameObject);
         }
-
-        StartCoroutine(RespawnRoutine());
-    }
-
-    IEnumerator RespawnRoutine()
-    {
-        SetDroneVisible(false);
-        SetDroneCollision(false);
-
-        if (rb != null)
+        else
         {
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
+            gameObject.SetActive(false);
         }
-
-        yield return new WaitForSeconds(respawnDelay);
-
-        SetPositionAndRotation(originPosition, originRotation);
-
-        if (rb != null)
-        {
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
-
-        SetDroneVisible(true);
-        SetDroneCollision(true);
-
-        state = DroneState.Idle;
     }
 
     void SetPositionAndRotation(Vector3 position, Quaternion rotation)
@@ -331,32 +832,12 @@ public class DroneNPC : MonoBehaviour
         {
             rb.position = position;
             rb.rotation = rotation;
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
         }
 
         transform.position = position;
         transform.rotation = rotation;
-    }
-
-    void SetDroneVisible(bool visible)
-    {
-        foreach (Renderer r in renderers)
-        {
-            if (r != null)
-            {
-                r.enabled = visible;
-            }
-        }
-    }
-
-    void SetDroneCollision(bool enabled)
-    {
-        foreach (Collider c in colliders)
-        {
-            if (c != null)
-            {
-                c.enabled = enabled;
-            }
-        }
     }
 
     void OnDrawGizmosSelected()
@@ -369,18 +850,25 @@ public class DroneNPC : MonoBehaviour
 
         Gizmos.color = Color.magenta;
         Gizmos.DrawWireSphere(transform.position, explodeRange);
-    }
 
-    void OnTriggerEnter(Collider other)
-    {
-        if (state == DroneState.Exploded)
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, obstacleAvoidRadius);
+
+        Gizmos.color = Color.white;
+        Gizmos.DrawWireSphere(transform.position, collisionExplodeRadius);
+
+        if (currentPatrolWaypoint != null)
         {
-            return;
+            Gizmos.color = Color.blue;
+            Gizmos.DrawLine(transform.position, currentPatrolWaypoint.position);
+            Gizmos.DrawWireSphere(currentPatrolWaypoint.position, 0.6f);
         }
 
-        if (other.CompareTag(bulletTag))
+        if (currentNavigationWaypoint != null)
         {
-            ExplodeWithDamage();
+            Gizmos.color = Color.green;
+            Gizmos.DrawLine(transform.position, currentNavigationWaypoint.position);
+            Gizmos.DrawWireSphere(currentNavigationWaypoint.position, 0.6f);
         }
     }
 }
