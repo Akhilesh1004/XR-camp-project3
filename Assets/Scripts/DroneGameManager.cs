@@ -8,29 +8,19 @@ public class DroneGameManager : MonoBehaviour
     public DroneNPC dronePrefab;
 
     [Header("出生點 / Waypoints")]
-    [Tooltip("這些點同時作為無人機出生點與飛行導航 waypoint")]
     public Transform[] spawnPoints;
 
     [Header("場上數量")]
-    [Tooltip("場上應該維持幾台無人機")]
     public int targetDroneCount = 3;
-
-    [Tooltip("遊戲開始時是否自動生成")]
     public bool spawnOnStart = true;
-
-    [Tooltip("無人機爆炸後幾秒補一台")]
     public float respawnDelay = 3f;
 
-    [Header("Object Pool 設定")]
-    [Tooltip("一開始預先建立幾台無人機")]
-    public int initialPoolSize = 8;
-
-    [Tooltip("Pool 不夠時是否允許動態新增")]
+    [Header("Object Pool")]
+    public int initialPoolSize = 5;
     public bool allowPoolExpansion = true;
 
     [Header("生成規則")]
-    [Tooltip("是否允許多台無人機從同一個 spawn point 出生")]
-    public bool allowDuplicateSpawnPoint = true;
+    public bool allowDuplicateSpawnPoint = false;
 
     private readonly List<DroneNPC> activeDrones = new List<DroneNPC>();
     private readonly Queue<DroneNPC> pooledDrones = new Queue<DroneNPC>();
@@ -60,9 +50,9 @@ public class DroneGameManager : MonoBehaviour
     {
         activeDrones.RemoveAll(drone => drone == null || !drone.gameObject.activeSelf);
 
-        int totalExpected = activeDrones.Count + pendingRespawnCount;
+        int expectedCount = activeDrones.Count + pendingRespawnCount;
 
-        if (totalExpected < targetDroneCount)
+        if (expectedCount < targetDroneCount)
         {
             FillDrones();
         }
@@ -103,7 +93,6 @@ public class DroneGameManager : MonoBehaviour
     {
         if (dronePrefab == null)
         {
-            Debug.LogWarning("DroneGameManager: dronePrefab 沒有設定");
             return false;
         }
 
@@ -117,7 +106,6 @@ public class DroneGameManager : MonoBehaviour
 
         if (spawnIndex < 0)
         {
-            Debug.LogWarning("DroneGameManager: 找不到可用的 spawn point");
             return false;
         }
 
@@ -125,7 +113,6 @@ public class DroneGameManager : MonoBehaviour
 
         if (drone == null)
         {
-            Debug.LogWarning("DroneGameManager: Pool 裡沒有可用的 Drone，而且不允許擴充");
             return false;
         }
 
@@ -204,17 +191,14 @@ public class DroneGameManager : MonoBehaviour
         }
 
         ReturnDroneToPool(drone);
-
         StartCoroutine(RespawnAfterDelay());
     }
 
     void ReturnDroneToPool(DroneNPC drone)
     {
         drone.PrepareForPool();
-
         drone.gameObject.SetActive(false);
         drone.transform.SetParent(transform);
-
         pooledDrones.Enqueue(drone);
     }
 
@@ -245,12 +229,10 @@ public class DroneGameManager : MonoBehaviour
 
         foreach (Transform point in spawnPoints)
         {
-            if (point == null)
+            if (point != null)
             {
-                continue;
+                Gizmos.DrawWireSphere(point.position, 0.4f);
             }
-
-            Gizmos.DrawWireSphere(point.position, 0.4f);
         }
 
         Gizmos.color = Color.blue;
@@ -264,12 +246,10 @@ public class DroneGameManager : MonoBehaviour
 
             for (int j = i + 1; j < spawnPoints.Length; j++)
             {
-                if (spawnPoints[j] == null)
+                if (spawnPoints[j] != null)
                 {
-                    continue;
+                    Gizmos.DrawLine(spawnPoints[i].position, spawnPoints[j].position);
                 }
-
-                Gizmos.DrawLine(spawnPoints[i].position, spawnPoints[j].position);
             }
         }
     }
