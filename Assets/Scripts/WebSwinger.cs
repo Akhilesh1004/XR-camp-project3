@@ -691,7 +691,7 @@ public class WebSwinger : MonoBehaviour
             rb.velocity = firePoint.forward * bulletSpeed;
         }
 
-        Destroy(bullet, 3f);
+        //Destroy(bullet, 3f);
 
         OVRInput.SetControllerVibration(0.7f, 0.5f, controller);
         Invoke("StopVibration", 0.1f);
