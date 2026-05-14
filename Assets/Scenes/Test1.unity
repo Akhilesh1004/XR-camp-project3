@@ -7025,7 +7025,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 631885379}
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 13400000, guid: 8cf6275264c644712aecbf1fbc89a191, type: 2}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -18495,30 +18495,28 @@ MonoBehaviour:
   - {fileID: 1644529189}
   wallLayer:
     serializedVersion: 2
-    m_Bits: 72
+    m_Bits: 64
   handDetectRadius: 0.3
   controller: 2
   grabButton: 16384
   collisionLayer:
     serializedVersion: 2
     m_Bits: 64
-  skinWidth: 0.05
-  maxClimbStepPerFixedUpdate: 0.18
+  headBlockCheckRadius: 0.16
+  headBlockCheckDistance: 0.22
+  overheadNormalThreshold: 0.35
+  maxGrabReach: 1.05
+  normalRefreshSpeed: 12
+  climbVelocityMultiplier: 0.85
+  maxClimbVelocity: 4.5
+  maxClimbVelocityChange: 0.9
+  holdDamping: 10
+  outwardAssistVelocity: 0.35
+  upwardAssistThreshold: 0.03
   throwMultiplier: 1.2
   maxThrowSpeed: 8
-  enableAutoClimbOver: 1
-  walkableLayer:
-    serializedVersion: 2
-    m_Bits: 64
-  ledgeForwardProbe: 0.55
-  ledgeUpProbe: 0.35
-  ledgeDownProbe: 1.2
-  ledgeProbeRadius: 0.18
-  climbForwardNudge: 0.45
-  climbUpClearance: 0.06
-  maxWalkableSurfaceAngle: 60
-  climbOverExitSpeed: 1.2
-  climbOverCooldown: 0.35
+  minThrowSpeed: 0.3
+  releaseVelocityBlend: 0.65
   grabVibrationFrequency: 0.1
   grabVibrationAmplitude: 0.3
   grabVibrationDuration: 0.1
@@ -19608,30 +19606,28 @@ MonoBehaviour:
   - {fileID: 1573214320}
   wallLayer:
     serializedVersion: 2
-    m_Bits: 72
+    m_Bits: 64
   handDetectRadius: 0.3
   controller: 1
   grabButton: 16384
   collisionLayer:
     serializedVersion: 2
-    m_Bits: 64
-  skinWidth: 0.05
-  maxClimbStepPerFixedUpdate: 0.18
+    m_Bits: 72
+  headBlockCheckRadius: 0.16
+  headBlockCheckDistance: 0.22
+  overheadNormalThreshold: 0.35
+  maxGrabReach: 1.05
+  normalRefreshSpeed: 12
+  climbVelocityMultiplier: 0.85
+  maxClimbVelocity: 4.5
+  maxClimbVelocityChange: 0.9
+  holdDamping: 10
+  outwardAssistVelocity: 0.35
+  upwardAssistThreshold: 0.03
   throwMultiplier: 1.2
   maxThrowSpeed: 8
-  enableAutoClimbOver: 1
-  walkableLayer:
-    serializedVersion: 2
-    m_Bits: 64
-  ledgeForwardProbe: 0.55
-  ledgeUpProbe: 0.35
-  ledgeDownProbe: 1.2
-  ledgeProbeRadius: 0.18
-  climbForwardNudge: 0.45
-  climbUpClearance: 0.06
-  maxWalkableSurfaceAngle: 60
-  climbOverExitSpeed: 1.2
-  climbOverCooldown: 0.35
+  minThrowSpeed: 0.3
+  releaseVelocityBlend: 0.65
   grabVibrationFrequency: 0.1
   grabVibrationAmplitude: 0.3
   grabVibrationDuration: 0.1
