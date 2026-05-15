@@ -24312,6 +24312,11 @@ PrefabInstance:
       propertyPath: m_Name
       value: Drone (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 1663197410098233615, guid: 732f7950fe8c1a74aba1015f71f14c08,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 5983463414831393332, guid: 732f7950fe8c1a74aba1015f71f14c08,
         type: 3}
       propertyPath: m_LocalPosition.x
@@ -25907,6 +25912,16 @@ PrefabInstance:
         type: 3}
       propertyPath: m_Name
       value: '[BuildingBlock] Cube'
+      objectReference: {fileID: 0}
+    - target: {fileID: 1906675254726771438, guid: 75b7c21ff079a4bfebb693d868119b2c,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5240733320156887580, guid: 75b7c21ff079a4bfebb693d868119b2c,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
