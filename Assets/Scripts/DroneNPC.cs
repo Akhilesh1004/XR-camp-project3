@@ -83,33 +83,59 @@ public class DroneNPC : MonoBehaviour
     [Header("進階局部避障")]
     public bool useAdvancedLocalAvoidance = true;
 
-    [Tooltip("左右小角度探測")]
     public float sideProbeAngle = 35f;
-
-    [Tooltip("左右大角度探測")]
     public float wideProbeAngle = 70f;
 
-    [Tooltip("候選方向靠近目標的權重")]
     public float targetDirectionWeight = 1.2f;
-
-    [Tooltip("候選方向安全距離的權重")]
     public float clearanceWeight = 2.4f;
-
-    [Tooltip("維持目前飛行方向的權重，越高越不容易突然急轉")]
     public float smoothDirectionWeight = 0.7f;
 
-    [Tooltip("貼近障礙物時的推離半徑")]
     public float emergencyAvoidRadius = 1.5f;
-
-    [Tooltip("貼近障礙物時的推離強度")]
     public float emergencyAvoidWeight = 2.5f;
-
-    [Tooltip("避障方向記憶時間，避免左右反覆抖動")]
     public float avoidanceMemoryDuration = 0.45f;
 
     private Vector3 lastAvoidDirection = Vector3.zero;
     private float avoidanceMemoryTimer = 0f;
     private readonly Collider[] nearbyObstacleHits = new Collider[16];
+
+    [Header("動態障礙物閃避")]
+    public bool enableDynamicObstacleAvoidance = true;
+
+    [Tooltip("會主動閃避這些 Layer，例如 Projectile / FlyingObstacle / Vehicle")]
+    public LayerMask dynamicObstacleLayer;
+
+    [Tooltip("偵測動態障礙物的半徑")]
+    public float dynamicObstacleDetectRadius = 8f;
+
+    [Tooltip("預測幾秒內是否會撞上")]
+    public float dynamicPredictionTime = 1.2f;
+
+    [Tooltip("預測最近距離小於這個值，就視為有撞擊風險")]
+    public float dynamicThreatRadius = 2f;
+
+    [Tooltip("動態閃避方向權重")]
+    public float dynamicAvoidWeight = 6f;
+
+    [Tooltip("動態閃避時往上的偏好，不是強制往上")]
+    public float dynamicUpBias = 0.3f;
+
+    [Tooltip("相對速度小於這個值時，不當成高速威脅")]
+    public float dynamicMinRelativeSpeed = 1f;
+
+    [Tooltip("是否允許動態閃避時後退")]
+    public bool allowBackwardDynamicDodge = true;
+
+    [Tooltip("是否允許動態閃避時往下")]
+    public bool allowDownwardDynamicDodge = true;
+
+    [Tooltip("後退閃避權重。太高會讓無人機常常煞停後退")]
+    public float dynamicBackwardWeight = 0.7f;
+
+    [Tooltip("往下閃避權重。太高可能更容易撞地")]
+    public float dynamicDownwardWeight = 0.5f;
+
+    private float currentMoveSpeed = 0f;
+    private readonly Collider[] dynamicObstacleHits = new Collider[32];
 
     [Header("卡住脫困")]
     public float stuckCheckInterval = 0.5f;
@@ -177,10 +203,10 @@ public class DroneNPC : MonoBehaviour
         currentPatrolWaypoint = null;
 
         currentPatrolIndex = spawnIndex;
-
         SetupPatrolVariation();
 
         currentMoveDirection = transform.forward;
+        currentMoveSpeed = 0f;
 
         lastRepathTime = -999f;
         lastPatrolRepathTime = -999f;
@@ -259,6 +285,7 @@ public class DroneNPC : MonoBehaviour
         currentPatrolWaypoint = null;
 
         currentMoveDirection = transform.forward;
+        currentMoveSpeed = 0f;
 
         lastRepathTime = -999f;
         lastPatrolRepathTime = -999f;
@@ -827,6 +854,8 @@ public class DroneNPC : MonoBehaviour
         }
 
         Vector3 desiredDirection = toTarget.normalized;
+        currentMoveSpeed = speed;
+
         Vector3 steeredDirection = desiredDirection;
 
         if (enableLocalAvoidance)
@@ -870,7 +899,7 @@ public class DroneNPC : MonoBehaviour
 
     Vector3 GetAvoidedDirection(Vector3 desiredDirection, Vector3 targetPosition)
     {
-        if (obstacleLayer.value == 0)
+        if (obstacleLayer.value == 0 && dynamicObstacleLayer.value == 0)
         {
             return desiredDirection;
         }
@@ -881,15 +910,22 @@ public class DroneNPC : MonoBehaviour
         }
 
         Vector3 obstacleRepulsion = GetObstacleRepulsion();
+        Vector3 dynamicAvoidance = GetDynamicObstacleAvoidance(desiredDirection);
 
-        bool frontBlocked = IsDirectionBlocked(
-            desiredDirection,
-            obstacleDetectDistance
-        );
+        bool frontBlocked = false;
+
+        if (obstacleLayer.value != 0)
+        {
+            frontBlocked = IsDirectionBlocked(
+                desiredDirection,
+                obstacleDetectDistance
+            );
+        }
 
         bool hasEmergencyObstacle = obstacleRepulsion.sqrMagnitude > 0.001f;
+        bool hasDynamicThreat = dynamicAvoidance.sqrMagnitude > 0.001f;
 
-        if (!frontBlocked && !hasEmergencyObstacle && !isStuck)
+        if (!frontBlocked && !hasEmergencyObstacle && !hasDynamicThreat && !isStuck)
         {
             return desiredDirection;
         }
@@ -948,6 +984,10 @@ public class DroneNPC : MonoBehaviour
             ? obstacleRepulsion.normalized
             : Vector3.zero;
 
+        Vector3 dynamicAvoidDir = dynamicAvoidance.sqrMagnitude > 0.001f
+            ? dynamicAvoidance.normalized
+            : Vector3.zero;
+
         foreach (Vector3 rawCandidate in candidateDirections)
         {
             if (rawCandidate.sqrMagnitude < 0.001f)
@@ -968,6 +1008,13 @@ public class DroneNPC : MonoBehaviour
             if (repulsionDir.sqrMagnitude > 0.001f)
             {
                 repulsionScore = Vector3.Dot(candidate, repulsionDir);
+            }
+
+            float dynamicAvoidScore = 0f;
+
+            if (dynamicAvoidDir.sqrMagnitude > 0.001f)
+            {
+                dynamicAvoidScore = Vector3.Dot(candidate, dynamicAvoidDir);
             }
 
             float stuckBonus = 0f;
@@ -1001,6 +1048,7 @@ public class DroneNPC : MonoBehaviour
                 clearanceScore * clearanceWeight +
                 smoothScore * smoothDirectionWeight +
                 repulsionScore * emergencyAvoidWeight +
+                dynamicAvoidScore * dynamicAvoidWeight +
                 stuckBonus +
                 memoryBonus -
                 heightPenalty;
@@ -1017,6 +1065,11 @@ public class DroneNPC : MonoBehaviour
             bestDirection = (bestDirection + repulsionDir * emergencyAvoidWeight).normalized;
         }
 
+        if (dynamicAvoidDir.sqrMagnitude > 0.001f)
+        {
+            bestDirection = (bestDirection + dynamicAvoidDir * dynamicAvoidWeight).normalized;
+        }
+
         lastAvoidDirection = bestDirection;
         avoidanceMemoryTimer = avoidanceMemoryDuration;
 
@@ -1025,17 +1078,24 @@ public class DroneNPC : MonoBehaviour
 
     Vector3 GetSimpleAvoidedDirection(Vector3 desiredDirection, Vector3 targetPosition)
     {
-        bool frontBlocked = Physics.SphereCast(
-            transform.position,
-            obstacleAvoidRadius,
-            desiredDirection,
-            out RaycastHit hit,
-            obstacleDetectDistance,
-            obstacleLayer,
-            QueryTriggerInteraction.Ignore
-        );
+        bool frontBlocked = false;
 
-        if (!frontBlocked && !isStuck)
+        if (obstacleLayer.value != 0)
+        {
+            frontBlocked = Physics.SphereCast(
+                transform.position,
+                obstacleAvoidRadius,
+                desiredDirection,
+                out RaycastHit hit,
+                obstacleDetectDistance,
+                obstacleLayer,
+                QueryTriggerInteraction.Ignore
+            );
+        }
+
+        Vector3 dynamicAvoidance = GetDynamicObstacleAvoidance(desiredDirection);
+
+        if (!frontBlocked && !isStuck && dynamicAvoidance.sqrMagnitude < 0.001f)
         {
             return desiredDirection;
         }
@@ -1049,6 +1109,10 @@ public class DroneNPC : MonoBehaviour
             right = transform.right;
         }
 
+        Vector3 dynamicAvoidDir = dynamicAvoidance.sqrMagnitude > 0.001f
+            ? dynamicAvoidance.normalized
+            : Vector3.zero;
+
         Vector3[] candidateDirections =
         {
             desiredDirection,
@@ -1057,7 +1121,8 @@ public class DroneNPC : MonoBehaviour
             (desiredDirection + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection + right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection - right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
-            (desiredDirection - Vector3.up * 0.35f).normalized
+            (desiredDirection - Vector3.up * 0.35f).normalized,
+            dynamicAvoidDir
         };
 
         Vector3 bestDirection = desiredDirection;
@@ -1074,6 +1139,13 @@ public class DroneNPC : MonoBehaviour
             float targetScore = Vector3.Dot(candidate.normalized, toTarget);
             float clearanceScore = clearDistance / candidateCheckDistance;
 
+            float dynamicScore = 0f;
+
+            if (dynamicAvoidDir.sqrMagnitude > 0.001f)
+            {
+                dynamicScore = Vector3.Dot(candidate.normalized, dynamicAvoidDir);
+            }
+
             float stuckBonus = 0f;
 
             if (isStuck && candidate.y > 0f)
@@ -1084,6 +1156,7 @@ public class DroneNPC : MonoBehaviour
             float score =
                 targetScore * 1.2f +
                 clearanceScore * 2.0f +
+                dynamicScore * dynamicAvoidWeight +
                 stuckBonus;
 
             if (score > bestScore)
@@ -1096,8 +1169,253 @@ public class DroneNPC : MonoBehaviour
         return bestDirection.normalized;
     }
 
+    Vector3 GetDynamicObstacleAvoidance(Vector3 desiredDirection)
+    {
+        if (!enableDynamicObstacleAvoidance)
+        {
+            return Vector3.zero;
+        }
+
+        if (dynamicObstacleLayer.value == 0)
+        {
+            return Vector3.zero;
+        }
+
+        int hitCount = Physics.OverlapSphereNonAlloc(
+            transform.position,
+            dynamicObstacleDetectRadius,
+            dynamicObstacleHits,
+            dynamicObstacleLayer,
+            QueryTriggerInteraction.Collide
+        );
+
+        if (hitCount <= 0)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 droneVelocity;
+
+        if (currentMoveDirection.sqrMagnitude > 0.001f)
+        {
+            droneVelocity = currentMoveDirection.normalized * currentMoveSpeed;
+        }
+        else
+        {
+            droneVelocity = desiredDirection.normalized * currentMoveSpeed;
+        }
+
+        Vector3 totalAvoidance = Vector3.zero;
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            Collider obstacle = dynamicObstacleHits[i];
+
+            if (obstacle == null)
+            {
+                continue;
+            }
+
+            if (obstacle.transform == transform || obstacle.transform.IsChildOf(transform))
+            {
+                continue;
+            }
+
+            Rigidbody obstacleRb = obstacle.attachedRigidbody;
+
+            if (obstacleRb == rb)
+            {
+                continue;
+            }
+
+            Vector3 obstaclePosition = obstacle.bounds.center;
+
+            Vector3 obstacleVelocity = Vector3.zero;
+
+            if (obstacleRb != null)
+            {
+                obstacleVelocity = obstacleRb.velocity;
+            }
+
+            Vector3 relativePosition = obstaclePosition - transform.position;
+            Vector3 relativeVelocity = obstacleVelocity - droneVelocity;
+
+            float relativeSpeedSqr = relativeVelocity.sqrMagnitude;
+
+            if (relativeSpeedSqr < dynamicMinRelativeSpeed * dynamicMinRelativeSpeed)
+            {
+                float closeDistance = relativePosition.magnitude;
+
+                if (closeDistance < dynamicThreatRadius)
+                {
+                    Vector3 away = -relativePosition.normalized;
+                    totalAvoidance += away * (1f - closeDistance / dynamicThreatRadius);
+                }
+
+                continue;
+            }
+
+            float timeToClosest =
+                -Vector3.Dot(relativePosition, relativeVelocity) / relativeSpeedSqr;
+
+            if (timeToClosest < 0f || timeToClosest > dynamicPredictionTime)
+            {
+                continue;
+            }
+
+            Vector3 closestRelativePosition =
+                relativePosition + relativeVelocity * timeToClosest;
+
+            float closestDistance = closestRelativePosition.magnitude;
+
+            if (closestDistance > dynamicThreatRadius)
+            {
+                continue;
+            }
+
+            Vector3 rawDodgeDirection = -closestRelativePosition;
+
+            if (rawDodgeDirection.sqrMagnitude < 0.001f)
+            {
+                rawDodgeDirection = Vector3.Cross(relativeVelocity.normalized, Vector3.up);
+
+                if (rawDodgeDirection.sqrMagnitude < 0.001f)
+                {
+                    rawDodgeDirection = transform.right;
+                }
+            }
+
+            rawDodgeDirection.Normalize();
+
+            Vector3 bestDodge = ChooseBestDynamicDodgeDirection(rawDodgeDirection);
+
+            float distanceThreat = 1f - Mathf.Clamp01(closestDistance / dynamicThreatRadius);
+            float timeThreat = 1f - Mathf.Clamp01(timeToClosest / dynamicPredictionTime);
+            float threatStrength = distanceThreat * timeThreat;
+
+            totalAvoidance += bestDodge * threatStrength;
+        }
+
+        return totalAvoidance;
+    }
+
+    Vector3 ChooseBestDynamicDodgeDirection(Vector3 rawDodgeDirection)
+    {
+        Vector3 forward = currentMoveDirection.sqrMagnitude > 0.001f
+            ? currentMoveDirection.normalized
+            : transform.forward;
+
+        Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
+
+        if (right.sqrMagnitude < 0.001f)
+        {
+            right = transform.right;
+        }
+
+        Vector3 up = Vector3.up;
+        Vector3 down = Vector3.down;
+        Vector3 backward = -forward;
+
+        Vector3[] dodgeCandidates =
+        {
+            rawDodgeDirection,
+            right,
+            -right,
+            up,
+            down,
+            backward,
+            (right + up).normalized,
+            (-right + up).normalized,
+            (right + down).normalized,
+            (-right + down).normalized,
+            (backward + up).normalized,
+            (backward + down).normalized
+        };
+
+        Vector3 bestDodge = rawDodgeDirection;
+        float bestScore = Vector3.Dot(bestDodge, rawDodgeDirection);
+
+        foreach (Vector3 candidateRaw in dodgeCandidates)
+        {
+            if (candidateRaw.sqrMagnitude < 0.001f)
+            {
+                continue;
+            }
+
+            Vector3 candidate = candidateRaw.normalized;
+
+            if (!allowDownwardDynamicDodge && candidate.y < -0.2f)
+            {
+                continue;
+            }
+
+            if (!allowBackwardDynamicDodge)
+            {
+                float backwardAmount = Vector3.Dot(candidate, backward);
+
+                if (backwardAmount > 0.5f)
+                {
+                    continue;
+                }
+            }
+
+            float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
+            float clearanceScore = GetClearDistance(candidate) / candidateCheckDistance;
+
+            float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
+
+            float downPenalty = 0f;
+
+            if (candidate.y < 0f)
+            {
+                downPenalty = Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight);
+            }
+
+            float backwardScore = 0f;
+            float backwardDot = Vector3.Dot(candidate, backward);
+
+            if (backwardDot > 0f)
+            {
+                backwardScore = backwardDot * dynamicBackwardWeight;
+            }
+
+            float heightPenalty = 0f;
+
+            if (limitFlightHeight)
+            {
+                float predictedY = transform.position.y + candidate.y * candidateCheckDistance;
+
+                if (predictedY < minFlightY || predictedY > maxFlightY)
+                {
+                    heightPenalty = 5f;
+                }
+            }
+
+            float score =
+                escapeScore * 3f +
+                clearanceScore * 2f +
+                upScore +
+                backwardScore -
+                downPenalty -
+                heightPenalty;
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestDodge = candidate;
+            }
+        }
+
+        return bestDodge.normalized;
+    }
+
     bool IsDirectionBlocked(Vector3 direction, float distance)
     {
+        if (obstacleLayer.value == 0)
+        {
+            return false;
+        }
+
         if (direction.sqrMagnitude < 0.001f)
         {
             return false;
@@ -1116,6 +1434,11 @@ public class DroneNPC : MonoBehaviour
 
     Vector3 GetObstacleRepulsion()
     {
+        if (obstacleLayer.value == 0)
+        {
+            return Vector3.zero;
+        }
+
         Vector3 repulsion = Vector3.zero;
 
         int hitCount = Physics.OverlapSphereNonAlloc(
@@ -1321,6 +1644,7 @@ public class DroneNPC : MonoBehaviour
 
         lastAvoidDirection = Vector3.zero;
         avoidanceMemoryTimer = 0f;
+        currentMoveSpeed = 0f;
 
         if (rb != null)
         {
@@ -1348,6 +1672,9 @@ public class DroneNPC : MonoBehaviour
 
         Gizmos.color = Color.gray;
         Gizmos.DrawWireSphere(transform.position, emergencyAvoidRadius);
+
+        Gizmos.color = Color.black;
+        Gizmos.DrawWireSphere(transform.position, dynamicObstacleDetectRadius);
 
         if (currentPatrolWaypoint != null)
         {
