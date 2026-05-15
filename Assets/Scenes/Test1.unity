@@ -7062,8 +7062,15 @@ MonoBehaviour:
   swingMultiplier: 2.5
   maxMoveSpeed: 70
   activationThreshold: 0.5
+  perHandActivationThreshold: 0.45
+  requireBothHands: 1
+  swingInputSmooth: 8
   deceleration: 5
   accelerationSmooth: 4
+  useControllerForwardDirection: 1
+  controllerDirectionSmooth: 6
+  minControllerForwardMagnitude: 0.2
+  maxControllerForwardAngle: 120
   groundLayer:
     serializedVersion: 2
     m_Bits: 72
@@ -24307,6 +24314,11 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 1240270386759715857, guid: 732f7950fe8c1a74aba1015f71f14c08,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 1663197410098233615, guid: 732f7950fe8c1a74aba1015f71f14c08,
         type: 3}
       propertyPath: m_Name
@@ -24518,7 +24530,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0d92c9a18548044179f5f7bfcfbc36e0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  dronePrefab: {fileID: 590920049494011201, guid: 967b0d722ddf84380b403a836aba32bc,
+  dronePrefab: {fileID: -5558572051827488883, guid: 591d6ce3968ff4603a66b5c1e07eb6ad,
     type: 3}
   spawnPoints:
   - {fileID: 1824209609}

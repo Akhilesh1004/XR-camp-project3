@@ -41,6 +41,28 @@ public class DroneNPC : MonoBehaviour
     private float currentAlertDetectRange = 0f;
     private Vector3 lastAlertPosition;
 
+    [Header("Forced Hunt 強制追擊設定")]
+    [Tooltip("被 DroneNPC2 破壞事件指定後，無視距離上限持續追玩家")]
+    public float forcedHunterSpeedMultiplier = 1.35f;
+
+    private bool isForcedHunter = false;
+
+    public bool IsForcedHunter
+    {
+        get { return isForcedHunter; }
+    }
+
+    public bool CanBecomeForcedHunter
+    {
+        get
+        {
+            return hasBeenInitialized &&
+                   gameObject.activeInHierarchy &&
+                   state != DroneState.Exploding &&
+                   !isForcedHunter;
+        }
+    }
+
     [Header("爆炸設定")]
     public float explodeRange = 1.3f;
     public LayerMask explodeOnCollisionLayer;
@@ -104,34 +126,16 @@ public class DroneNPC : MonoBehaviour
     [Tooltip("會主動閃避這些 Layer，例如 Projectile / FlyingObstacle / Vehicle")]
     public LayerMask dynamicObstacleLayer;
 
-    [Tooltip("偵測動態障礙物的半徑")]
     public float dynamicObstacleDetectRadius = 8f;
-
-    [Tooltip("預測幾秒內是否會撞上")]
     public float dynamicPredictionTime = 1.2f;
-
-    [Tooltip("預測最近距離小於這個值，就視為有撞擊風險")]
     public float dynamicThreatRadius = 2f;
-
-    [Tooltip("動態閃避方向權重")]
     public float dynamicAvoidWeight = 6f;
-
-    [Tooltip("動態閃避時往上的偏好，不是強制往上")]
     public float dynamicUpBias = 0.3f;
-
-    [Tooltip("相對速度小於這個值時，不當成高速威脅")]
     public float dynamicMinRelativeSpeed = 1f;
 
-    [Tooltip("是否允許動態閃避時後退")]
     public bool allowBackwardDynamicDodge = true;
-
-    [Tooltip("是否允許動態閃避時往下")]
     public bool allowDownwardDynamicDodge = true;
-
-    [Tooltip("後退閃避權重。太高會讓無人機常常煞停後退")]
     public float dynamicBackwardWeight = 0.7f;
-
-    [Tooltip("往下閃避權重。太高可能更容易撞地")]
     public float dynamicDownwardWeight = 0.5f;
 
     private float currentMoveSpeed = 0f;
@@ -221,6 +225,8 @@ public class DroneNPC : MonoBehaviour
         alertTimer = 0f;
         currentAlertDetectRange = 0f;
 
+        isForcedHunter = false;
+
         lastAvoidDirection = Vector3.zero;
         avoidanceMemoryTimer = 0f;
 
@@ -272,6 +278,7 @@ public class DroneNPC : MonoBehaviour
 
     void OnEnable()
     {
+        DroneAlertSystem.RegisterDrone(this);
         DroneAlertSystem.OnDroneNPC2Destroyed += HandleDroneNPC2DestroyedAlert;
 
         if (!hasBeenInitialized)
@@ -303,6 +310,7 @@ public class DroneNPC : MonoBehaviour
     void OnDisable()
     {
         DroneAlertSystem.OnDroneNPC2Destroyed -= HandleDroneNPC2DestroyedAlert;
+        DroneAlertSystem.UnregisterDrone(this);
     }
 
     void FixedUpdate()
@@ -390,6 +398,11 @@ public class DroneNPC : MonoBehaviour
             return;
         }
 
+        if (isForcedHunter)
+        {
+            return;
+        }
+
         alertTimer -= Time.fixedDeltaTime;
 
         if (alertTimer <= 0f)
@@ -398,6 +411,53 @@ public class DroneNPC : MonoBehaviour
             alertTimer = 0f;
             currentAlertDetectRange = 0f;
         }
+    }
+
+    public float GetForcedHuntSelectionDistance(
+        Vector3 alertPosition,
+        bool preferDistanceToPlayer
+    )
+    {
+        if (preferDistanceToPlayer)
+        {
+            if (player == null)
+            {
+                FindPlayer();
+            }
+
+            if (player != null)
+            {
+                return Vector3.Distance(transform.position, player.position);
+            }
+        }
+
+        return Vector3.Distance(transform.position, alertPosition);
+    }
+
+    public void BeginForcedHunt()
+    {
+        if (state == DroneState.Exploding)
+        {
+            return;
+        }
+
+        if (player == null)
+        {
+            FindPlayer();
+        }
+
+        isForcedHunter = true;
+
+        isAlerted = true;
+        alertTimer = 999999f;
+
+        currentNavigationWaypoint = null;
+        currentPatrolWaypoint = null;
+        outOfRangeTimer = 0f;
+
+        state = DroneState.Chasing;
+
+        Debug.Log("DroneNPC entered Forced Hunt: " + gameObject.name);
     }
 
     void HandlePatrol(float distanceToPlayer)
@@ -651,8 +711,17 @@ public class DroneNPC : MonoBehaviour
     {
         if (player == null)
         {
-            state = DroneState.Patrol;
-            return;
+            FindPlayer();
+
+            if (player == null)
+            {
+                if (!isForcedHunter)
+                {
+                    state = DroneState.Patrol;
+                }
+
+                return;
+            }
         }
 
         if (distanceToPlayer <= explodeRange)
@@ -661,27 +730,34 @@ public class DroneNPC : MonoBehaviour
             return;
         }
 
-        float effectiveGiveUpRange = giveUpRange;
-
-        if (isAlerted)
+        if (!isForcedHunter)
         {
-            effectiveGiveUpRange = Mathf.Max(
-                giveUpRange,
-                currentAlertDetectRange + alertGiveUpExtraRange
-            );
-        }
+            float effectiveGiveUpRange = giveUpRange;
 
-        if (distanceToPlayer >= effectiveGiveUpRange)
-        {
-            outOfRangeTimer += Time.fixedDeltaTime;
+            if (isAlerted)
+            {
+                effectiveGiveUpRange = Mathf.Max(
+                    giveUpRange,
+                    currentAlertDetectRange + alertGiveUpExtraRange
+                );
+            }
 
-            if (outOfRangeTimer >= giveUpDelay)
+            if (distanceToPlayer >= effectiveGiveUpRange)
+            {
+                outOfRangeTimer += Time.fixedDeltaTime;
+
+                if (outOfRangeTimer >= giveUpDelay)
+                {
+                    outOfRangeTimer = 0f;
+                    currentNavigationWaypoint = null;
+                    currentPatrolWaypoint = null;
+                    state = DroneState.Patrol;
+                    return;
+                }
+            }
+            else
             {
                 outOfRangeTimer = 0f;
-                currentNavigationWaypoint = null;
-                currentPatrolWaypoint = null;
-                state = DroneState.Patrol;
-                return;
             }
         }
         else
@@ -692,9 +768,17 @@ public class DroneNPC : MonoBehaviour
         Vector3 finalTarget = player.position + playerTargetOffset;
         Vector3 navigationTarget = GetNavigationTarget(finalTarget);
 
-        float effectiveChaseSpeed = isAlerted
-            ? chaseSpeed * alertChaseSpeedMultiplier
-            : chaseSpeed;
+        float effectiveChaseSpeed = chaseSpeed;
+
+        if (isAlerted)
+        {
+            effectiveChaseSpeed = chaseSpeed * alertChaseSpeedMultiplier;
+        }
+
+        if (isForcedHunter)
+        {
+            effectiveChaseSpeed = chaseSpeed * forcedHunterSpeedMultiplier;
+        }
 
         MoveTowards(navigationTarget, effectiveChaseSpeed);
     }
@@ -950,26 +1034,18 @@ public class DroneNPC : MonoBehaviour
         Vector3[] candidateDirections =
         {
             desiredDirection,
-
             yawRightSmall.normalized,
             yawLeftSmall.normalized,
-
             yawRightWide.normalized,
             yawLeftWide.normalized,
-
             (desiredDirection + Vector3.up * upwardAvoidWeight).normalized,
-
             (desiredDirection + right * obstacleAvoidWeight).normalized,
             (desiredDirection + left * obstacleAvoidWeight).normalized,
-
             (desiredDirection + right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection + left * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
-
             (desiredDirection - Vector3.up * 0.35f).normalized,
-
             (desiredDirection + right * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
             (desiredDirection + left * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
-
             lastAvoidDirection
         };
 
@@ -1003,26 +1079,17 @@ public class DroneNPC : MonoBehaviour
             float targetScore = Vector3.Dot(candidate, toTarget);
             float smoothScore = Vector3.Dot(candidate, currentDir);
 
-            float repulsionScore = 0f;
+            float repulsionScore = repulsionDir.sqrMagnitude > 0.001f
+                ? Vector3.Dot(candidate, repulsionDir)
+                : 0f;
 
-            if (repulsionDir.sqrMagnitude > 0.001f)
-            {
-                repulsionScore = Vector3.Dot(candidate, repulsionDir);
-            }
+            float dynamicAvoidScore = dynamicAvoidDir.sqrMagnitude > 0.001f
+                ? Vector3.Dot(candidate, dynamicAvoidDir)
+                : 0f;
 
-            float dynamicAvoidScore = 0f;
-
-            if (dynamicAvoidDir.sqrMagnitude > 0.001f)
-            {
-                dynamicAvoidScore = Vector3.Dot(candidate, dynamicAvoidDir);
-            }
-
-            float stuckBonus = 0f;
-
-            if (isStuck && candidate.y > 0f)
-            {
-                stuckBonus = stuckUpwardEscapeWeight;
-            }
+            float stuckBonus = isStuck && candidate.y > 0f
+                ? stuckUpwardEscapeWeight
+                : 0f;
 
             float heightPenalty = 0f;
 
@@ -1139,19 +1206,13 @@ public class DroneNPC : MonoBehaviour
             float targetScore = Vector3.Dot(candidate.normalized, toTarget);
             float clearanceScore = clearDistance / candidateCheckDistance;
 
-            float dynamicScore = 0f;
+            float dynamicScore = dynamicAvoidDir.sqrMagnitude > 0.001f
+                ? Vector3.Dot(candidate.normalized, dynamicAvoidDir)
+                : 0f;
 
-            if (dynamicAvoidDir.sqrMagnitude > 0.001f)
-            {
-                dynamicScore = Vector3.Dot(candidate.normalized, dynamicAvoidDir);
-            }
-
-            float stuckBonus = 0f;
-
-            if (isStuck && candidate.y > 0f)
-            {
-                stuckBonus = stuckUpwardEscapeWeight;
-            }
+            float stuckBonus = isStuck && candidate.y > 0f
+                ? stuckUpwardEscapeWeight
+                : 0f;
 
             float score =
                 targetScore * 1.2f +
@@ -1171,12 +1232,7 @@ public class DroneNPC : MonoBehaviour
 
     Vector3 GetDynamicObstacleAvoidance(Vector3 desiredDirection)
     {
-        if (!enableDynamicObstacleAvoidance)
-        {
-            return Vector3.zero;
-        }
-
-        if (dynamicObstacleLayer.value == 0)
+        if (!enableDynamicObstacleAvoidance || dynamicObstacleLayer.value == 0)
         {
             return Vector3.zero;
         }
@@ -1194,16 +1250,9 @@ public class DroneNPC : MonoBehaviour
             return Vector3.zero;
         }
 
-        Vector3 droneVelocity;
-
-        if (currentMoveDirection.sqrMagnitude > 0.001f)
-        {
-            droneVelocity = currentMoveDirection.normalized * currentMoveSpeed;
-        }
-        else
-        {
-            droneVelocity = desiredDirection.normalized * currentMoveSpeed;
-        }
+        Vector3 droneVelocity = currentMoveDirection.sqrMagnitude > 0.001f
+            ? currentMoveDirection.normalized * currentMoveSpeed
+            : desiredDirection.normalized * currentMoveSpeed;
 
         Vector3 totalAvoidance = Vector3.zero;
 
@@ -1229,13 +1278,7 @@ public class DroneNPC : MonoBehaviour
             }
 
             Vector3 obstaclePosition = obstacle.bounds.center;
-
-            Vector3 obstacleVelocity = Vector3.zero;
-
-            if (obstacleRb != null)
-            {
-                obstacleVelocity = obstacleRb.velocity;
-            }
+            Vector3 obstacleVelocity = obstacleRb != null ? obstacleRb.velocity : Vector3.zero;
 
             Vector3 relativePosition = obstaclePosition - transform.position;
             Vector3 relativeVelocity = obstacleVelocity - droneVelocity;
@@ -1411,12 +1454,7 @@ public class DroneNPC : MonoBehaviour
 
     bool IsDirectionBlocked(Vector3 direction, float distance)
     {
-        if (obstacleLayer.value == 0)
-        {
-            return false;
-        }
-
-        if (direction.sqrMagnitude < 0.001f)
+        if (obstacleLayer.value == 0 || direction.sqrMagnitude < 0.001f)
         {
             return false;
         }
@@ -1641,6 +1679,8 @@ public class DroneNPC : MonoBehaviour
         isAlerted = false;
         alertTimer = 0f;
         currentAlertDetectRange = 0f;
+
+        isForcedHunter = false;
 
         lastAvoidDirection = Vector3.zero;
         avoidanceMemoryTimer = 0f;
