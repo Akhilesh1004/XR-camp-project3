@@ -1,78 +1,38 @@
+using System.Collections.Generic;
 using UnityEngine;
 
-public class DroneNPC : MonoBehaviour
+public class DroneNPC2 : MonoBehaviour
 {
-    private enum DroneState
+    private enum Drone2State
     {
-        Patrol,
-        Chasing,
-        Exploding
+        MovingToDestination,
+        Finished
     }
 
-    public enum PatrolMode
-    {
-        Sequential,
-        DiversifiedSequential,
-        Random
-    }
+    [Header("搬運物件設定")]
+    public GameObject[] cargoPrefabs;
+    public Transform cargoAnchor;
 
-    [Header("目標設定")]
-    public string playerTag = "Player";
+    public bool addRigidbodyToDroppedCargo = true;
+    public float cargoDropDownVelocity = 1.5f;
 
-    [Header("偵測與追逐")]
-    public float detectRange = 40f;
-    public float giveUpRange = 100f;
-    public float giveUpDelay = 3f;
+    [Header("移動設定")]
+    public float moveSpeed = 5f;
+    public float rotateSpeed = 8f;
+    public float waypointReachDistance = 1.3f;
 
-    public float chaseSpeed = 8f;
-    public float patrolSpeed = 4f;
-    public float rotateSpeed = 10f;
+    [Header("目的地限制")]
+    public float minDestinationDistanceFromSpawn = 25f;
 
-    public Vector3 playerTargetOffset = new Vector3(0f, 1f, 0f);
+    [Header("玩家視野外消失")]
+    public Camera playerCamera;
+    public LayerMask visibilityBlockerLayer;
+    public bool disappearOnlyWhenHiddenFromPlayer = true;
+    public float minDisappearDistance = 15f;
+    public float viewportPadding = 0.1f;
 
-    [Header("DroneNPC2 被破壞時的警戒設定")]
-    public float alertChaseSpeedMultiplier = 1.25f;
-
-    [Tooltip("警戒時，giveUpRange 至少會是 alertDetectRange + 這個距離")]
-    public float alertGiveUpExtraRange = 40f;
-
-    private bool isAlerted = false;
-    private float alertTimer = 0f;
-    private float currentAlertDetectRange = 0f;
-    private Vector3 lastAlertPosition;
-
-    [Header("爆炸設定")]
-    public float explodeRange = 1.3f;
-    public LayerMask explodeOnCollisionLayer;
-    public float collisionExplodeRadius = 0.45f;
-    public GameObject explosionPrefab;
-
-    [Header("Waypoint 巡邏 / 導航")]
-    public PatrolMode patrolMode = PatrolMode.DiversifiedSequential;
-
-    public float waypointReachDistance = 1.5f;
-    public float repathInterval = 0.25f;
-    public float patrolRepathInterval = 2.0f;
-    public bool repathPatrolWhenBlocked = true;
-
+    [Header("避障設定")]
     public LayerMask obstacleLayer;
-    public float pathCheckRadius = 0.6f;
-
-    public float maxWaypointSelectDistance = 45f;
-    public float maxDetourExtraDistance = 12f;
-
-    public bool directChaseWhenPathClear = true;
-
-    [Header("巡邏軌跡差異化")]
-    public bool randomizePatrolDirection = true;
-    public int minPatrolStep = 1;
-    public int maxPatrolStep = 2;
-
-    private int patrolDirection = 1;
-    private int patrolStep = 1;
-
-    [Header("近距離避障")]
-    public bool enableLocalAvoidance = true;
     public float obstacleDetectDistance = 8f;
     public float obstacleAvoidRadius = 0.9f;
     public float obstacleAvoidWeight = 2f;
@@ -100,38 +60,17 @@ public class DroneNPC : MonoBehaviour
 
     [Header("動態障礙物閃避")]
     public bool enableDynamicObstacleAvoidance = true;
-
-    [Tooltip("會主動閃避這些 Layer，例如 Projectile / FlyingObstacle / Vehicle")]
     public LayerMask dynamicObstacleLayer;
-
-    [Tooltip("偵測動態障礙物的半徑")]
     public float dynamicObstacleDetectRadius = 8f;
-
-    [Tooltip("預測幾秒內是否會撞上")]
     public float dynamicPredictionTime = 1.2f;
-
-    [Tooltip("預測最近距離小於這個值，就視為有撞擊風險")]
     public float dynamicThreatRadius = 2f;
-
-    [Tooltip("動態閃避方向權重")]
     public float dynamicAvoidWeight = 6f;
-
-    [Tooltip("動態閃避時往上的偏好，不是強制往上")]
     public float dynamicUpBias = 0.3f;
-
-    [Tooltip("相對速度小於這個值時，不當成高速威脅")]
     public float dynamicMinRelativeSpeed = 1f;
 
-    [Tooltip("是否允許動態閃避時後退")]
     public bool allowBackwardDynamicDodge = true;
-
-    [Tooltip("是否允許動態閃避時往下")]
     public bool allowDownwardDynamicDodge = true;
-
-    [Tooltip("後退閃避權重。太高會讓無人機常常煞停後退")]
     public float dynamicBackwardWeight = 0.7f;
-
-    [Tooltip("往下閃避權重。太高可能更容易撞地")]
     public float dynamicDownwardWeight = 0.5f;
 
     private float currentMoveSpeed = 0f;
@@ -142,15 +81,29 @@ public class DroneNPC : MonoBehaviour
     public float stuckMoveThreshold = 0.25f;
     public float stuckUpwardEscapeWeight = 2.5f;
 
+    private Vector3 lastStuckCheckPosition;
+    private float lastStuckCheckTime;
+    private bool isStuck;
+
+    [Header("受破壞設定")]
+    public LayerMask damageLayer;
+    public LayerMask destroyOnCollisionLayer;
+
+    public int maxHealth = 1;
+
+    public float alertDuration = 8f;
+    public float alertDetectRange = 120f;
+
+    public GameObject destroyedEffectPrefab;
+
     [Header("高度限制，可選")]
     public bool limitFlightHeight = false;
     public float minFlightY = 1.5f;
     public float maxFlightY = 80f;
 
-    private DroneState state = DroneState.Patrol;
+    private Drone2State state = Drone2State.MovingToDestination;
 
-    private DroneGameManager manager;
-    private Transform player;
+    private DroneNPC2Manager manager;
     private Rigidbody rb;
 
     private Vector3 originPosition;
@@ -158,32 +111,31 @@ public class DroneNPC : MonoBehaviour
     private int originSpawnIndex = -1;
 
     private Transform[] waypoints;
-
-    private Transform currentNavigationWaypoint;
-    private Transform currentPatrolWaypoint;
-
-    private int currentPatrolIndex = -1;
+    private Transform destinationWaypoint;
 
     private Vector3 currentMoveDirection;
 
-    private float lastRepathTime = -999f;
-    private float lastPatrolRepathTime = -999f;
+    private GameObject currentCargo;
 
-    private Vector3 lastStuckCheckPosition;
-    private float lastStuckCheckTime;
-    private bool isStuck;
-
-    private float outOfRangeTimer = 0f;
-
+    private int currentHealth;
     private bool hasBeenInitialized = false;
+    private bool isFinishing = false;
 
-    public int SpawnIndex
+    public void SetVisibilityContext(Camera camera, LayerMask blockerLayer)
     {
-        get { return originSpawnIndex; }
+        if (camera != null)
+        {
+            playerCamera = camera;
+        }
+
+        if (blockerLayer.value != 0)
+        {
+            visibilityBlockerLayer = blockerLayer;
+        }
     }
 
     public void Initialize(
-        DroneGameManager owner,
+        DroneNPC2Manager owner,
         Vector3 spawnPosition,
         Quaternion spawnRotation,
         int spawnIndex,
@@ -199,64 +151,34 @@ public class DroneNPC : MonoBehaviour
         transform.position = originPosition;
         transform.rotation = originRotation;
 
-        currentNavigationWaypoint = null;
-        currentPatrolWaypoint = null;
-
-        currentPatrolIndex = spawnIndex;
-        SetupPatrolVariation();
+        if (rb != null)
+        {
+            rb.position = originPosition;
+            rb.rotation = originRotation;
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
 
         currentMoveDirection = transform.forward;
         currentMoveSpeed = 0f;
 
-        lastRepathTime = -999f;
-        lastPatrolRepathTime = -999f;
+        currentHealth = maxHealth;
+        isFinishing = false;
+        state = Drone2State.MovingToDestination;
+
+        lastAvoidDirection = Vector3.zero;
+        avoidanceMemoryTimer = 0f;
 
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
         isStuck = false;
 
-        outOfRangeTimer = 0f;
+        ClearCargo();
+        SpawnRandomCargo();
 
-        isAlerted = false;
-        alertTimer = 0f;
-        currentAlertDetectRange = 0f;
+        destinationWaypoint = ChooseRandomDestinationNotSpawn();
 
-        lastAvoidDirection = Vector3.zero;
-        avoidanceMemoryTimer = 0f;
-
-        state = DroneState.Patrol;
         hasBeenInitialized = true;
-
-        FindPlayer();
-
-        if (rb != null)
-        {
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-            rb.position = originPosition;
-            rb.rotation = originRotation;
-        }
-    }
-
-    void SetupPatrolVariation()
-    {
-        patrolDirection = 1;
-        patrolStep = 1;
-
-        if (patrolMode != PatrolMode.DiversifiedSequential)
-        {
-            return;
-        }
-
-        if (randomizePatrolDirection)
-        {
-            patrolDirection = Random.value < 0.5f ? -1 : 1;
-        }
-
-        int safeMinStep = Mathf.Max(1, minPatrolStep);
-        int safeMaxStep = Mathf.Max(safeMinStep, maxPatrolStep);
-
-        patrolStep = Random.Range(safeMinStep, safeMaxStep + 1);
     }
 
     void Awake()
@@ -272,576 +194,270 @@ public class DroneNPC : MonoBehaviour
 
     void OnEnable()
     {
-        DroneAlertSystem.OnDroneNPC2Destroyed += HandleDroneNPC2DestroyedAlert;
-
         if (!hasBeenInitialized)
         {
             return;
         }
 
-        state = DroneState.Patrol;
-
-        currentNavigationWaypoint = null;
-        currentPatrolWaypoint = null;
-
+        currentHealth = maxHealth;
+        isFinishing = false;
+        state = Drone2State.MovingToDestination;
         currentMoveDirection = transform.forward;
         currentMoveSpeed = 0f;
 
-        lastRepathTime = -999f;
-        lastPatrolRepathTime = -999f;
+        lastAvoidDirection = Vector3.zero;
+        avoidanceMemoryTimer = 0f;
 
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
         isStuck = false;
-
-        outOfRangeTimer = 0f;
-
-        lastAvoidDirection = Vector3.zero;
-        avoidanceMemoryTimer = 0f;
-    }
-
-    void OnDisable()
-    {
-        DroneAlertSystem.OnDroneNPC2Destroyed -= HandleDroneNPC2DestroyedAlert;
     }
 
     void FixedUpdate()
     {
         UpdateAvoidanceMemory();
 
-        if (state == DroneState.Exploding)
+        if (state == Drone2State.Finished || isFinishing)
         {
             return;
         }
 
-        if (player == null)
-        {
-            FindPlayer();
-        }
-
-        CheckCollisionExplosion();
+        CheckDestroyByCollisionSphere();
         CheckStuck();
-        UpdateAlertTimer();
 
-        if (state == DroneState.Exploding)
+        if (state == Drone2State.Finished || isFinishing)
         {
             return;
         }
 
-        float distanceToPlayer = Mathf.Infinity;
-
-        if (player != null)
+        if (destinationWaypoint == null)
         {
-            distanceToPlayer = Vector3.Distance(transform.position, player.position);
-        }
+            destinationWaypoint = ChooseRandomDestinationNotSpawn();
 
-        switch (state)
-        {
-            case DroneState.Patrol:
-                HandlePatrol(distanceToPlayer);
-                break;
-
-            case DroneState.Chasing:
-                HandleChasing(distanceToPlayer);
-                break;
-        }
-    }
-
-    void FindPlayer()
-    {
-        GameObject playerObject = GameObject.FindGameObjectWithTag(playerTag);
-
-        if (playerObject != null)
-        {
-            player = playerObject.transform;
-        }
-    }
-
-    void HandleDroneNPC2DestroyedAlert(
-        Vector3 alertPosition,
-        float alertDuration,
-        float alertDetectRange
-    )
-    {
-        isAlerted = true;
-        alertTimer = alertDuration;
-        currentAlertDetectRange = alertDetectRange;
-        lastAlertPosition = alertPosition;
-
-        currentNavigationWaypoint = null;
-        currentPatrolWaypoint = null;
-
-        if (player != null)
-        {
-            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
-
-            if (distanceToPlayer <= currentAlertDetectRange)
+            if (destinationWaypoint == null)
             {
-                state = DroneState.Chasing;
-                outOfRangeTimer = 0f;
+                FinishNormally();
+                return;
             }
         }
+
+        float distanceToDestination = Vector3.Distance(
+            transform.position,
+            destinationWaypoint.position
+        );
+
+        if (distanceToDestination <= waypointReachDistance)
+        {
+            if (!disappearOnlyWhenHiddenFromPlayer || IsHiddenFromPlayer(transform.position))
+            {
+                FinishNormally();
+                return;
+            }
+
+            destinationWaypoint = ChooseRandomDestinationNotSpawn();
+
+            if (destinationWaypoint == null)
+            {
+                return;
+            }
+        }
+
+        MoveTowards(destinationWaypoint.position, moveSpeed);
     }
 
-    void UpdateAlertTimer()
+    Transform ChooseRandomDestinationNotSpawn()
     {
-        if (!isAlerted)
+        if (waypoints == null || waypoints.Length <= 1)
         {
-            return;
+            return null;
         }
 
-        alertTimer -= Time.fixedDeltaTime;
+        List<Transform> candidates = new List<Transform>();
 
-        if (alertTimer <= 0f)
+        for (int i = 0; i < waypoints.Length; i++)
         {
-            isAlerted = false;
-            alertTimer = 0f;
-            currentAlertDetectRange = 0f;
+            if (i == originSpawnIndex)
+            {
+                continue;
+            }
+
+            if (waypoints[i] == null)
+            {
+                continue;
+            }
+
+            float distanceFromSpawn = Vector3.Distance(
+                originPosition,
+                waypoints[i].position
+            );
+
+            if (distanceFromSpawn < minDestinationDistanceFromSpawn)
+            {
+                continue;
+            }
+
+            candidates.Add(waypoints[i]);
         }
+
+        if (candidates.Count > 0)
+        {
+            return candidates[Random.Range(0, candidates.Count)];
+        }
+
+        for (int i = 0; i < waypoints.Length; i++)
+        {
+            if (i != originSpawnIndex && waypoints[i] != null)
+            {
+                return waypoints[i];
+            }
+        }
+
+        return null;
     }
 
-    void HandlePatrol(float distanceToPlayer)
+    bool IsHiddenFromPlayer(Vector3 worldPosition)
     {
-        outOfRangeTimer = 0f;
-        currentNavigationWaypoint = null;
+        Camera cam = playerCamera != null ? playerCamera : Camera.main;
 
-        float effectiveDetectRange = isAlerted
-            ? Mathf.Max(detectRange, currentAlertDetectRange)
-            : detectRange;
-
-        if (player != null && distanceToPlayer <= effectiveDetectRange)
-        {
-            currentPatrolWaypoint = null;
-            state = DroneState.Chasing;
-            return;
-        }
-
-        if (NeedNewPatrolWaypoint())
-        {
-            currentPatrolWaypoint = ChoosePatrolWaypoint();
-            lastPatrolRepathTime = Time.time;
-        }
-
-        if (currentPatrolWaypoint != null)
-        {
-            MoveTowards(currentPatrolWaypoint.position, patrolSpeed);
-        }
-    }
-
-    bool NeedNewPatrolWaypoint()
-    {
-        if (currentPatrolWaypoint == null)
+        if (cam == null)
         {
             return true;
         }
 
-        if (Vector3.Distance(transform.position, currentPatrolWaypoint.position) <= waypointReachDistance)
+        Vector3 cameraPosition = cam.transform.position;
+        float distance = Vector3.Distance(cameraPosition, worldPosition);
+
+        if (distance < minDisappearDistance)
+        {
+            return false;
+        }
+
+        Vector3 viewportPoint = cam.WorldToViewportPoint(worldPosition);
+
+        bool inFront = viewportPoint.z > 0f;
+
+        bool insideView =
+            viewportPoint.x >= -viewportPadding &&
+            viewportPoint.x <= 1f + viewportPadding &&
+            viewportPoint.y >= -viewportPadding &&
+            viewportPoint.y <= 1f + viewportPadding;
+
+        if (!inFront || !insideView)
         {
             return true;
         }
 
-        if (Time.time - lastPatrolRepathTime >= patrolRepathInterval)
+        if (visibilityBlockerLayer.value != 0)
         {
-            if (isStuck)
-            {
-                return true;
-            }
+            Vector3 direction = worldPosition - cameraPosition;
+            float rayDistance = direction.magnitude;
 
-            if (repathPatrolWhenBlocked && !HasClearPath(transform.position, currentPatrolWaypoint.position))
+            if (rayDistance > 0.01f)
             {
-                return true;
+                direction.Normalize();
+
+                if (Physics.Raycast(
+                    cameraPosition,
+                    direction,
+                    out RaycastHit hit,
+                    rayDistance,
+                    visibilityBlockerLayer,
+                    QueryTriggerInteraction.Ignore))
+                {
+                    return true;
+                }
             }
         }
 
         return false;
     }
 
-    Transform ChoosePatrolWaypoint()
+    void SpawnRandomCargo()
     {
-        if (waypoints == null || waypoints.Length == 0)
+        if (cargoPrefabs == null || cargoPrefabs.Length == 0)
         {
-            return null;
-        }
-
-        if (patrolMode == PatrolMode.Random)
-        {
-            return ChooseRandomPatrolWaypoint();
-        }
-
-        return ChooseSequentialPatrolWaypoint();
-    }
-
-    Transform ChooseSequentialPatrolWaypoint()
-    {
-        if (waypoints == null || waypoints.Length == 0)
-        {
-            return null;
-        }
-
-        if (currentPatrolIndex < 0 || currentPatrolIndex >= waypoints.Length)
-        {
-            currentPatrolIndex = 0;
-        }
-
-        int waypointCount = waypoints.Length;
-
-        int direction = patrolMode == PatrolMode.DiversifiedSequential
-            ? patrolDirection
-            : 1;
-
-        int step = patrolMode == PatrolMode.DiversifiedSequential
-            ? Mathf.Max(1, patrolStep)
-            : 1;
-
-        for (int i = 0; i < waypointCount; i++)
-        {
-            int nextIndex = WrapIndex(currentPatrolIndex + direction * step * (i + 1), waypointCount);
-            Transform candidate = waypoints[nextIndex];
-
-            if (candidate == null)
-            {
-                continue;
-            }
-
-            float distance = Vector3.Distance(transform.position, candidate.position);
-
-            if (distance <= waypointReachDistance)
-            {
-                continue;
-            }
-
-            if (maxWaypointSelectDistance > 0f && distance > maxWaypointSelectDistance)
-            {
-                continue;
-            }
-
-            if (HasClearPath(transform.position, candidate.position))
-            {
-                currentPatrolIndex = nextIndex;
-                return candidate;
-            }
-        }
-
-        for (int i = 0; i < waypointCount; i++)
-        {
-            int nextIndex = WrapIndex(currentPatrolIndex + direction * step * (i + 1), waypointCount);
-            Transform candidate = waypoints[nextIndex];
-
-            if (candidate == null)
-            {
-                continue;
-            }
-
-            float distance = Vector3.Distance(transform.position, candidate.position);
-
-            if (distance <= waypointReachDistance)
-            {
-                continue;
-            }
-
-            if (maxWaypointSelectDistance > 0f && distance > maxWaypointSelectDistance)
-            {
-                continue;
-            }
-
-            currentPatrolIndex = nextIndex;
-            return candidate;
-        }
-
-        return null;
-    }
-
-    int WrapIndex(int index, int count)
-    {
-        if (count <= 0)
-        {
-            return 0;
-        }
-
-        while (index < 0)
-        {
-            index += count;
-        }
-
-        while (index >= count)
-        {
-            index -= count;
-        }
-
-        return index;
-    }
-
-    Transform ChooseRandomPatrolWaypoint()
-    {
-        Transform bestWaypoint = null;
-        float bestScore = -999999f;
-
-        foreach (Transform waypoint in waypoints)
-        {
-            if (waypoint == null)
-            {
-                continue;
-            }
-
-            if (waypoint == currentPatrolWaypoint)
-            {
-                continue;
-            }
-
-            float distanceToWaypoint = Vector3.Distance(transform.position, waypoint.position);
-
-            if (distanceToWaypoint <= waypointReachDistance)
-            {
-                continue;
-            }
-
-            if (maxWaypointSelectDistance > 0f && distanceToWaypoint > maxWaypointSelectDistance)
-            {
-                continue;
-            }
-
-            if (!HasClearPath(transform.position, waypoint.position))
-            {
-                continue;
-            }
-
-            float distanceScore = -distanceToWaypoint * 0.05f;
-            float randomScore = Random.Range(0f, 2f);
-
-            float forwardScore = 0f;
-
-            if (currentMoveDirection.sqrMagnitude > 0.001f)
-            {
-                Vector3 toWaypoint = (waypoint.position - transform.position).normalized;
-                forwardScore = Vector3.Dot(currentMoveDirection.normalized, toWaypoint) * 2f;
-            }
-
-            float heightScore = waypoint.position.y > transform.position.y ? 0.3f : 0f;
-
-            float stuckBonus = 0f;
-
-            if (isStuck && waypoint.position.y > transform.position.y)
-            {
-                stuckBonus = stuckUpwardEscapeWeight;
-            }
-
-            float score =
-                distanceScore +
-                forwardScore +
-                heightScore +
-                randomScore +
-                stuckBonus;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestWaypoint = waypoint;
-            }
-        }
-
-        if (bestWaypoint == null && waypoints.Length > 0)
-        {
-            bestWaypoint = waypoints[Random.Range(0, waypoints.Length)];
-        }
-
-        return bestWaypoint;
-    }
-
-    void HandleChasing(float distanceToPlayer)
-    {
-        if (player == null)
-        {
-            state = DroneState.Patrol;
             return;
         }
 
-        if (distanceToPlayer <= explodeRange)
+        GameObject prefab = cargoPrefabs[Random.Range(0, cargoPrefabs.Length)];
+
+        if (prefab == null)
         {
-            Explode();
             return;
         }
 
-        float effectiveGiveUpRange = giveUpRange;
+        Transform parent = cargoAnchor != null ? cargoAnchor : transform;
 
-        if (isAlerted)
+        currentCargo = Instantiate(prefab, parent);
+        currentCargo.transform.localPosition = Vector3.zero;
+        currentCargo.transform.localRotation = Quaternion.identity;
+
+        Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>();
+
+        foreach (Rigidbody cargoRb in rigidbodies)
         {
-            effectiveGiveUpRange = Mathf.Max(
-                giveUpRange,
-                currentAlertDetectRange + alertGiveUpExtraRange
-            );
+            cargoRb.isKinematic = true;
+            cargoRb.useGravity = false;
+            cargoRb.velocity = Vector3.zero;
+            cargoRb.angularVelocity = Vector3.zero;
         }
 
-        if (distanceToPlayer >= effectiveGiveUpRange)
-        {
-            outOfRangeTimer += Time.fixedDeltaTime;
+        Collider[] colliders = currentCargo.GetComponentsInChildren<Collider>();
 
-            if (outOfRangeTimer >= giveUpDelay)
-            {
-                outOfRangeTimer = 0f;
-                currentNavigationWaypoint = null;
-                currentPatrolWaypoint = null;
-                state = DroneState.Patrol;
-                return;
-            }
+        foreach (Collider c in colliders)
+        {
+            c.enabled = false;
+        }
+    }
+
+    void ClearCargo()
+    {
+        if (currentCargo == null)
+        {
+            return;
+        }
+
+        Destroy(currentCargo);
+        currentCargo = null;
+    }
+
+    void DropCargo()
+    {
+        if (currentCargo == null)
+        {
+            return;
+        }
+
+        GameObject dropped = currentCargo;
+        currentCargo = null;
+
+        dropped.transform.SetParent(null, true);
+
+        Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>();
+
+        if (rigidbodies.Length == 0 && addRigidbodyToDroppedCargo)
+        {
+            Rigidbody newRb = dropped.AddComponent<Rigidbody>();
+            newRb.isKinematic = false;
+            newRb.useGravity = true;
+            newRb.velocity = Vector3.down * cargoDropDownVelocity;
         }
         else
         {
-            outOfRangeTimer = 0f;
-        }
-
-        Vector3 finalTarget = player.position + playerTargetOffset;
-        Vector3 navigationTarget = GetNavigationTarget(finalTarget);
-
-        float effectiveChaseSpeed = isAlerted
-            ? chaseSpeed * alertChaseSpeedMultiplier
-            : chaseSpeed;
-
-        MoveTowards(navigationTarget, effectiveChaseSpeed);
-    }
-
-    Vector3 GetNavigationTarget(Vector3 finalTarget)
-    {
-        if (directChaseWhenPathClear && HasClearPath(transform.position, finalTarget))
-        {
-            currentNavigationWaypoint = null;
-            return finalTarget;
-        }
-
-        bool needRepath =
-            currentNavigationWaypoint == null ||
-            Time.time - lastRepathTime >= repathInterval ||
-            Vector3.Distance(transform.position, currentNavigationWaypoint.position) <= waypointReachDistance ||
-            !HasClearPath(transform.position, currentNavigationWaypoint.position);
-
-        if (needRepath)
-        {
-            currentNavigationWaypoint = ChooseBestWaypoint(finalTarget);
-            lastRepathTime = Time.time;
-        }
-
-        if (currentNavigationWaypoint != null)
-        {
-            return currentNavigationWaypoint.position;
-        }
-
-        return finalTarget;
-    }
-
-    Transform ChooseBestWaypoint(Vector3 finalTarget)
-    {
-        if (waypoints == null || waypoints.Length == 0)
-        {
-            return null;
-        }
-
-        Transform bestWaypoint = null;
-        float bestScore = -999999f;
-
-        Vector3 toFinalTarget = finalTarget - transform.position;
-
-        if (toFinalTarget.sqrMagnitude < 0.001f)
-        {
-            return null;
-        }
-
-        Vector3 finalDirection = toFinalTarget.normalized;
-        float currentDistanceToGoal = Vector3.Distance(transform.position, finalTarget);
-
-        foreach (Transform waypoint in waypoints)
-        {
-            if (waypoint == null)
+            foreach (Rigidbody cargoRb in rigidbodies)
             {
-                continue;
-            }
-
-            float distanceToWaypoint = Vector3.Distance(transform.position, waypoint.position);
-
-            if (distanceToWaypoint <= waypointReachDistance)
-            {
-                continue;
-            }
-
-            if (maxWaypointSelectDistance > 0f && distanceToWaypoint > maxWaypointSelectDistance)
-            {
-                continue;
-            }
-
-            float waypointDistanceToGoal = Vector3.Distance(waypoint.position, finalTarget);
-
-            if (waypointDistanceToGoal > currentDistanceToGoal + maxDetourExtraDistance)
-            {
-                continue;
-            }
-
-            if (!HasClearPath(transform.position, waypoint.position))
-            {
-                continue;
-            }
-
-            Vector3 toWaypoint = waypoint.position - transform.position;
-
-            if (toWaypoint.sqrMagnitude < 0.001f)
-            {
-                continue;
-            }
-
-            float directionScore = Vector3.Dot(toWaypoint.normalized, finalDirection) * 4f;
-            float distanceToGoalScore = -waypointDistanceToGoal * 0.1f;
-            float waypointDistancePenalty = -distanceToWaypoint * 0.03f;
-            float clearToGoalBonus = HasClearPath(waypoint.position, finalTarget) ? 8f : 0f;
-
-            float stuckBonus = 0f;
-
-            if (isStuck && waypoint.position.y > transform.position.y)
-            {
-                stuckBonus = stuckUpwardEscapeWeight;
-            }
-
-            float score =
-                directionScore +
-                distanceToGoalScore +
-                waypointDistancePenalty +
-                clearToGoalBonus +
-                stuckBonus;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestWaypoint = waypoint;
+                cargoRb.isKinematic = false;
+                cargoRb.useGravity = true;
+                cargoRb.velocity = Vector3.down * cargoDropDownVelocity;
             }
         }
 
-        return bestWaypoint;
-    }
+        Collider[] colliders = dropped.GetComponentsInChildren<Collider>();
 
-    bool HasClearPath(Vector3 from, Vector3 to)
-    {
-        if (obstacleLayer.value == 0)
+        foreach (Collider c in colliders)
         {
-            return true;
+            c.enabled = true;
         }
-
-        Vector3 direction = to - from;
-        float distance = direction.magnitude;
-
-        if (distance < 0.01f)
-        {
-            return true;
-        }
-
-        direction.Normalize();
-
-        bool blocked = Physics.SphereCast(
-            from,
-            pathCheckRadius,
-            direction,
-            out RaycastHit hit,
-            distance,
-            obstacleLayer,
-            QueryTriggerInteraction.Ignore
-        );
-
-        return !blocked;
     }
 
     void MoveTowards(Vector3 targetPosition, float speed)
@@ -856,12 +472,7 @@ public class DroneNPC : MonoBehaviour
         Vector3 desiredDirection = toTarget.normalized;
         currentMoveSpeed = speed;
 
-        Vector3 steeredDirection = desiredDirection;
-
-        if (enableLocalAvoidance)
-        {
-            steeredDirection = GetAvoidedDirection(desiredDirection, targetPosition);
-        }
+        Vector3 steeredDirection = GetAvoidedDirection(desiredDirection, targetPosition);
 
         if (currentMoveDirection.sqrMagnitude < 0.001f)
         {
@@ -950,26 +561,18 @@ public class DroneNPC : MonoBehaviour
         Vector3[] candidateDirections =
         {
             desiredDirection,
-
             yawRightSmall.normalized,
             yawLeftSmall.normalized,
-
             yawRightWide.normalized,
             yawLeftWide.normalized,
-
             (desiredDirection + Vector3.up * upwardAvoidWeight).normalized,
-
             (desiredDirection + right * obstacleAvoidWeight).normalized,
             (desiredDirection + left * obstacleAvoidWeight).normalized,
-
             (desiredDirection + right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection + left * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
-
             (desiredDirection - Vector3.up * 0.35f).normalized,
-
             (desiredDirection + right * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
             (desiredDirection + left * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
-
             lastAvoidDirection
         };
 
@@ -1003,26 +606,17 @@ public class DroneNPC : MonoBehaviour
             float targetScore = Vector3.Dot(candidate, toTarget);
             float smoothScore = Vector3.Dot(candidate, currentDir);
 
-            float repulsionScore = 0f;
+            float repulsionScore = repulsionDir.sqrMagnitude > 0.001f
+                ? Vector3.Dot(candidate, repulsionDir)
+                : 0f;
 
-            if (repulsionDir.sqrMagnitude > 0.001f)
-            {
-                repulsionScore = Vector3.Dot(candidate, repulsionDir);
-            }
+            float dynamicAvoidScore = dynamicAvoidDir.sqrMagnitude > 0.001f
+                ? Vector3.Dot(candidate, dynamicAvoidDir)
+                : 0f;
 
-            float dynamicAvoidScore = 0f;
-
-            if (dynamicAvoidDir.sqrMagnitude > 0.001f)
-            {
-                dynamicAvoidScore = Vector3.Dot(candidate, dynamicAvoidDir);
-            }
-
-            float stuckBonus = 0f;
-
-            if (isStuck && candidate.y > 0f)
-            {
-                stuckBonus = stuckUpwardEscapeWeight;
-            }
+            float stuckBonus = isStuck && candidate.y > 0f
+                ? stuckUpwardEscapeWeight
+                : 0f;
 
             float heightPenalty = 0f;
 
@@ -1139,19 +733,13 @@ public class DroneNPC : MonoBehaviour
             float targetScore = Vector3.Dot(candidate.normalized, toTarget);
             float clearanceScore = clearDistance / candidateCheckDistance;
 
-            float dynamicScore = 0f;
+            float dynamicScore = dynamicAvoidDir.sqrMagnitude > 0.001f
+                ? Vector3.Dot(candidate.normalized, dynamicAvoidDir)
+                : 0f;
 
-            if (dynamicAvoidDir.sqrMagnitude > 0.001f)
-            {
-                dynamicScore = Vector3.Dot(candidate.normalized, dynamicAvoidDir);
-            }
-
-            float stuckBonus = 0f;
-
-            if (isStuck && candidate.y > 0f)
-            {
-                stuckBonus = stuckUpwardEscapeWeight;
-            }
+            float stuckBonus = isStuck && candidate.y > 0f
+                ? stuckUpwardEscapeWeight
+                : 0f;
 
             float score =
                 targetScore * 1.2f +
@@ -1171,12 +759,7 @@ public class DroneNPC : MonoBehaviour
 
     Vector3 GetDynamicObstacleAvoidance(Vector3 desiredDirection)
     {
-        if (!enableDynamicObstacleAvoidance)
-        {
-            return Vector3.zero;
-        }
-
-        if (dynamicObstacleLayer.value == 0)
+        if (!enableDynamicObstacleAvoidance || dynamicObstacleLayer.value == 0)
         {
             return Vector3.zero;
         }
@@ -1194,16 +777,9 @@ public class DroneNPC : MonoBehaviour
             return Vector3.zero;
         }
 
-        Vector3 droneVelocity;
-
-        if (currentMoveDirection.sqrMagnitude > 0.001f)
-        {
-            droneVelocity = currentMoveDirection.normalized * currentMoveSpeed;
-        }
-        else
-        {
-            droneVelocity = desiredDirection.normalized * currentMoveSpeed;
-        }
+        Vector3 droneVelocity = currentMoveDirection.sqrMagnitude > 0.001f
+            ? currentMoveDirection.normalized * currentMoveSpeed
+            : desiredDirection.normalized * currentMoveSpeed;
 
         Vector3 totalAvoidance = Vector3.zero;
 
@@ -1229,13 +805,7 @@ public class DroneNPC : MonoBehaviour
             }
 
             Vector3 obstaclePosition = obstacle.bounds.center;
-
-            Vector3 obstacleVelocity = Vector3.zero;
-
-            if (obstacleRb != null)
-            {
-                obstacleVelocity = obstacleRb.velocity;
-            }
+            Vector3 obstacleVelocity = obstacleRb != null ? obstacleRb.velocity : Vector3.zero;
 
             Vector3 relativePosition = obstaclePosition - transform.position;
             Vector3 relativeVelocity = obstacleVelocity - droneVelocity;
@@ -1411,12 +981,7 @@ public class DroneNPC : MonoBehaviour
 
     bool IsDirectionBlocked(Vector3 direction, float distance)
     {
-        if (obstacleLayer.value == 0)
-        {
-            return false;
-        }
-
-        if (direction.sqrMagnitude < 0.001f)
+        if (obstacleLayer.value == 0 || direction.sqrMagnitude < 0.001f)
         {
             return false;
         }
@@ -1546,23 +1111,23 @@ public class DroneNPC : MonoBehaviour
         }
     }
 
-    void CheckCollisionExplosion()
+    void CheckDestroyByCollisionSphere()
     {
-        if (explodeOnCollisionLayer.value == 0)
+        if (destroyOnCollisionLayer.value == 0)
         {
             return;
         }
 
-        bool touchingExplosionLayer = Physics.CheckSphere(
+        bool touchingDestroyLayer = Physics.CheckSphere(
             transform.position,
-            collisionExplodeRadius,
-            explodeOnCollisionLayer,
+            obstacleAvoidRadius,
+            destroyOnCollisionLayer,
             QueryTriggerInteraction.Ignore
         );
 
-        if (touchingExplosionLayer)
+        if (touchingDestroyLayer)
         {
-            Explode();
+            DestroyByDamage();
         }
     }
 
@@ -1577,25 +1142,108 @@ public class DroneNPC : MonoBehaviour
 
         isStuck =
             movedDistance < stuckMoveThreshold &&
-            state != DroneState.Exploding;
+            state != Drone2State.Finished &&
+            !isFinishing;
 
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
     }
 
+    public void TakeDamage(int damage = 1)
+    {
+        if (isFinishing || state == Drone2State.Finished)
+        {
+            return;
+        }
+
+        currentHealth -= damage;
+
+        if (currentHealth <= 0)
+        {
+            DestroyByDamage();
+        }
+    }
+
+    public void DestroyByDamage()
+    {
+        if (isFinishing)
+        {
+            return;
+        }
+
+        isFinishing = true;
+        state = Drone2State.Finished;
+
+        DropCargo();
+
+        if (destroyedEffectPrefab != null)
+        {
+            Instantiate(destroyedEffectPrefab, transform.position, Quaternion.identity);
+        }
+
+        DroneAlertSystem.BroadcastDroneNPC2Destroyed(
+            transform.position,
+            alertDuration,
+            alertDetectRange
+        );
+
+        if (manager != null)
+        {
+            manager.NotifyDroneFinished(this, originSpawnIndex, true);
+        }
+        else
+        {
+            gameObject.SetActive(false);
+        }
+    }
+
+    void FinishNormally()
+    {
+        if (isFinishing)
+        {
+            return;
+        }
+
+        isFinishing = true;
+        state = Drone2State.Finished;
+
+        ClearCargo();
+
+        if (manager != null)
+        {
+            manager.NotifyDroneFinished(this, originSpawnIndex, false);
+        }
+        else
+        {
+            gameObject.SetActive(false);
+        }
+    }
+
     void OnCollisionEnter(Collision collision)
     {
-        if (IsInLayerMask(collision.gameObject.layer, explodeOnCollisionLayer))
+        if (IsInLayerMask(collision.gameObject.layer, damageLayer))
         {
-            Explode();
+            TakeDamage(1);
+            return;
+        }
+
+        if (IsInLayerMask(collision.gameObject.layer, destroyOnCollisionLayer))
+        {
+            DestroyByDamage();
         }
     }
 
     void OnTriggerEnter(Collider other)
     {
-        if (IsInLayerMask(other.gameObject.layer, explodeOnCollisionLayer))
+        if (IsInLayerMask(other.gameObject.layer, damageLayer))
         {
-            Explode();
+            TakeDamage(1);
+            return;
+        }
+
+        if (IsInLayerMask(other.gameObject.layer, destroyOnCollisionLayer))
+        {
+            DestroyByDamage();
         }
     }
 
@@ -1604,47 +1252,21 @@ public class DroneNPC : MonoBehaviour
         return (mask.value & (1 << layer)) != 0;
     }
 
-    void Explode()
-    {
-        if (state == DroneState.Exploding)
-        {
-            return;
-        }
-
-        state = DroneState.Exploding;
-
-        if (explosionPrefab != null)
-        {
-            Instantiate(explosionPrefab, transform.position, Quaternion.identity);
-        }
-
-        if (manager != null)
-        {
-            manager.NotifyDroneExploded(this, originSpawnIndex);
-        }
-        else
-        {
-            gameObject.SetActive(false);
-        }
-    }
-
     public void PrepareForPool()
     {
-        state = DroneState.Exploding;
+        ClearCargo();
 
-        currentNavigationWaypoint = null;
-        currentPatrolWaypoint = null;
+        isFinishing = false;
+        state = Drone2State.Finished;
 
-        outOfRangeTimer = 0f;
+        destinationWaypoint = null;
+        currentMoveDirection = transform.forward;
+        currentMoveSpeed = 0f;
+        currentHealth = maxHealth;
+
         isStuck = false;
-
-        isAlerted = false;
-        alertTimer = 0f;
-        currentAlertDetectRange = 0f;
-
         lastAvoidDirection = Vector3.zero;
         avoidanceMemoryTimer = 0f;
-        currentMoveSpeed = 0f;
 
         if (rb != null)
         {
@@ -1655,20 +1277,8 @@ public class DroneNPC : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, detectRange);
-
-        Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, giveUpRange);
-
-        Gizmos.color = Color.magenta;
-        Gizmos.DrawWireSphere(transform.position, explodeRange);
-
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, obstacleAvoidRadius);
-
-        Gizmos.color = Color.white;
-        Gizmos.DrawWireSphere(transform.position, collisionExplodeRadius);
 
         Gizmos.color = Color.gray;
         Gizmos.DrawWireSphere(transform.position, emergencyAvoidRadius);
@@ -1676,18 +1286,11 @@ public class DroneNPC : MonoBehaviour
         Gizmos.color = Color.black;
         Gizmos.DrawWireSphere(transform.position, dynamicObstacleDetectRadius);
 
-        if (currentPatrolWaypoint != null)
-        {
-            Gizmos.color = Color.blue;
-            Gizmos.DrawLine(transform.position, currentPatrolWaypoint.position);
-            Gizmos.DrawWireSphere(currentPatrolWaypoint.position, 0.6f);
-        }
-
-        if (currentNavigationWaypoint != null)
+        if (destinationWaypoint != null)
         {
             Gizmos.color = Color.green;
-            Gizmos.DrawLine(transform.position, currentNavigationWaypoint.position);
-            Gizmos.DrawWireSphere(currentNavigationWaypoint.position, 0.6f);
+            Gizmos.DrawLine(transform.position, destinationWaypoint.position);
+            Gizmos.DrawWireSphere(destinationWaypoint.position, 0.6f);
         }
     }
 }

@@ -5,73 +5,45 @@ public class WallGrabber : MonoBehaviour
 {
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
-
-    [Tooltip("玩家身上的 CapsuleCollider，用來防止爬牆 / 上屋頂時穿模")]
     public CapsuleCollider playerCapsule;
-
-    [Tooltip("實際手部 / 控制器 Transform，用來做 CheckSphere")]
     public Transform handTransform;
-
-    [Tooltip("OVR CameraRig 裡的 TrackingSpace")]
     public Transform trackingSpaceTransform;
-
-    [Tooltip("頭盔攝影機，例如 CenterEyeAnchor。用來決定爬上屋頂的前方")]
     public Transform headCamera;
 
     [Header("互斥系統")]
-    [Tooltip("把左右手的 WebSwinger 都拖進來。正在擺盪時抓牆會暫停蛛絲")]
     public WebSwinger[] webSwingers;
 
     [Header("抓牆設定")]
     public LayerMask wallLayer;
     public float handDetectRadius = 0.12f;
-
     public OVRInput.Controller controller = OVRInput.Controller.RTouch;
     public OVRInput.Button grabButton = OVRInput.Button.PrimaryHandTrigger;
 
     [Header("玩家碰撞設定")]
-    [Tooltip("玩家移動時不能穿過的 Layer。通常是 Building / Wall / Roof / Ground。不要包含 Player / Hand")]
     public LayerMask collisionLayer;
 
-    public float skinWidth = 0.05f;
-    public float maxClimbStepPerFixedUpdate = 0.18f;
+    [Header("頭頂阻擋偵測 (屋簷防卡)")]
+    public float headBlockCheckRadius = 0.16f;
+    public float headBlockCheckDistance = 0.22f;
+    public float overheadNormalThreshold = 0.35f;
+
+    [Header("抓取安全限制 (防 Air-Climb)")]
+    public float maxGrabReach = 1.05f;
+    public float normalRefreshSpeed = 12f;
+
+    [Header("物理牽引式爬牆")]
+    public float climbVelocityMultiplier = 0.85f;
+    public float maxClimbVelocity = 4.5f;
+    public float maxClimbVelocityChange = 0.9f;
+    public float holdDamping = 10f;
+    public float outwardAssistVelocity = 0.35f;
+    public float upwardAssistThreshold = 0.03f;
 
     [Header("攀爬與甩動設定")]
-    public float throwMultiplier = 1.2f;
-    public float maxThrowSpeed = 8f;
-
-    [Header("自動爬上一般牆頂")]
-    public bool enableAutoClimbOver = true;
-
-    [Tooltip("可站立表面，例如 Roof / Ground / Building")]
-    public LayerMask walkableLayer;
-
-    [Tooltip("從手的前方多少距離開始往下找屋頂")]
-    public float ledgeForwardProbe = 0.55f;
-
-    [Tooltip("從手的上方多少高度開始往下找屋頂")]
-    public float ledgeUpProbe = 0.35f;
-
-    [Tooltip("往下找屋頂的距離")]
-    public float ledgeDownProbe = 1.2f;
-
-    [Tooltip("找屋頂時的 SphereCast 半徑。比 Raycast 穩")]
-    public float ledgeProbeRadius = 0.18f;
-
-    [Tooltip("成功爬上屋頂後，往前推一點，避免卡在邊緣")]
-    public float climbForwardNudge = 0.45f;
-
-    [Tooltip("玩家腳底離屋頂表面的安全高度")]
-    public float climbUpClearance = 0.06f;
-
-    [Tooltip("屋頂 / 可站立表面的最大角度")]
-    public float maxWalkableSurfaceAngle = 60f;
-
-    [Tooltip("爬上屋頂後的水平速度")]
-    public float climbOverExitSpeed = 1.2f;
-
-    [Tooltip("避免連續觸發 climb over")]
-    public float climbOverCooldown = 0.35f;
+    public float throwMultiplier = 1.1f;
+    public float maxThrowSpeed = 7.0f;
+    public float minThrowSpeed = 0.3f;
+    public float releaseVelocityBlend = 0.65f;
 
     [Header("震動")]
     public float grabVibrationFrequency = 0.1f;
@@ -82,15 +54,13 @@ public class WallGrabber : MonoBehaviour
     private bool isGrabbing = false;
 
     private Vector3 previousHandLocalPos;
-    private float lastClimbOverTime = -999f;
+    private Vector3 grabbedWallNormal = Vector3.zero;
+    private Vector3 grabWorldPoint; 
 
     private static WallGrabber activeGrabber;
     private static readonly List<WallGrabber> grabbingHands = new List<WallGrabber>();
 
-    public static bool IsGrabbing
-    {
-        get { return grabbingHands.Count > 0; }
-    }
+    public static bool IsGrabbing => grabbingHands.Count > 0;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStatics()
@@ -110,9 +80,7 @@ public class WallGrabber : MonoBehaviour
     void Update()
     {
         if (playerRigidbody == null || handTransform == null)
-        {
             return;
-        }
 
         isTouchingWall = Physics.CheckSphere(
             handTransform.position,
@@ -129,7 +97,7 @@ public class WallGrabber : MonoBehaviour
 
         if (isGrabbing && OVRInput.GetUp(grabButton, controller))
         {
-            ReleaseWall(true);
+            ReleaseWall(true); // 正常放開才給予拋物推力
         }
     }
 
@@ -143,9 +111,16 @@ public class WallGrabber : MonoBehaviour
 
     void GrabWall()
     {
-        if (isGrabbing)
+        if (isGrabbing) return;
+
+        if (TryGetWallContact(out grabbedWallNormal, out Vector3 contactPoint))
         {
-            return;
+            grabWorldPoint = contactPoint;
+        }
+        else
+        {
+            grabbedWallNormal = -GetFlatForward();
+            grabWorldPoint = handTransform.position; 
         }
 
         if (webSwingers != null)
@@ -158,8 +133,6 @@ public class WallGrabber : MonoBehaviour
                 }
             }
         }
-
-        Debug.Log("Grab wall: " + gameObject.name);
 
         isGrabbing = true;
 
@@ -183,176 +156,231 @@ public class WallGrabber : MonoBehaviour
 
     void MovePlayerOnWall()
     {
-        Vector3 currentHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
+        // 防呆：超過抓取距離直接斷開，且不給予拋出動能，防止爆衝
+        if (Vector3.Distance(handTransform.position, grabWorldPoint) > maxGrabReach)
+        {
+            ReleaseWall(false);
+            return;
+        }
 
+        if (TryGetWallContact(out Vector3 refreshedNormal, out _))
+        {
+            grabbedWallNormal = Vector3.Slerp(
+                grabbedWallNormal,
+                refreshedNormal,
+                normalRefreshSpeed * Time.fixedDeltaTime
+            );
+        }
+
+        Vector3 currentHandLocalPos = OVRInput.GetLocalControllerPosition(controller);
         Vector3 localDelta = currentHandLocalPos - previousHandLocalPos;
         Vector3 worldDelta = LocalDirectionToWorld(localDelta);
 
         Vector3 desiredMove = -worldDelta;
 
-        if (desiredMove.magnitude > maxClimbStepPerFixedUpdate)
+        if (desiredMove.sqrMagnitude < 0.000001f)
         {
-            desiredMove = desiredMove.normalized * maxClimbStepPerFixedUpdate;
+            Vector3 dampedVelocity = Vector3.MoveTowards(
+                playerRigidbody.velocity,
+                Vector3.zero,
+                holdDamping * Time.fixedDeltaTime
+            );
+
+            playerRigidbody.velocity = dampedVelocity;
+            previousHandLocalPos = currentHandLocalPos;
+            return;
         }
 
-        // 一般牆面：照常用手拉來爬
-        SafeMovePlayer(desiredMove);
+        Vector3 targetVelocity = desiredMove / Time.fixedDeltaTime;
+        targetVelocity *= climbVelocityMultiplier;
 
-        // 一般牆頂：偵測前方屋頂平面，成功就自動爬上去
-        if (enableAutoClimbOver)
+        if (targetVelocity.magnitude > maxClimbVelocity)
         {
-            TryAutoClimbOverLedge();
+            targetVelocity = targetVelocity.normalized * maxClimbVelocity;
         }
+
+        bool wantsToMoveUp = desiredMove.y > upwardAssistThreshold;
+
+        if (wantsToMoveUp)
+        {
+            bool blockedAbove = IsHeadBlockedAbove();
+
+            if (blockedAbove)
+            {
+                Vector3 outward = Vector3.ProjectOnPlane(grabbedWallNormal, Vector3.up);
+
+                if (outward.sqrMagnitude > 0.001f)
+                {
+                    outward.Normalize();
+                    targetVelocity += outward * outwardAssistVelocity;
+                }
+            }
+        }
+
+        Vector3 velocityChange = targetVelocity - playerRigidbody.velocity;
+
+        if (velocityChange.magnitude > maxClimbVelocityChange)
+        {
+            velocityChange = velocityChange.normalized * maxClimbVelocityChange;
+        }
+
+        playerRigidbody.AddForce(velocityChange, ForceMode.VelocityChange);
 
         previousHandLocalPos = currentHandLocalPos;
     }
 
-    bool TryAutoClimbOverLedge()
+    bool IsHeadBlockedAbove()
     {
-        if (Time.time - lastClimbOverTime < climbOverCooldown)
-        {
-            return false;
-        }
-
-        Vector3 forward = GetFlatForward();
-
-        if (forward.sqrMagnitude < 0.001f)
-        {
-            return false;
-        }
-
-        Vector3 probeOrigin =
-            handTransform.position +
-            forward * ledgeForwardProbe +
-            Vector3.up * ledgeUpProbe;
-
-        Debug.DrawRay(
-            probeOrigin,
-            Vector3.down * ledgeDownProbe,
-            Color.yellow,
-            0.1f
-        );
-
-        if (!Physics.SphereCast(
-            probeOrigin,
-            ledgeProbeRadius,
-            Vector3.down,
-            out RaycastHit hit,
-            ledgeDownProbe,
-            walkableLayer,
-            QueryTriggerInteraction.Ignore))
-        {
-            return false;
-        }
-
-        float surfaceAngle = Vector3.Angle(hit.normal, Vector3.up);
-
-        if (surfaceAngle > maxWalkableSurfaceAngle)
-        {
-            return false;
-        }
-
-        Vector3 targetPosition = CalculateStandingPositionOnSurface(hit.point, forward);
-
-        if (!IsCapsuleClearAt(targetPosition))
-        {
-            Debug.Log("Auto climb blocked: no room for player capsule");
-            return false;
-        }
-
-        lastClimbOverTime = Time.time;
-
-        playerRigidbody.MovePosition(targetPosition);
-        playerRigidbody.velocity = forward * climbOverExitSpeed;
-        playerRigidbody.angularVelocity = Vector3.zero;
-
-        Debug.Log("Auto climb over ledge onto: " + hit.collider.name);
-
-        ReleaseWall(false);
-        return true;
-    }
-
-    Vector3 CalculateStandingPositionOnSurface(Vector3 surfacePoint, Vector3 forward)
-    {
-        if (playerCapsule == null)
-        {
-            return playerRigidbody.position +
-                   Vector3.up * 0.6f +
-                   forward * climbForwardNudge;
-        }
+        if (playerCapsule == null) return false;
 
         GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius);
 
-        float currentBottomY = Mathf.Min(p1.y, p2.y) - radius;
-        float targetBottomY = surfacePoint.y + climbUpClearance;
+        Vector3 up = Vector3.up;
+        Vector3 headSphereCenter = p1;
 
-        float deltaY = targetBottomY - currentBottomY;
+        float checkRadius = Mathf.Min(headBlockCheckRadius, radius * 0.65f);
+        checkRadius = Mathf.Max(0.04f, checkRadius);
 
-        return playerRigidbody.position +
-               Vector3.up * deltaY +
-               forward * climbForwardNudge;
-    }
+        Vector3 overlapCenter = headSphereCenter + up * 0.03f;
 
-    void SafeMovePlayer(Vector3 move)
-    {
-        if (move.sqrMagnitude < 0.000001f)
-        {
-            return;
-        }
-
-        if (playerCapsule == null)
-        {
-            playerRigidbody.MovePosition(playerRigidbody.position + move);
-            return;
-        }
-
-        GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius);
-
-        Vector3 direction = move.normalized;
-        float distance = move.magnitude;
-
-        float castRadius = Mathf.Max(0.01f, radius - 0.02f);
-
-        if (Physics.CapsuleCast(
-            p1,
-            p2,
-            castRadius,
-            direction,
-            out RaycastHit hit,
-            distance + skinWidth,
-            collisionLayer,
-            QueryTriggerInteraction.Ignore))
-        {
-            float safeDistance = Mathf.Max(0f, hit.distance - skinWidth);
-            playerRigidbody.MovePosition(playerRigidbody.position + direction * safeDistance);
-        }
-        else
-        {
-            playerRigidbody.MovePosition(playerRigidbody.position + move);
-        }
-    }
-
-    bool IsCapsuleClearAt(Vector3 targetRootPosition)
-    {
-        if (playerCapsule == null)
-        {
-            return true;
-        }
-
-        GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius);
-
-        Vector3 offset = targetRootPosition - playerRigidbody.position;
-        float checkRadius = Mathf.Max(0.01f, radius - 0.03f);
-
-        bool blocked = Physics.CheckCapsule(
-            p1 + offset,
-            p2 + offset,
+        Collider[] overlapped = Physics.OverlapSphere(
+            overlapCenter,
             checkRadius,
             collisionLayer,
             QueryTriggerInteraction.Ignore
         );
 
-        return !blocked;
+        foreach (Collider col in overlapped)
+        {
+            if (IsOverheadCollider(col, overlapCenter, checkRadius))
+            {
+                return true;
+            }
+        }
+
+        RaycastHit[] hits = Physics.SphereCastAll(
+            headSphereCenter,
+            checkRadius,
+            up,
+            headBlockCheckDistance,
+            collisionLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (hits == null || hits.Length == 0) return false;
+
+        foreach (RaycastHit hit in hits)
+        {
+            float overheadDot = Vector3.Dot(hit.normal, Vector3.down);
+
+            if (overheadDot >= overheadNormalThreshold)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool IsOverheadCollider(Collider col, Vector3 sphereCenter, float checkRadius)
+    {
+        Vector3 closestPoint = col.ClosestPoint(sphereCenter);
+        Vector3 fromSurfaceToSphere = sphereCenter - closestPoint;
+
+        if (fromSurfaceToSphere.sqrMagnitude > 0.0001f)
+        {
+            float overheadDot = Vector3.Dot(fromSurfaceToSphere.normalized, Vector3.down);
+            return overheadDot >= overheadNormalThreshold;
+        }
+
+        // 改用 bounds.min.y 來判定底部是否接近頭頂，避免大樓高牆誤判
+        float colliderBottomY = col.bounds.min.y;
+        float allowedPenetration = checkRadius * 0.75f;
+
+        return colliderBottomY >= sphereCenter.y - allowedPenetration;
+    }
+
+    bool TryGetWallContact(out Vector3 normal, out Vector3 point)
+    {
+        normal = Vector3.zero;
+        point = handTransform.position;
+
+        Vector3 bodyCenter = playerRigidbody.position;
+
+        if (headCamera != null)
+        {
+            bodyCenter = headCamera.position;
+        }
+        else if (playerCapsule != null)
+        {
+            bodyCenter = playerCapsule.transform.TransformPoint(playerCapsule.center);
+        }
+
+        Vector3 toHand = handTransform.position - bodyCenter;
+
+        if (toHand.sqrMagnitude > 0.0001f)
+        {
+            Vector3 dir = toHand.normalized;
+            float dist = toHand.magnitude + handDetectRadius + 0.4f;
+
+            if (Physics.SphereCast(
+                bodyCenter,
+                0.05f,
+                dir,
+                out RaycastHit hit,
+                dist,
+                wallLayer,
+                QueryTriggerInteraction.Ignore))
+            {
+                Vector3 n = hit.normal;
+                n.y = 0f;
+
+                if (n.sqrMagnitude > 0.001f)
+                {
+                    normal = n.normalized;
+                    point = hit.point;
+                    return true;
+                }
+            }
+        }
+
+        Collider[] hits = Physics.OverlapSphere(
+            handTransform.position,
+            handDetectRadius,
+            wallLayer,
+            QueryTriggerInteraction.Ignore
+        );
+
+        if (hits == null || hits.Length == 0) return false;
+
+        Vector3 bestNormal = Vector3.zero;
+        Vector3 bestPoint = handTransform.position;
+        float bestDist = float.MaxValue;
+
+        foreach (Collider col in hits)
+        {
+            Vector3 p = col.ClosestPoint(handTransform.position);
+            Vector3 n = handTransform.position - p;
+
+            if (n.sqrMagnitude < 0.0001f) continue;
+
+            float d = n.sqrMagnitude;
+
+            if (d < bestDist)
+            {
+                bestDist = d;
+                bestNormal = n.normalized;
+                bestPoint = p;
+            }
+        }
+
+        bestNormal.y = 0f;
+
+        if (bestNormal.sqrMagnitude < 0.001f) return false;
+
+        normal = bestNormal.normalized;
+        point = bestPoint;
+        return true;
     }
 
     void GetCapsuleWorldPoints(out Vector3 p1, out Vector3 p2, out float radius)
@@ -365,7 +393,6 @@ public class WallGrabber : MonoBehaviour
         float height = Mathf.Max(playerCapsule.height * scaleY, radius * 2f);
 
         Vector3 center = playerCapsule.transform.TransformPoint(playerCapsule.center);
-
         float halfHeight = Mathf.Max(0f, height * 0.5f - radius);
 
         p1 = center + Vector3.up * halfHeight;
@@ -410,12 +437,7 @@ public class WallGrabber : MonoBehaviour
 
     void ReleaseWall(bool allowThrow)
     {
-        if (!isGrabbing)
-        {
-            return;
-        }
-
-        Debug.Log("Release wall: " + gameObject.name);
+        if (!isGrabbing) return;
 
         bool wasActive = activeGrabber == this;
 
@@ -447,12 +469,20 @@ public class WallGrabber : MonoBehaviour
 
             Vector3 throwVelocity = -worldHandVelocity * throwMultiplier;
 
-            if (throwVelocity.magnitude > maxThrowSpeed)
+            if (throwVelocity.magnitude < minThrowSpeed)
+            {
+                throwVelocity = Vector3.zero;
+            }
+            else if (throwVelocity.magnitude > maxThrowSpeed)
             {
                 throwVelocity = throwVelocity.normalized * maxThrowSpeed;
             }
 
-            playerRigidbody.velocity = throwVelocity;
+            playerRigidbody.velocity = Vector3.Lerp(
+                playerRigidbody.velocity,
+                throwVelocity,
+                releaseVelocityBlend
+            );
         }
     }
 
@@ -464,12 +494,7 @@ public class WallGrabber : MonoBehaviour
 
     void StartGrabVibration()
     {
-        OVRInput.SetControllerVibration(
-            grabVibrationFrequency,
-            grabVibrationAmplitude,
-            controller
-        );
-
+        OVRInput.SetControllerVibration(grabVibrationFrequency, grabVibrationAmplitude, controller);
         CancelInvoke(nameof(StopVibration));
         Invoke(nameof(StopVibration), grabVibrationDuration);
     }
@@ -481,29 +506,8 @@ public class WallGrabber : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        if (handTransform == null)
-        {
-            return;
-        }
-
+        if (handTransform == null) return;
         Gizmos.color = Color.green;
         Gizmos.DrawWireSphere(handTransform.position, handDetectRadius);
-
-        if (enableAutoClimbOver)
-        {
-            Vector3 forward = GetFlatForward();
-
-            Vector3 probeOrigin =
-                handTransform.position +
-                forward * ledgeForwardProbe +
-                Vector3.up * ledgeUpProbe;
-
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(probeOrigin, ledgeProbeRadius);
-            Gizmos.DrawLine(
-                probeOrigin,
-                probeOrigin + Vector3.down * ledgeDownProbe
-            );
-        }
     }
 }
