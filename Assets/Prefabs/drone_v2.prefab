@@ -105,6 +105,7 @@ MonoBehaviour:
   playerTargetOffset: {x: 0, y: 1, z: 0}
   alertChaseSpeedMultiplier: 1.25
   alertGiveUpExtraRange: 40
+  forcedHunterSpeedMultiplier: 1.35
   explodeRange: 1.3
   explodeOnCollisionLayer:
     serializedVersion: 2
@@ -112,7 +113,7 @@ MonoBehaviour:
   collisionExplodeRadius: 0.45
   explosionPrefab: {fileID: 1845955007268882, guid: 67a684e320da6e7439421a07e3fa265c,
     type: 3}
-  patrolMode: 0
+  patrolMode: 1
   waypointReachDistance: 1.5
   repathInterval: 0.25
   patrolRepathInterval: 2
@@ -126,7 +127,7 @@ MonoBehaviour:
   directChaseWhenPathClear: 1
   randomizePatrolDirection: 1
   minPatrolStep: 1
-  maxPatrolStep: 2
+  maxPatrolStep: 3
   enableLocalAvoidance: 1
   obstacleDetectDistance: 7
   obstacleAvoidRadius: 0.8

@@ -2082,8 +2082,11 @@ GameObject:
   m_Component:
   - component: {fileID: 1908826905072604843}
   - component: {fileID: 9127023366833600185}
+  - component: {fileID: 8214641030204204084}
+  - component: {fileID: -8380854852708241596}
+  - component: {fileID: -5558572051827488883}
   m_Layer: 0
-  m_Name: Drone
+  m_Name: drone_v3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2203,6 +2206,133 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
+--- !u!54 &8214641030204204084
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1240270386759715857}
+  serializedVersion: 4
+  m_Mass: 1
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 1
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 3
+--- !u!65 &-8380854852708241596
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1240270386759715857}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 2, y: 1, z: 2}
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &-5558572051827488883
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1240270386759715857}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81461c9fb94bb4b03b83579a82db5fac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cargoPrefabs:
+  - {fileID: 1906675254726771438, guid: 75b7c21ff079a4bfebb693d868119b2c, type: 3}
+  cargoAnchor: {fileID: 8289851030408368966}
+  addRigidbodyToDroppedCargo: 1
+  cargoDropDownVelocity: 1.5
+  moveSpeed: 5
+  rotateSpeed: 8
+  waypointReachDistance: 1.3
+  minDestinationDistanceFromSpawn: 25
+  playerCamera: {fileID: 0}
+  visibilityBlockerLayer:
+    serializedVersion: 2
+    m_Bits: 64
+  disappearOnlyWhenHiddenFromPlayer: 1
+  minDisappearDistance: 15
+  viewportPadding: 0.1
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 72
+  obstacleDetectDistance: 8
+  obstacleAvoidRadius: 0.9
+  obstacleAvoidWeight: 2
+  upwardAvoidWeight: 1.2
+  candidateCheckDistance: 5
+  steeringSmooth: 6.5
+  useAdvancedLocalAvoidance: 1
+  sideProbeAngle: 35
+  wideProbeAngle: 70
+  targetDirectionWeight: 1.2
+  clearanceWeight: 2.4
+  smoothDirectionWeight: 0.7
+  emergencyAvoidRadius: 1.5
+  emergencyAvoidWeight: 2.5
+  avoidanceMemoryDuration: 0.45
+  enableDynamicObstacleAvoidance: 1
+  dynamicObstacleLayer:
+    serializedVersion: 2
+    m_Bits: 256
+  dynamicObstacleDetectRadius: 45
+  dynamicPredictionTime: 1.2
+  dynamicThreatRadius: 3.5
+  dynamicAvoidWeight: 10
+  dynamicUpBias: 0.3
+  dynamicMinRelativeSpeed: 1
+  allowBackwardDynamicDodge: 1
+  allowDownwardDynamicDodge: 1
+  dynamicBackwardWeight: 0.7
+  dynamicDownwardWeight: 0.5
+  stuckCheckInterval: 0.5
+  stuckMoveThreshold: 0.25
+  stuckUpwardEscapeWeight: 2.5
+  damageLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  destroyOnCollisionLayer:
+    serializedVersion: 2
+    m_Bits: 256
+  maxHealth: 1
+  alertDuration: 8
+  alertDetectRange: 120
+  forcedHunterCountOnDestroyed: 2
+  chooseClosestHuntersToPlayer: 1
+  destroyedEffectPrefab: {fileID: 1845955007268882, guid: 67a684e320da6e7439421a07e3fa265c,
+    type: 3}
+  limitFlightHeight: 1
+  minFlightY: 399
+  maxFlightY: 1000
 --- !u!1 &1257738522975130394
 GameObject:
   m_ObjectHideFlags: 0
@@ -5129,7 +5259,7 @@ Transform:
   m_GameObject: {fileID: 2424381771627304510}
   serializedVersion: 2
   m_LocalRotation: {x: 1, y: 0, z: -0, w: 0.0000000754979}
-  m_LocalPosition: {x: -0, y: -0.54, z: 0}
+  m_LocalPosition: {x: -0, y: -0.59, z: 0}
   m_LocalScale: {x: 1100.0262, y: 1100.0264, z: 1100.0264}
   m_ConstrainProportionsScale: 0
   m_Children:

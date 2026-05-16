@@ -94,6 +94,13 @@ public class DroneNPC2 : MonoBehaviour
     public float alertDuration = 8f;
     public float alertDetectRange = 120f;
 
+    [Header("破壞後指定 DroneNPC 強制追擊")]
+    [Tooltip("DroneNPC2 被破壞後，要指定幾台 DroneNPC 進入 Forced Hunt")]
+    public int forcedHunterCountOnDestroyed = 2;
+
+    [Tooltip("true = 優先挑離玩家最近的 DroneNPC；false = 優先挑離 DroneNPC2 被破壞位置最近的 DroneNPC")]
+    public bool chooseClosestHuntersToPlayer = true;
+
     public GameObject destroyedEffectPrefab;
 
     [Header("高度限制，可選")]
@@ -1184,7 +1191,9 @@ public class DroneNPC2 : MonoBehaviour
         DroneAlertSystem.BroadcastDroneNPC2Destroyed(
             transform.position,
             alertDuration,
-            alertDetectRange
+            alertDetectRange,
+            forcedHunterCountOnDestroyed,
+            chooseClosestHuntersToPlayer
         );
 
         if (manager != null)
