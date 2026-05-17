@@ -4,23 +4,26 @@ using UnityEngine;
 
 public class DroneGameManager : MonoBehaviour
 {
-    [Header("無人機 Prefab")]
+    [Header("DroneNPC Prefab")]
     public DroneNPC dronePrefab;
 
     [Header("出生點 / Waypoints")]
     public Transform[] spawnPoints;
 
+    [Header("Waypoint Graph A*")]
+    public DroneWaypointGraph waypointGraph;
+
     [Header("場上數量")]
-    public int targetDroneCount = 3;
+    public int targetDroneCount = 4;
     public bool spawnOnStart = true;
     public float respawnDelay = 3f;
 
     [Header("Object Pool")]
-    public int initialPoolSize = 5;
+    public int initialPoolSize = 4;
     public bool allowPoolExpansion = true;
 
     [Header("生成規則")]
-    public bool allowDuplicateSpawnPoint = false;
+    public bool allowDuplicateSpawnPoint = true;
 
     private readonly List<DroneNPC> activeDrones = new List<DroneNPC>();
     private readonly Queue<DroneNPC> pooledDrones = new Queue<DroneNPC>();
@@ -28,18 +31,23 @@ public class DroneGameManager : MonoBehaviour
 
     private int pendingRespawnCount = 0;
 
-    public Transform[] Waypoints
-    {
-        get { return spawnPoints; }
-    }
-
     void Awake()
     {
+        if (waypointGraph != null && waypointGraph.waypoints == null)
+        {
+            waypointGraph.SetWaypoints(spawnPoints, true);
+        }
+
         PrewarmPool();
     }
 
     void Start()
     {
+        if (waypointGraph != null)
+        {
+            waypointGraph.SetWaypoints(spawnPoints, true);
+        }
+
         if (spawnOnStart)
         {
             FillDrones();
@@ -123,7 +131,8 @@ public class DroneGameManager : MonoBehaviour
             spawnPoint.position,
             spawnPoint.rotation,
             spawnIndex,
-            spawnPoints
+            spawnPoints,
+            waypointGraph
         );
 
         drone.gameObject.SetActive(true);
@@ -153,19 +162,21 @@ public class DroneGameManager : MonoBehaviour
 
     int GetRandomSpawnIndex()
     {
-        if (allowDuplicateSpawnPoint)
-        {
-            return Random.Range(0, spawnPoints.Length);
-        }
-
         List<int> candidates = new List<int>();
 
         for (int i = 0; i < spawnPoints.Length; i++)
         {
-            if (!usedSpawnIndices.Contains(i))
+            if (spawnPoints[i] == null)
             {
-                candidates.Add(i);
+                continue;
             }
+
+            if (!allowDuplicateSpawnPoint && usedSpawnIndices.Contains(i))
+            {
+                continue;
+            }
+
+            candidates.Add(i);
         }
 
         if (candidates.Count == 0)
@@ -191,14 +202,21 @@ public class DroneGameManager : MonoBehaviour
         }
 
         ReturnDroneToPool(drone);
+
         StartCoroutine(RespawnAfterDelay());
     }
 
     void ReturnDroneToPool(DroneNPC drone)
     {
+        if (drone == null)
+        {
+            return;
+        }
+
         drone.PrepareForPool();
         drone.gameObject.SetActive(false);
         drone.transform.SetParent(transform);
+
         pooledDrones.Enqueue(drone);
     }
 
@@ -215,42 +233,6 @@ public class DroneGameManager : MonoBehaviour
         if (activeDrones.Count < targetDroneCount)
         {
             SpawnOneDrone();
-        }
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        if (spawnPoints == null)
-        {
-            return;
-        }
-
-        Gizmos.color = Color.cyan;
-
-        foreach (Transform point in spawnPoints)
-        {
-            if (point != null)
-            {
-                Gizmos.DrawWireSphere(point.position, 0.4f);
-            }
-        }
-
-        Gizmos.color = Color.blue;
-
-        for (int i = 0; i < spawnPoints.Length; i++)
-        {
-            if (spawnPoints[i] == null)
-            {
-                continue;
-            }
-
-            for (int j = i + 1; j < spawnPoints.Length; j++)
-            {
-                if (spawnPoints[j] != null)
-                {
-                    Gizmos.DrawLine(spawnPoints[i].position, spawnPoints[j].position);
-                }
-            }
         }
     }
 }

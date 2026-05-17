@@ -486,6 +486,26 @@ public class WallGrabber : MonoBehaviour
         }
     }
 
+    public void ForceReleaseGrab(bool allowThrow)
+    {
+        ReleaseWall(allowThrow);
+    }
+
+    public static void ForceReleaseAll(bool allowThrow)
+    {
+        for (int i = grabbingHands.Count - 1; i >= 0; i--)
+        {
+            WallGrabber grabber = grabbingHands[i];
+
+            if (grabber != null)
+            {
+                grabber.ForceReleaseGrab(allowThrow);
+            }
+        }
+
+        activeGrabber = null;
+    }
+
     void OnDisable()
     {
         StopVibration();

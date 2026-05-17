@@ -12,47 +12,53 @@ public class DroneNPC2 : MonoBehaviour
     [Header("搬運物件設定")]
     public GameObject[] cargoPrefabs;
     public Transform cargoAnchor;
-
     public bool addRigidbodyToDroppedCargo = true;
     public float cargoDropDownVelocity = 1.5f;
 
     [Header("移動設定")]
-    public float moveSpeed = 5f;
-    public float rotateSpeed = 8f;
-    public float waypointReachDistance = 1.3f;
+    public float moveSpeed = 6f;
+    public float rotateSpeed = 10f;
+    public float waypointReachDistance = 2f;
+
+    [Header("Waypoint Graph A*")]
+    public DroneWaypointGraph waypointGraph;
+    public float pathNodeReachDistance = 2f;
+    public float pathRepathInterval = 3f;
+
+    private readonly List<Vector3> currentPath = new List<Vector3>();
+    private int currentPathIndex = 0;
+    private float nextRepathTime = 0f;
+    private int pathVariantSeed = 0;
 
     [Header("目的地限制")]
-    public float minDestinationDistanceFromSpawn = 25f;
+    public float minDestinationDistanceFromSpawn = 35f;
 
     [Header("玩家視野外消失")]
     public Camera playerCamera;
     public LayerMask visibilityBlockerLayer;
     public bool disappearOnlyWhenHiddenFromPlayer = true;
-    public float minDisappearDistance = 15f;
-    public float viewportPadding = 0.1f;
+    public float minDisappearDistance = 25f;
+    public float viewportPadding = 0.15f;
 
     [Header("避障設定")]
     public LayerMask obstacleLayer;
-    public float obstacleDetectDistance = 8f;
-    public float obstacleAvoidRadius = 0.9f;
-    public float obstacleAvoidWeight = 2f;
+    public float obstacleDetectDistance = 10f;
+    public float obstacleAvoidRadius = 1f;
+    public float obstacleAvoidWeight = 2.2f;
     public float upwardAvoidWeight = 1.2f;
-    public float candidateCheckDistance = 5f;
-    public float steeringSmooth = 6.5f;
+    public float candidateCheckDistance = 6f;
+    public float steeringSmooth = 10f;
 
     [Header("進階局部避障")]
     public bool useAdvancedLocalAvoidance = true;
-
     public float sideProbeAngle = 35f;
     public float wideProbeAngle = 70f;
-
     public float targetDirectionWeight = 1.2f;
-    public float clearanceWeight = 2.4f;
-    public float smoothDirectionWeight = 0.7f;
-
-    public float emergencyAvoidRadius = 1.5f;
-    public float emergencyAvoidWeight = 2.5f;
-    public float avoidanceMemoryDuration = 0.45f;
+    public float clearanceWeight = 2.8f;
+    public float smoothDirectionWeight = 1f;
+    public float emergencyAvoidRadius = 2.5f;
+    public float emergencyAvoidWeight = 3.5f;
+    public float avoidanceMemoryDuration = 0.6f;
 
     private Vector3 lastAvoidDirection = Vector3.zero;
     private float avoidanceMemoryTimer = 0f;
@@ -61,20 +67,19 @@ public class DroneNPC2 : MonoBehaviour
     [Header("動態障礙物閃避")]
     public bool enableDynamicObstacleAvoidance = true;
     public LayerMask dynamicObstacleLayer;
-    public float dynamicObstacleDetectRadius = 8f;
+    public float dynamicObstacleDetectRadius = 40f;
     public float dynamicPredictionTime = 1.2f;
-    public float dynamicThreatRadius = 2f;
-    public float dynamicAvoidWeight = 6f;
+    public float dynamicThreatRadius = 3.5f;
+    public float dynamicAvoidWeight = 9f;
     public float dynamicUpBias = 0.3f;
-    public float dynamicMinRelativeSpeed = 1f;
-
+    public float dynamicMinRelativeSpeed = 2f;
     public bool allowBackwardDynamicDodge = true;
     public bool allowDownwardDynamicDodge = true;
     public float dynamicBackwardWeight = 0.7f;
-    public float dynamicDownwardWeight = 0.5f;
+    public float dynamicDownwardWeight = 0.4f;
 
-    private float currentMoveSpeed = 0f;
     private readonly Collider[] dynamicObstacleHits = new Collider[32];
+    private float currentMoveSpeed = 0f;
 
     [Header("卡住脫困")]
     public float stuckCheckInterval = 0.5f;
@@ -88,24 +93,18 @@ public class DroneNPC2 : MonoBehaviour
     [Header("受破壞設定")]
     public LayerMask damageLayer;
     public LayerMask destroyOnCollisionLayer;
-
     public int maxHealth = 1;
-
-    public float alertDuration = 8f;
-    public float alertDetectRange = 120f;
-
-    [Header("破壞後指定 DroneNPC 強制追擊")]
-    [Tooltip("DroneNPC2 被破壞後，要指定幾台 DroneNPC 進入 Forced Hunt")]
-    public int forcedHunterCountOnDestroyed = 2;
-
-    [Tooltip("true = 優先挑離玩家最近的 DroneNPC；false = 優先挑離 DroneNPC2 被破壞位置最近的 DroneNPC")]
-    public bool chooseClosestHuntersToPlayer = true;
-
     public GameObject destroyedEffectPrefab;
+
+    [Header("破壞後警戒 / Forced Hunt")]
+    public float alertDuration = 10f;
+    public float alertDetectRange = 120f;
+    public int forcedHunterCountOnDestroyed = 2;
+    public bool chooseClosestHuntersToPlayer = true;
 
     [Header("高度限制，可選")]
     public bool limitFlightHeight = false;
-    public float minFlightY = 1.5f;
+    public float minFlightY = 2f;
     public float maxFlightY = 80f;
 
     private Drone2State state = Drone2State.MovingToDestination;
@@ -121,7 +120,6 @@ public class DroneNPC2 : MonoBehaviour
     private Transform destinationWaypoint;
 
     private Vector3 currentMoveDirection;
-
     private GameObject currentCargo;
 
     private int currentHealth;
@@ -146,7 +144,8 @@ public class DroneNPC2 : MonoBehaviour
         Vector3 spawnPosition,
         Quaternion spawnRotation,
         int spawnIndex,
-        Transform[] sharedWaypoints
+        Transform[] sharedWaypoints,
+        DroneWaypointGraph graph
     )
     {
         manager = owner;
@@ -154,6 +153,7 @@ public class DroneNPC2 : MonoBehaviour
         originRotation = spawnRotation;
         originSpawnIndex = spawnIndex;
         waypoints = sharedWaypoints;
+        waypointGraph = graph;
 
         transform.position = originPosition;
         transform.rotation = originRotation;
@@ -180,11 +180,15 @@ public class DroneNPC2 : MonoBehaviour
         lastStuckCheckTime = Time.time;
         isStuck = false;
 
+        ClearPath();
+
         ClearCargo();
         SpawnRandomCargo();
 
         destinationWaypoint = ChooseRandomDestinationNotSpawn();
+        BuildPathToDestination();
 
+        pathVariantSeed = Random.Range(0, 999999);
         hasBeenInitialized = true;
     }
 
@@ -240,12 +244,18 @@ public class DroneNPC2 : MonoBehaviour
         if (destinationWaypoint == null)
         {
             destinationWaypoint = ChooseRandomDestinationNotSpawn();
+            BuildPathToDestination();
 
             if (destinationWaypoint == null)
             {
                 FinishNormally();
                 return;
             }
+        }
+
+        if (isStuck || Time.time >= nextRepathTime)
+        {
+            BuildPathToDestination();
         }
 
         float distanceToDestination = Vector3.Distance(
@@ -262,6 +272,7 @@ public class DroneNPC2 : MonoBehaviour
             }
 
             destinationWaypoint = ChooseRandomDestinationNotSpawn();
+            BuildPathToDestination();
 
             if (destinationWaypoint == null)
             {
@@ -269,7 +280,81 @@ public class DroneNPC2 : MonoBehaviour
             }
         }
 
-        MoveTowards(destinationWaypoint.position, moveSpeed);
+        if (!FollowCurrentPath(moveSpeed))
+        {
+            MoveTowards(destinationWaypoint.position, moveSpeed);
+        }
+    }
+
+    void BuildPathToDestination()
+    {
+        ClearPath();
+
+        if (destinationWaypoint == null)
+        {
+            return;
+        }
+
+        if (waypointGraph == null)
+        {
+            currentPath.Add(destinationWaypoint.position);
+            currentPathIndex = 0;
+            return;
+        }
+
+        bool found = waypointGraph.TryFindPathPositions(
+            transform.position,
+            destinationWaypoint.position,
+            out List<Vector3> path,
+            pathVariantSeed,
+            false,
+            false
+        );
+
+        if (found)
+        {
+            currentPath.AddRange(path);
+            currentPathIndex = 0;
+        }
+        else
+        {
+            currentPath.Add(destinationWaypoint.position);
+            currentPathIndex = 0;
+        }
+
+        nextRepathTime = Time.time + pathRepathInterval + Random.Range(0f, 0.8f);
+        pathVariantSeed++;
+    }
+
+    bool FollowCurrentPath(float speed)
+    {
+        if (currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
+        {
+            return false;
+        }
+
+        Vector3 target = currentPath[currentPathIndex];
+
+        if (Vector3.Distance(transform.position, target) <= pathNodeReachDistance)
+        {
+            currentPathIndex++;
+
+            if (currentPathIndex >= currentPath.Count)
+            {
+                return false;
+            }
+
+            target = currentPath[currentPathIndex];
+        }
+
+        MoveTowards(target, speed);
+        return true;
+    }
+
+    void ClearPath()
+    {
+        currentPath.Clear();
+        currentPathIndex = 0;
     }
 
     Transform ChooseRandomDestinationNotSpawn()
@@ -283,12 +368,7 @@ public class DroneNPC2 : MonoBehaviour
 
         for (int i = 0; i < waypoints.Length; i++)
         {
-            if (i == originSpawnIndex)
-            {
-                continue;
-            }
-
-            if (waypoints[i] == null)
+            if (i == originSpawnIndex || waypoints[i] == null)
             {
                 continue;
             }
@@ -394,10 +474,13 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         Transform parent = cargoAnchor != null ? cargoAnchor : transform;
+        Vector3 prefabScale = prefab.transform.localScale;
 
-        currentCargo = Instantiate(prefab, parent);
+        currentCargo = Instantiate(prefab);
+        currentCargo.transform.SetParent(parent, false);
         currentCargo.transform.localPosition = Vector3.zero;
         currentCargo.transform.localRotation = Quaternion.identity;
+        currentCargo.transform.localScale = DivideScale(prefabScale, parent.lossyScale);
 
         Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>();
 
@@ -415,6 +498,15 @@ public class DroneNPC2 : MonoBehaviour
         {
             c.enabled = false;
         }
+    }
+
+    Vector3 DivideScale(Vector3 targetWorldScale, Vector3 parentWorldScale)
+    {
+        return new Vector3(
+            parentWorldScale.x != 0f ? targetWorldScale.x / parentWorldScale.x : targetWorldScale.x,
+            parentWorldScale.y != 0f ? targetWorldScale.y / parentWorldScale.y : targetWorldScale.y,
+            parentWorldScale.z != 0f ? targetWorldScale.z / parentWorldScale.z : targetWorldScale.z
+        );
     }
 
     void ClearCargo()
@@ -517,28 +609,10 @@ public class DroneNPC2 : MonoBehaviour
 
     Vector3 GetAvoidedDirection(Vector3 desiredDirection, Vector3 targetPosition)
     {
-        if (obstacleLayer.value == 0 && dynamicObstacleLayer.value == 0)
-        {
-            return desiredDirection;
-        }
-
-        if (!useAdvancedLocalAvoidance)
-        {
-            return GetSimpleAvoidedDirection(desiredDirection, targetPosition);
-        }
-
         Vector3 obstacleRepulsion = GetObstacleRepulsion();
         Vector3 dynamicAvoidance = GetDynamicObstacleAvoidance(desiredDirection);
 
-        bool frontBlocked = false;
-
-        if (obstacleLayer.value != 0)
-        {
-            frontBlocked = IsDirectionBlocked(
-                desiredDirection,
-                obstacleDetectDistance
-            );
-        }
+        bool frontBlocked = IsDirectionBlocked(desiredDirection, obstacleDetectDistance);
 
         bool hasEmergencyObstacle = obstacleRepulsion.sqrMagnitude > 0.001f;
         bool hasDynamicThreat = dynamicAvoidance.sqrMagnitude > 0.001f;
@@ -559,27 +633,19 @@ public class DroneNPC2 : MonoBehaviour
 
         Vector3 left = -right;
 
-        Vector3 yawRightSmall = Quaternion.AngleAxis(sideProbeAngle, Vector3.up) * desiredDirection;
-        Vector3 yawLeftSmall = Quaternion.AngleAxis(-sideProbeAngle, Vector3.up) * desiredDirection;
-
-        Vector3 yawRightWide = Quaternion.AngleAxis(wideProbeAngle, Vector3.up) * desiredDirection;
-        Vector3 yawLeftWide = Quaternion.AngleAxis(-wideProbeAngle, Vector3.up) * desiredDirection;
-
-        Vector3[] candidateDirections =
+        Vector3[] candidates =
         {
             desiredDirection,
-            yawRightSmall.normalized,
-            yawLeftSmall.normalized,
-            yawRightWide.normalized,
-            yawLeftWide.normalized,
+            (Quaternion.AngleAxis(sideProbeAngle, Vector3.up) * desiredDirection).normalized,
+            (Quaternion.AngleAxis(-sideProbeAngle, Vector3.up) * desiredDirection).normalized,
+            (Quaternion.AngleAxis(wideProbeAngle, Vector3.up) * desiredDirection).normalized,
+            (Quaternion.AngleAxis(-wideProbeAngle, Vector3.up) * desiredDirection).normalized,
             (desiredDirection + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection + right * obstacleAvoidWeight).normalized,
             (desiredDirection + left * obstacleAvoidWeight).normalized,
             (desiredDirection + right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection + left * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
             (desiredDirection - Vector3.up * 0.35f).normalized,
-            (desiredDirection + right * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
-            (desiredDirection + left * obstacleAvoidWeight - Vector3.up * 0.25f).normalized,
             lastAvoidDirection
         };
 
@@ -598,18 +664,16 @@ public class DroneNPC2 : MonoBehaviour
             ? dynamicAvoidance.normalized
             : Vector3.zero;
 
-        foreach (Vector3 rawCandidate in candidateDirections)
+        foreach (Vector3 raw in candidates)
         {
-            if (rawCandidate.sqrMagnitude < 0.001f)
+            if (raw.sqrMagnitude < 0.001f)
             {
                 continue;
             }
 
-            Vector3 candidate = rawCandidate.normalized;
+            Vector3 candidate = raw.normalized;
 
-            float clearDistance = GetClearDistance(candidate);
-            float clearanceScore = clearDistance / candidateCheckDistance;
-
+            float clearanceScore = GetClearDistance(candidate) / candidateCheckDistance;
             float targetScore = Vector3.Dot(candidate, toTarget);
             float smoothScore = Vector3.Dot(candidate, currentDir);
 
@@ -617,7 +681,7 @@ public class DroneNPC2 : MonoBehaviour
                 ? Vector3.Dot(candidate, repulsionDir)
                 : 0f;
 
-            float dynamicAvoidScore = dynamicAvoidDir.sqrMagnitude > 0.001f
+            float dynamicScore = dynamicAvoidDir.sqrMagnitude > 0.001f
                 ? Vector3.Dot(candidate, dynamicAvoidDir)
                 : 0f;
 
@@ -649,7 +713,7 @@ public class DroneNPC2 : MonoBehaviour
                 clearanceScore * clearanceWeight +
                 smoothScore * smoothDirectionWeight +
                 repulsionScore * emergencyAvoidWeight +
-                dynamicAvoidScore * dynamicAvoidWeight +
+                dynamicScore * dynamicAvoidWeight +
                 stuckBonus +
                 memoryBonus -
                 heightPenalty;
@@ -677,93 +741,6 @@ public class DroneNPC2 : MonoBehaviour
         return bestDirection.normalized;
     }
 
-    Vector3 GetSimpleAvoidedDirection(Vector3 desiredDirection, Vector3 targetPosition)
-    {
-        bool frontBlocked = false;
-
-        if (obstacleLayer.value != 0)
-        {
-            frontBlocked = Physics.SphereCast(
-                transform.position,
-                obstacleAvoidRadius,
-                desiredDirection,
-                out RaycastHit hit,
-                obstacleDetectDistance,
-                obstacleLayer,
-                QueryTriggerInteraction.Ignore
-            );
-        }
-
-        Vector3 dynamicAvoidance = GetDynamicObstacleAvoidance(desiredDirection);
-
-        if (!frontBlocked && !isStuck && dynamicAvoidance.sqrMagnitude < 0.001f)
-        {
-            return desiredDirection;
-        }
-
-        Vector3 toTarget = (targetPosition - transform.position).normalized;
-
-        Vector3 right = Vector3.Cross(Vector3.up, desiredDirection).normalized;
-
-        if (right.sqrMagnitude < 0.001f)
-        {
-            right = transform.right;
-        }
-
-        Vector3 dynamicAvoidDir = dynamicAvoidance.sqrMagnitude > 0.001f
-            ? dynamicAvoidance.normalized
-            : Vector3.zero;
-
-        Vector3[] candidateDirections =
-        {
-            desiredDirection,
-            (desiredDirection + right * obstacleAvoidWeight).normalized,
-            (desiredDirection - right * obstacleAvoidWeight).normalized,
-            (desiredDirection + Vector3.up * upwardAvoidWeight).normalized,
-            (desiredDirection + right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
-            (desiredDirection - right * obstacleAvoidWeight + Vector3.up * upwardAvoidWeight).normalized,
-            (desiredDirection - Vector3.up * 0.35f).normalized,
-            dynamicAvoidDir
-        };
-
-        Vector3 bestDirection = desiredDirection;
-        float bestScore = -99999f;
-
-        foreach (Vector3 candidate in candidateDirections)
-        {
-            if (candidate.sqrMagnitude < 0.001f)
-            {
-                continue;
-            }
-
-            float clearDistance = GetClearDistance(candidate.normalized);
-            float targetScore = Vector3.Dot(candidate.normalized, toTarget);
-            float clearanceScore = clearDistance / candidateCheckDistance;
-
-            float dynamicScore = dynamicAvoidDir.sqrMagnitude > 0.001f
-                ? Vector3.Dot(candidate.normalized, dynamicAvoidDir)
-                : 0f;
-
-            float stuckBonus = isStuck && candidate.y > 0f
-                ? stuckUpwardEscapeWeight
-                : 0f;
-
-            float score =
-                targetScore * 1.2f +
-                clearanceScore * 2.0f +
-                dynamicScore * dynamicAvoidWeight +
-                stuckBonus;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestDirection = candidate.normalized;
-            }
-        }
-
-        return bestDirection.normalized;
-    }
-
     Vector3 GetDynamicObstacleAvoidance(Vector3 desiredDirection)
     {
         if (!enableDynamicObstacleAvoidance || dynamicObstacleLayer.value == 0)
@@ -779,11 +756,6 @@ public class DroneNPC2 : MonoBehaviour
             QueryTriggerInteraction.Collide
         );
 
-        if (hitCount <= 0)
-        {
-            return Vector3.zero;
-        }
-
         Vector3 droneVelocity = currentMoveDirection.sqrMagnitude > 0.001f
             ? currentMoveDirection.normalized * currentMoveSpeed
             : desiredDirection.normalized * currentMoveSpeed;
@@ -794,12 +766,9 @@ public class DroneNPC2 : MonoBehaviour
         {
             Collider obstacle = dynamicObstacleHits[i];
 
-            if (obstacle == null)
-            {
-                continue;
-            }
-
-            if (obstacle.transform == transform || obstacle.transform.IsChildOf(transform))
+            if (obstacle == null ||
+                obstacle.transform == transform ||
+                obstacle.transform.IsChildOf(transform))
             {
                 continue;
             }
@@ -811,24 +780,14 @@ public class DroneNPC2 : MonoBehaviour
                 continue;
             }
 
-            Vector3 obstaclePosition = obstacle.bounds.center;
+            Vector3 relativePosition = obstacle.bounds.center - transform.position;
             Vector3 obstacleVelocity = obstacleRb != null ? obstacleRb.velocity : Vector3.zero;
-
-            Vector3 relativePosition = obstaclePosition - transform.position;
             Vector3 relativeVelocity = obstacleVelocity - droneVelocity;
 
             float relativeSpeedSqr = relativeVelocity.sqrMagnitude;
 
             if (relativeSpeedSqr < dynamicMinRelativeSpeed * dynamicMinRelativeSpeed)
             {
-                float closeDistance = relativePosition.magnitude;
-
-                if (closeDistance < dynamicThreatRadius)
-                {
-                    Vector3 away = -relativePosition.normalized;
-                    totalAvoidance += away * (1f - closeDistance / dynamicThreatRadius);
-                }
-
                 continue;
             }
 
@@ -889,37 +848,35 @@ public class DroneNPC2 : MonoBehaviour
             right = transform.right;
         }
 
-        Vector3 up = Vector3.up;
-        Vector3 down = Vector3.down;
         Vector3 backward = -forward;
 
-        Vector3[] dodgeCandidates =
+        Vector3[] candidates =
         {
             rawDodgeDirection,
             right,
             -right,
-            up,
-            down,
+            Vector3.up,
+            Vector3.down,
             backward,
-            (right + up).normalized,
-            (-right + up).normalized,
-            (right + down).normalized,
-            (-right + down).normalized,
-            (backward + up).normalized,
-            (backward + down).normalized
+            (right + Vector3.up).normalized,
+            (-right + Vector3.up).normalized,
+            (right + Vector3.down).normalized,
+            (-right + Vector3.down).normalized,
+            (backward + Vector3.up).normalized,
+            (backward + Vector3.down).normalized
         };
 
-        Vector3 bestDodge = rawDodgeDirection;
-        float bestScore = Vector3.Dot(bestDodge, rawDodgeDirection);
+        Vector3 best = rawDodgeDirection;
+        float bestScore = Vector3.Dot(best, rawDodgeDirection);
 
-        foreach (Vector3 candidateRaw in dodgeCandidates)
+        foreach (Vector3 raw in candidates)
         {
-            if (candidateRaw.sqrMagnitude < 0.001f)
+            if (raw.sqrMagnitude < 0.001f)
             {
                 continue;
             }
 
-            Vector3 candidate = candidateRaw.normalized;
+            Vector3 candidate = raw.normalized;
 
             if (!allowDownwardDynamicDodge && candidate.y < -0.2f)
             {
@@ -938,52 +895,32 @@ public class DroneNPC2 : MonoBehaviour
 
             float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
             float clearanceScore = GetClearDistance(candidate) / candidateCheckDistance;
-
             float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
 
-            float downPenalty = 0f;
+            float downPenalty = candidate.y < 0f
+                ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight)
+                : 0f;
 
-            if (candidate.y < 0f)
-            {
-                downPenalty = Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight);
-            }
-
-            float backwardScore = 0f;
             float backwardDot = Vector3.Dot(candidate, backward);
-
-            if (backwardDot > 0f)
-            {
-                backwardScore = backwardDot * dynamicBackwardWeight;
-            }
-
-            float heightPenalty = 0f;
-
-            if (limitFlightHeight)
-            {
-                float predictedY = transform.position.y + candidate.y * candidateCheckDistance;
-
-                if (predictedY < minFlightY || predictedY > maxFlightY)
-                {
-                    heightPenalty = 5f;
-                }
-            }
+            float backwardScore = backwardDot > 0f
+                ? backwardDot * dynamicBackwardWeight
+                : 0f;
 
             float score =
                 escapeScore * 3f +
                 clearanceScore * 2f +
                 upScore +
                 backwardScore -
-                downPenalty -
-                heightPenalty;
+                downPenalty;
 
             if (score > bestScore)
             {
                 bestScore = score;
-                bestDodge = candidate;
+                best = candidate;
             }
         }
 
-        return bestDodge.normalized;
+        return best.normalized;
     }
 
     bool IsDirectionBlocked(Vector3 direction, float distance)
@@ -1054,14 +991,9 @@ public class DroneNPC2 : MonoBehaviour
 
     float GetClearDistance(Vector3 direction)
     {
-        if (obstacleLayer.value == 0)
+        if (obstacleLayer.value == 0 || direction.sqrMagnitude < 0.001f)
         {
             return candidateCheckDistance;
-        }
-
-        if (direction.sqrMagnitude < 0.001f)
-        {
-            return 0f;
         }
 
         if (Physics.SphereCast(
@@ -1264,6 +1196,7 @@ public class DroneNPC2 : MonoBehaviour
     public void PrepareForPool()
     {
         ClearCargo();
+        ClearPath();
 
         isFinishing = false;
         state = Drone2State.Finished;
@@ -1281,25 +1214,6 @@ public class DroneNPC2 : MonoBehaviour
         {
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
-        }
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(transform.position, obstacleAvoidRadius);
-
-        Gizmos.color = Color.gray;
-        Gizmos.DrawWireSphere(transform.position, emergencyAvoidRadius);
-
-        Gizmos.color = Color.black;
-        Gizmos.DrawWireSphere(transform.position, dynamicObstacleDetectRadius);
-
-        if (destinationWaypoint != null)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawLine(transform.position, destinationWaypoint.position);
-            Gizmos.DrawWireSphere(destinationWaypoint.position, 0.6f);
         }
     }
 }

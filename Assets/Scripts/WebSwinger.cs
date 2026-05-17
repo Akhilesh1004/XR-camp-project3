@@ -622,6 +622,8 @@ public class WebSwinger : MonoBehaviour
 
     void OnDisable()
     {
+        StopVibration();
+        StopSlowMotion();
         ForceStopSwing(false);
     }
 

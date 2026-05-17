@@ -113,22 +113,26 @@ MonoBehaviour:
   collisionExplodeRadius: 0.45
   explosionPrefab: {fileID: 1845955007268882, guid: 67a684e320da6e7439421a07e3fa265c,
     type: 3}
-  patrolMode: 1
-  waypointReachDistance: 1.5
-  repathInterval: 0.25
+  interruptPlayerMobilityOnExplode: 1
+  mobilityInterruptRadius: 3
+  mobilityInterruptLayer:
+    serializedVersion: 2
+    m_Bits: 1024
+  mobilityDisableDuration: 0.6
+  clearPlayerVelocityOnInterrupt: 0
+  waypointGraph: {fileID: 0}
+  minPatrolDestinationDistance: 25
+  maxPatrolDestinationDistance: 120
   patrolRepathInterval: 2
-  repathPatrolWhenBlocked: 1
+  recentDestinationMemory: 3
+  chaseRepathInterval: 1
+  forcedHuntRepathInterval: 0.7
+  pathNodeReachDistance: 2
+  directChaseWhenPathClear: 1
+  enableLocalAvoidance: 1
   obstacleLayer:
     serializedVersion: 2
     m_Bits: 72
-  pathCheckRadius: 0.6
-  maxWaypointSelectDistance: 45
-  maxDetourExtraDistance: 12
-  directChaseWhenPathClear: 1
-  randomizePatrolDirection: 1
-  minPatrolStep: 1
-  maxPatrolStep: 3
-  enableLocalAvoidance: 1
   obstacleDetectDistance: 7
   obstacleAvoidRadius: 0.8
   obstacleAvoidWeight: 2

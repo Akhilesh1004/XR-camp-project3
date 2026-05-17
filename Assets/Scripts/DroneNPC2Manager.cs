@@ -10,6 +10,9 @@ public class DroneNPC2Manager : MonoBehaviour
     [Header("出生點 / Waypoints")]
     public Transform[] spawnPoints;
 
+    [Header("Waypoint Graph A*")]
+    public DroneWaypointGraph waypointGraph;
+
     [Header("場上數量")]
     public int targetDroneCount = 2;
     public bool spawnOnStart = true;
@@ -23,25 +26,12 @@ public class DroneNPC2Manager : MonoBehaviour
     public bool allowDuplicateSpawnPoint = true;
 
     [Header("玩家視野外生成")]
-    [Tooltip("場景中的玩家 Camera，例如 CenterEyeAnchor 上的 Camera")]
     public Camera playerCamera;
-
-    [Tooltip("用來判斷是否被建築遮住，例如 Building / Wall")]
     public LayerMask visibilityBlockerLayer;
-
-    [Tooltip("是否要求 DroneNPC2 只能在玩家看不到的 spawn point 出現")]
     public bool spawnOnlyWhenHiddenFromPlayer = true;
-
-    [Tooltip("出生點離玩家鏡頭至少多遠")]
     public float minHiddenSpawnDistance = 25f;
-
-    [Tooltip("視野邊界容忍值，越大代表越嚴格要離開畫面")]
     public float viewportPadding = 0.1f;
-
-    [Tooltip("找不到玩家看不到的位置時，是否允許在看得到的位置生成")]
     public bool allowVisibleSpawnFallback = false;
-
-    [Tooltip("找不到隱藏出生點時，隔多久再嘗試生成")]
     public float hiddenSpawnRetryDelay = 1f;
 
     private readonly List<DroneNPC2> activeDrones = new List<DroneNPC2>();
@@ -51,18 +41,23 @@ public class DroneNPC2Manager : MonoBehaviour
     private int pendingRespawnCount = 0;
     private float nextSpawnAttemptTime = 0f;
 
-    public Transform[] Waypoints
-    {
-        get { return spawnPoints; }
-    }
-
     void Awake()
     {
+        if (waypointGraph != null && waypointGraph.waypoints == null)
+        {
+            waypointGraph.SetWaypoints(spawnPoints, true);
+        }
+
         PrewarmPool();
     }
 
     void Start()
     {
+        if (waypointGraph != null)
+        {
+            waypointGraph.SetWaypoints(spawnPoints, true);
+        }
+
         if (spawnOnStart)
         {
             FillDrones();
@@ -121,7 +116,6 @@ public class DroneNPC2Manager : MonoBehaviour
     {
         if (dronePrefab == null)
         {
-            Debug.LogWarning("DroneNPC2Manager: dronePrefab 沒有設定");
             return false;
         }
 
@@ -142,7 +136,6 @@ public class DroneNPC2Manager : MonoBehaviour
 
         if (drone == null)
         {
-            Debug.LogWarning("DroneNPC2Manager: Pool 不足，而且不允許擴充");
             return false;
         }
 
@@ -153,10 +146,10 @@ public class DroneNPC2Manager : MonoBehaviour
             spawnPoint.position,
             spawnPoint.rotation,
             spawnIndex,
-            spawnPoints
+            spawnPoints,
+            waypointGraph
         );
 
-        // 做法 B：Manager 把場景中的 Camera / 遮蔽 Layer 傳給 DroneNPC2
         drone.SetVisibilityContext(playerCamera, visibilityBlockerLayer);
 
         drone.gameObject.SetActive(true);
@@ -254,13 +247,11 @@ public class DroneNPC2Manager : MonoBehaviour
             viewportPoint.y >= -viewportPadding &&
             viewportPoint.y <= 1f + viewportPadding;
 
-        // 在鏡頭後面，或畫面外，算玩家看不到
         if (!inFront || !insideView)
         {
             return true;
         }
 
-        // 在畫面內，但中間被建築擋住，也算玩家看不到
         if (visibilityBlockerLayer.value != 0)
         {
             Vector3 direction = worldPosition - cameraPosition;
@@ -332,24 +323,6 @@ public class DroneNPC2Manager : MonoBehaviour
         if (activeDrones.Count < targetDroneCount)
         {
             SpawnOneDrone();
-        }
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        if (spawnPoints == null)
-        {
-            return;
-        }
-
-        Gizmos.color = Color.cyan;
-
-        foreach (Transform point in spawnPoints)
-        {
-            if (point != null)
-            {
-                Gizmos.DrawWireSphere(point.position, 0.4f);
-            }
         }
     }
 }
