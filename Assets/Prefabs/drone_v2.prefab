@@ -168,6 +168,12 @@ MonoBehaviour:
   limitFlightHeight: 1
   minFlightY: 399
   maxFlightY: 1000
+  damageDeliveryCargoOnExplode: 1
+  deliveryCargoDamage: 10
+  deliveryCargoDamageRadius: 3
+  deliveryPlayerLayer:
+    serializedVersion: 2
+    m_Bits: 1024
 --- !u!1001 &8164948442230097146
 PrefabInstance:
   m_ObjectHideFlags: 0

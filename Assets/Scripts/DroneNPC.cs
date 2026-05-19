@@ -137,6 +137,14 @@ public class DroneNPC : MonoBehaviour
     public float minFlightY = 2f;
     public float maxFlightY = 80f;
 
+    [Header("外送餐點傷害")]
+    public bool damageDeliveryCargoOnExplode = true;
+    public int deliveryCargoDamage = 25;
+    public float deliveryCargoDamageRadius = 3f;
+
+    [Tooltip("建議設定成 Player Layer")]
+    public LayerMask deliveryPlayerLayer;
+
     private DroneState state = DroneState.Patrol;
 
     private DroneGameManager manager;
@@ -1282,6 +1290,16 @@ public class DroneNPC : MonoBehaviour
         state = DroneState.Exploding;
 
         InterruptPlayerMobility();
+
+        if (damageDeliveryCargoOnExplode)
+        {
+            DeliveryDamageSource.DamageCarriedCargoInRadius(
+                transform.position,
+                deliveryCargoDamageRadius,
+                deliveryCargoDamage,
+                deliveryPlayerLayer
+            );
+        }
 
         if (explosionPrefab != null)
         {
