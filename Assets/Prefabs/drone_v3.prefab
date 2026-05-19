@@ -2283,7 +2283,7 @@ MonoBehaviour:
   playerCamera: {fileID: 0}
   visibilityBlockerLayer:
     serializedVersion: 2
-    m_Bits: 64
+    m_Bits: 72
   disappearOnlyWhenHiddenFromPlayer: 1
   minDisappearDistance: 15
   viewportPadding: 0.1
@@ -2309,10 +2309,10 @@ MonoBehaviour:
   dynamicObstacleLayer:
     serializedVersion: 2
     m_Bits: 256
-  dynamicObstacleDetectRadius: 45
-  dynamicPredictionTime: 1.2
-  dynamicThreatRadius: 3.5
-  dynamicAvoidWeight: 10
+  dynamicObstacleDetectRadius: 30
+  dynamicPredictionTime: 1
+  dynamicThreatRadius: 2.5
+  dynamicAvoidWeight: 8
   dynamicUpBias: 0.3
   dynamicMinRelativeSpeed: 1
   allowBackwardDynamicDodge: 1
