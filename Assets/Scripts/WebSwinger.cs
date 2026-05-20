@@ -232,7 +232,6 @@ public class WebSwinger : MonoBehaviour
         {
             return;
         }
-        Debug.DrawRay(handTransform.position, handTransform.forward * 5f, Color.red);
         if (Physics.Raycast(handTransform.position, handTransform.forward, out RaycastHit hit, maxSwingDistance, swingableLayer))
         {
             ArmSwingLocomotion instance = ArmSwingLocomotion.Instance;

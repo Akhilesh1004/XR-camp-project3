@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 using UnityEngine.UI;
@@ -12,23 +13,27 @@ public class WristUIController : MonoBehaviour
     public OVRInput.Button Button = OVRInput.Button.Four;
     public Transform handTransform;
 
+    [Header("射線與滑鼠圖標設定")]
+    public RectTransform customCursor;
+
     [Header("縮放效果設定")]
-    [Tooltip("射線指著按鈕時的縮放比例")]
-    public Vector3 hoveredScale = new Vector3(0.9f, 0.9f, 1f); 
-    [Tooltip("正常狀態下的縮放比例")]
-    public Vector3 normalScale = new Vector3(1f, 1f, 1f);
+    [Tooltip("射線指著按鈕時的縮放倍率，乘上按鈕原本大小")]
+    public float hoveredScale = 1.1f;
+    [Tooltip("正常狀態下的縮放倍率，乘上按鈕原本大小")]
+    public float normalScale = 1f;
     [Tooltip("縮放動畫速度")]
     public float lerpSpeed = 10f;
     [Header("動態生成設定")]
-    public GameObject buttonPrefab;
+    public GameObject orderOptionPrefab;
     public Transform contentContainer;
 
+    private Dictionary<Button, Vector3> buttonOriginalScales = new Dictionary<Button, Vector3>();
     private Button lastHoveredButton;
 
     void Start()
     {
         if (uiCanvasGroup != null) SetUIVisibility(false);
-        SpawnMyButtons();
+        SpawnOrderOptions();
     }
 
     void Update()
@@ -37,11 +42,11 @@ public class WristUIController : MonoBehaviour
 
         if (uiCanvasGroup == null) return;
 
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            Debug.Log("Space pressed");
-            SetUIVisibility(uiCanvasGroup.alpha < 0.1f);
-        }
+        // if (Input.GetKeyDown(KeyCode.Space))
+        // {
+        //     Debug.Log("Space pressed");
+        //     SetUIVisibility(uiCanvasGroup.alpha < 0.1f);
+        // }
 
         if (OVRInput.GetDown(Button))
         {
@@ -53,19 +58,33 @@ public class WristUIController : MonoBehaviour
 
         if (uiCanvasGroup.alpha > 0.9f)
         {
-            // Debug.Log("UI is visible, checking for button hover");
-            // Debug.DrawRay(handTransform.position, handTransform.forward * 5f, Color.red);
-            if (Physics.Raycast(handTransform.position, handTransform.forward, out RaycastHit hit))
+            Vector3 rayOrigin = handTransform.position;
+            Vector3 rayDirection = handTransform.forward;
+            float maxRayDistance = 5f;
+
+            if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit, maxRayDistance))
             {
+                // ➔ 【整合：更新滑鼠圖標位置與旋轉】
+                if (customCursor != null)
+                {
+                    if (!customCursor.gameObject.activeSelf) customCursor.gameObject.SetActive(true);
+                    
+                    // 讓滑鼠圖標吸附在射線擊中選單表面的點
+                    customCursor.position = hit.point;
+                    // 讓滑鼠圖標平行躺在選單表面，不產生歪斜
+                    customCursor.rotation = Quaternion.LookRotation(-hit.normal, uiCanvasGroup.transform.up);
+                }
+
                 Button targetButton = hit.collider.GetComponent<Button>();
 
                 if (targetButton != null && targetButton.interactable)
                 {
                     currentHoveredButton = targetButton;
 
+                    Vector3 targetOriginalScale = GetOriginalScale(targetButton);
                     targetButton.transform.localScale = Vector3.Lerp(
                         targetButton.transform.localScale, 
-                        hoveredScale, 
+                        targetOriginalScale * hoveredScale, 
                         Time.deltaTime * lerpSpeed
                     );
 
@@ -76,11 +95,19 @@ public class WristUIController : MonoBehaviour
                     }
                 }
             }
+            else
+            {
+                // ➔ 【整合：如果射線移開選單，把滑鼠圖標藏起來】
+                if (customCursor != null && customCursor.gameObject.activeSelf)
+                {
+                    customCursor.gameObject.SetActive(false);
+                }
+            }
         }
 
         if (lastHoveredButton != null && lastHoveredButton != currentHoveredButton)
         {
-            lastHoveredButton.transform.localScale = normalScale;
+            lastHoveredButton.transform.localScale = GetOriginalScale(lastHoveredButton) * normalScale;
         }
 
         if (lastHoveredButton != null && lastHoveredButton == currentHoveredButton)
@@ -88,15 +115,16 @@ public class WristUIController : MonoBehaviour
         }
         else if (lastHoveredButton != null)
         {
+            Vector3 targetNormalScale = GetOriginalScale(lastHoveredButton) * normalScale;
             lastHoveredButton.transform.localScale = Vector3.Lerp(
                 lastHoveredButton.transform.localScale, 
-                normalScale, 
+                targetNormalScale, 
                 Time.deltaTime * lerpSpeed
             );
             
-            if (Vector3.Distance(lastHoveredButton.transform.localScale, normalScale) < 0.01f)
+            if (Vector3.Distance(lastHoveredButton.transform.localScale, targetNormalScale) < 0.01f)
             {
-                lastHoveredButton.transform.localScale = normalScale;
+                lastHoveredButton.transform.localScale = targetNormalScale;
                 lastHoveredButton = null;
             }
         }
@@ -112,50 +140,114 @@ public class WristUIController : MonoBehaviour
         uiCanvasGroup.alpha = visible ? 1f : 0f;
         uiCanvasGroup.interactable = visible;
         uiCanvasGroup.blocksRaycasts = visible;
+
+        // 面板關閉時，滑鼠圖標也要同步隱形
+        if (customCursor != null) customCursor.gameObject.SetActive(visible);
     }
 
-    void SpawnMyButtons()
+    Vector3 GetOriginalScale(Button button)
     {
-        if (buttonPrefab == null || contentContainer == null) return;
-
-        string[] optionNames = { "A", "B", "C" };
-
-        for (int i = 0; i < optionNames.Length; i++)
+        if (buttonOriginalScales.TryGetValue(button, out Vector3 originalScale))
         {
-            string currentName = optionNames[i];
+            return originalScale;
+        }
+        return button.transform.localScale;
+    }
 
-            GameObject newBtnObj = Instantiate(buttonPrefab, contentContainer);
-            newBtnObj.name = currentName;
-
-            newBtnObj.transform.localScale = normalScale;
-            newBtnObj.transform.localPosition = new Vector3(newBtnObj.transform.localPosition.x, newBtnObj.transform.localPosition.y, 0f);
-
-            TextMeshProUGUI btnText = newBtnObj.GetComponentInChildren<TextMeshProUGUI>();
-            if (btnText != null) btnText.text = currentName;
-            else Debug.LogWarning($"在按鈕預製件中找不到 Text 組件，無法設定按鈕文字：{currentName}");
-
-            Button btn = newBtnObj.GetComponent<Button>();
-            if (btn != null)
+    void CleanupButtonScales(GameObject orderObj)
+    {
+        Button[] buttons = orderObj.GetComponentsInChildren<Button>(true);
+        foreach (Button btn in buttons)
+        {
+            if (buttonOriginalScales.ContainsKey(btn))
             {
-                btn.onClick.RemoveAllListeners();
-                btn.onClick.AddListener(() => OnButtonClickLogic(currentName, btn));
+                buttonOriginalScales.Remove(btn);
             }
         }
     }
 
-    void OnButtonClickLogic(string nameOfButton, Button button)
+    void SpawnOrderOptions()
     {
-        Debug.Log($"射線成功點擊了動態生成的：{nameOfButton} ！");
+        if (orderOptionPrefab == null || contentContainer == null) return;
 
-        Image buttonImage = button.GetComponent<Image>();
-        if (buttonImage != null)
+        string[] orderTitles = { "Order A?", "Order B?" };
+
+        for (int i = 0; i < orderTitles.Length; i++)
         {
-            buttonImage.color = new Color(0.5f, 1f, 0.5f, 1f);
-        }
+            string currentOrderTitle = orderTitles[i];
 
-        // if (nameOfButton == "離開選單")
-        // {
-        //     SetUIVisibility(false);
-        // }
+            // 1. 生成整個 OrderOption 組合包
+            GameObject newOrderObj = Instantiate(orderOptionPrefab, contentContainer);
+            newOrderObj.name = $"Order_{i}";
+
+            // 修正世界空間 UI 縮放與座標偏移
+            // newOrderObj.transform.localScale = Vector3.one;
+            newOrderObj.transform.localPosition = new Vector3(newOrderObj.transform.localPosition.x, newOrderObj.transform.localPosition.y, 0f);
+
+            // 2. 【精準找字 1】找到 OrderInfo 修改標題文字
+            Transform infoTransform = newOrderObj.transform.Find("OrderInfo");
+            if (infoTransform != null)
+            {
+                TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
+                if (infoText != null) infoText.text = currentOrderTitle;
+            }
+
+            // 3. 【精準找字 2】找到 YesBotton 底下的文字，並改名為 "確認"
+            Transform yesTextTransform = newOrderObj.transform.Find("YesBotton/Text (TMP)");
+            if (yesTextTransform != null)
+            {
+                TextMeshProUGUI yesText = yesTextTransform.GetComponent<TextMeshProUGUI>();
+                if (yesText != null) yesText.text = "Yes";
+            }
+
+            // 4. 【精準找字 3】找到 NoBotton 底下的文字，並改名為 "拒絕"
+            Transform noTextTransform = newOrderObj.transform.Find("NoBotton/Text (TMP)");
+            if (noTextTransform != null)
+            {
+                TextMeshProUGUI noText = noTextTransform.GetComponent<TextMeshProUGUI>();
+                if (noText != null) noText.text = "No";
+            }
+
+            // 5. 【動態事件綁定】分別為兩個按鈕裝上獨立的 onClick 靈魂
+            Button yesBtn = newOrderObj.transform.Find("YesBotton")?.GetComponent<Button>();
+            if (yesBtn != null)
+            {
+                if (!buttonOriginalScales.ContainsKey(yesBtn))
+                {
+                    buttonOriginalScales[yesBtn] = yesBtn.transform.localScale;
+                }
+                yesBtn.onClick.RemoveAllListeners();
+                yesBtn.onClick.AddListener(() => OnOrderChoiceClicked(currentOrderTitle, true, newOrderObj));
+            }
+
+            Button noBtn = newOrderObj.transform.Find("NoBotton")?.GetComponent<Button>();
+            if (noBtn != null)
+            {
+                if (!buttonOriginalScales.ContainsKey(noBtn))
+                {
+                    buttonOriginalScales[noBtn] = noBtn.transform.localScale;
+                }
+                noBtn.onClick.RemoveAllListeners();
+                noBtn.onClick.AddListener(() => OnOrderChoiceClicked(currentOrderTitle, false, newOrderObj));
+            }
+        }
+    }
+
+    void OnOrderChoiceClicked(string orderName, bool isAccepted, GameObject orderObj)
+    {
+        if (isAccepted)
+        {
+            Debug.Log($"【接受點擊】玩家用右手射線 接受 了：{orderName}");
+            // 在這裡寫按下確認後要發生的事...
+        }
+        else
+        {
+            Debug.Log($"【拒絕點擊】玩家用右手射線 拒絕 了：{orderName}");
+            if (orderObj != null)
+            {
+                CleanupButtonScales(orderObj);
+                Destroy(orderObj);
+            }
+        }
     }
 }
