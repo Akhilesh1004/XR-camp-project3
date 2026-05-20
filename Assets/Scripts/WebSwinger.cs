@@ -69,6 +69,9 @@ public class WebSwinger : MonoBehaviour
 
     public static int activeSwingCount = 0;
     public static int pendingSwingCount = 0;
+
+    private bool isWristUIOpen = false;
+    
     private static List<WebSwinger> activeSwingerScripts = new List<WebSwinger>();
     void OnEnableR() { activeSwingerScripts.Add(this); }
     void OnDisableR() { activeSwingerScripts.Remove(this); }
@@ -170,6 +173,11 @@ public class WebSwinger : MonoBehaviour
             StopSlowMotion();
         }
 
+        if (OVRInput.GetDown(OVRInput.Button.Four)) 
+        {
+            isWristUIOpen = !isWristUIOpen;
+        }
+
         if (CheckShootInput())
         {
             if (Time.time - lastShootTime >= shootCooldown)
@@ -224,7 +232,7 @@ public class WebSwinger : MonoBehaviour
         {
             return;
         }
-
+        Debug.DrawRay(handTransform.position, handTransform.forward * 5f, Color.red);
         if (Physics.Raycast(handTransform.position, handTransform.forward, out RaycastHit hit, maxSwingDistance, swingableLayer))
         {
             ArmSwingLocomotion instance = ArmSwingLocomotion.Instance;
