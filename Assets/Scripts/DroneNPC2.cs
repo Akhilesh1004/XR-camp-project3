@@ -43,22 +43,22 @@ public class DroneNPC2 : MonoBehaviour
     [Header("避障設定")]
     public LayerMask obstacleLayer;
     public float obstacleDetectDistance = 10f;
-    public float obstacleAvoidRadius = 1f;
-    public float obstacleAvoidWeight = 2.2f;
-    public float upwardAvoidWeight = 1.2f;
+    public float obstacleAvoidRadius = 0.9f;
+    public float obstacleAvoidWeight = 2.0f;
+    public float upwardAvoidWeight = 1.0f;
     public float candidateCheckDistance = 6f;
-    public float steeringSmooth = 10f;
+    public float steeringSmooth = 8f;
 
     [Header("進階局部避障")]
     public bool useAdvancedLocalAvoidance = true;
     public float sideProbeAngle = 35f;
     public float wideProbeAngle = 70f;
-    public float targetDirectionWeight = 1.2f;
-    public float clearanceWeight = 2.8f;
-    public float smoothDirectionWeight = 1f;
-    public float emergencyAvoidRadius = 2.5f;
-    public float emergencyAvoidWeight = 3.5f;
-    public float avoidanceMemoryDuration = 0.6f;
+    public float targetDirectionWeight = 1.4f;
+    public float clearanceWeight = 2.4f;
+    public float smoothDirectionWeight = 1.3f;
+    public float emergencyAvoidRadius = 1.5f;
+    public float emergencyAvoidWeight = 2.5f;
+    public float avoidanceMemoryDuration = 0.8f;
 
     private Vector3 lastAvoidDirection = Vector3.zero;
     private float avoidanceMemoryTimer = 0f;
@@ -152,8 +152,18 @@ public class DroneNPC2 : MonoBehaviour
         originPosition = spawnPosition;
         originRotation = spawnRotation;
         originSpawnIndex = spawnIndex;
-        waypoints = sharedWaypoints;
         waypointGraph = graph;
+
+        if (waypointGraph != null &&
+            waypointGraph.waypoints != null &&
+            waypointGraph.waypoints.Length > 0)
+        {
+            waypoints = waypointGraph.waypoints;
+        }
+        else
+        {
+            waypoints = sharedWaypoints;
+        }
 
         transform.position = originPosition;
         transform.rotation = originRotation;
@@ -185,10 +195,11 @@ public class DroneNPC2 : MonoBehaviour
         ClearCargo();
         SpawnRandomCargo();
 
+        pathVariantSeed = Random.Range(0, 999999);
+
         destinationWaypoint = ChooseRandomDestinationNotSpawn();
         BuildPathToDestination();
 
-        pathVariantSeed = Random.Range(0, 999999);
         hasBeenInitialized = true;
     }
 
@@ -253,7 +264,19 @@ public class DroneNPC2 : MonoBehaviour
             }
         }
 
-        if (isStuck || Time.time >= nextRepathTime)
+        bool shouldRepath = false;
+
+        if (currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
+        {
+            shouldRepath = true;
+        }
+
+        if ((isStuck || IsCurrentPathSegmentBlocked()) && Time.time >= nextRepathTime)
+        {
+            shouldRepath = true;
+        }
+
+        if (shouldRepath)
         {
             BuildPathToDestination();
         }
@@ -286,6 +309,23 @@ public class DroneNPC2 : MonoBehaviour
         }
     }
 
+    bool IsCurrentPathSegmentBlocked()
+    {
+        if (waypointGraph == null)
+        {
+            return false;
+        }
+
+        if (currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
+        {
+            return false;
+        }
+
+        Vector3 target = currentPath[currentPathIndex];
+
+        return !waypointGraph.HasClearPath(transform.position, target);
+    }
+
     void BuildPathToDestination()
     {
         ClearPath();
@@ -299,6 +339,15 @@ public class DroneNPC2 : MonoBehaviour
         {
             currentPath.Add(destinationWaypoint.position);
             currentPathIndex = 0;
+            nextRepathTime = Time.time + pathRepathInterval + Random.Range(0f, 0.8f);
+            return;
+        }
+
+        if (waypointGraph.HasClearPath(transform.position, destinationWaypoint.position))
+        {
+            currentPath.Add(destinationWaypoint.position);
+            currentPathIndex = 0;
+            nextRepathTime = Time.time + pathRepathInterval + Random.Range(0f, 0.8f);
             return;
         }
 
@@ -315,6 +364,12 @@ public class DroneNPC2 : MonoBehaviour
         {
             currentPath.AddRange(path);
             currentPathIndex = 0;
+
+            while (currentPathIndex < currentPath.Count &&
+                   Vector3.Distance(transform.position, currentPath[currentPathIndex]) <= pathNodeReachDistance)
+            {
+                currentPathIndex++;
+            }
         }
         else
         {
@@ -333,21 +388,18 @@ public class DroneNPC2 : MonoBehaviour
             return false;
         }
 
-        Vector3 target = currentPath[currentPathIndex];
-
-        if (Vector3.Distance(transform.position, target) <= pathNodeReachDistance)
+        while (currentPathIndex < currentPath.Count &&
+               Vector3.Distance(transform.position, currentPath[currentPathIndex]) <= pathNodeReachDistance)
         {
             currentPathIndex++;
-
-            if (currentPathIndex >= currentPath.Count)
-            {
-                return false;
-            }
-
-            target = currentPath[currentPathIndex];
         }
 
-        MoveTowards(target, speed);
+        if (currentPathIndex >= currentPath.Count)
+        {
+            return false;
+        }
+
+        MoveTowards(currentPath[currentPathIndex], speed);
         return true;
     }
 
@@ -359,7 +411,7 @@ public class DroneNPC2 : MonoBehaviour
 
     Transform ChooseRandomDestinationNotSpawn()
     {
-        if (waypoints == null || waypoints.Length <= 1)
+        if (waypoints == null || waypoints.Length == 0)
         {
             return null;
         }
@@ -368,7 +420,7 @@ public class DroneNPC2 : MonoBehaviour
 
         for (int i = 0; i < waypoints.Length; i++)
         {
-            if (i == originSpawnIndex || waypoints[i] == null)
+            if (waypoints[i] == null)
             {
                 continue;
             }
@@ -391,15 +443,26 @@ public class DroneNPC2 : MonoBehaviour
             return candidates[Random.Range(0, candidates.Count)];
         }
 
+        Transform farthest = null;
+        float farthestDistance = -1f;
+
         for (int i = 0; i < waypoints.Length; i++)
         {
-            if (i != originSpawnIndex && waypoints[i] != null)
+            if (waypoints[i] == null)
             {
-                return waypoints[i];
+                continue;
+            }
+
+            float distance = Vector3.Distance(originPosition, waypoints[i].position);
+
+            if (distance > farthestDistance)
+            {
+                farthestDistance = distance;
+                farthest = waypoints[i];
             }
         }
 
-        return null;
+        return farthest;
     }
 
     bool IsHiddenFromPlayer(Vector3 worldPosition)

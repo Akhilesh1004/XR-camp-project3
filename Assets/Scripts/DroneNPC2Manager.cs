@@ -7,7 +7,7 @@ public class DroneNPC2Manager : MonoBehaviour
     [Header("DroneNPC2 Prefab")]
     public DroneNPC2 dronePrefab;
 
-    [Header("出生點 / Waypoints")]
+    [Header("只負責出生點，不再覆蓋 Graph Waypoints")]
     public Transform[] spawnPoints;
 
     [Header("Waypoint Graph A*")]
@@ -43,19 +43,16 @@ public class DroneNPC2Manager : MonoBehaviour
 
     void Awake()
     {
-        if (waypointGraph != null && waypointGraph.waypoints == null)
-        {
-            waypointGraph.SetWaypoints(spawnPoints, true);
-        }
-
         PrewarmPool();
     }
 
     void Start()
     {
-        if (waypointGraph != null)
+        // 注意：這裡只 BuildGraph，不再 SetWaypoints(spawnPoints)
+        // DroneWaypointGraph.waypoints 請在 Inspector 自己指定真正的路線 waypoint
+        if (waypointGraph != null && waypointGraph.buildOnStart)
         {
-            waypointGraph.SetWaypoints(spawnPoints, true);
+            waypointGraph.BuildGraph();
         }
 
         if (spawnOnStart)
@@ -119,9 +116,9 @@ public class DroneNPC2Manager : MonoBehaviour
             return false;
         }
 
-        if (spawnPoints == null || spawnPoints.Length < 2)
+        if (spawnPoints == null || spawnPoints.Length == 0)
         {
-            Debug.LogWarning("DroneNPC2Manager: spawnPoints 至少需要 2 個");
+            Debug.LogWarning("DroneNPC2Manager: spawnPoints 沒有設定");
             return false;
         }
 

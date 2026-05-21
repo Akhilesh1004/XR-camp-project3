@@ -178,8 +178,19 @@ public class DroneNPC : MonoBehaviour
         originPosition = spawnPosition;
         originRotation = spawnRotation;
         originSpawnIndex = spawnIndex;
-        waypoints = sharedWaypoints;
+
         waypointGraph = graph;
+
+        if (waypointGraph != null &&
+            waypointGraph.waypoints != null &&
+            waypointGraph.waypoints.Length > 0)
+        {
+            waypoints = waypointGraph.waypoints;
+        }
+        else
+        {
+            waypoints = sharedWaypoints;
+        }
 
         transform.position = originPosition;
         transform.rotation = originRotation;
