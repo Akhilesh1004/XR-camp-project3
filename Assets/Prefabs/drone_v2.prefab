@@ -165,7 +165,7 @@ MonoBehaviour:
   stuckCheckInterval: 0.5
   stuckMoveThreshold: 0.25
   stuckUpwardEscapeWeight: 2.5
-  limitFlightHeight: 1
+  limitFlightHeight: 0
   minFlightY: 399
   maxFlightY: 1000
   damageDeliveryCargoOnExplode: 1
