@@ -4,96 +4,92 @@ using UnityEngine;
 [ExecuteAlways]
 public class DroneWaypointGraph : MonoBehaviour
 {
-    [Header("Waypoints")]
-    public Transform[] waypoints;
+    [Header("3D Grid Volume")]
+    public Vector3 gridCenter = new Vector3(0f, 80f, 0f);
+    public Vector3 gridSize = new Vector3(1200f, 160f, 900f);
 
-    [Header("Graph 建立設定")]
+    [Header("Grid Resolution")]
+    [Tooltip("大場景建議 8~12。越小越精準，但 build / A* 越重。")]
+    public float cellSize = 8f;
+
+    [Tooltip("無人機通行半徑。DroneNPC2 BoxCollider 2x1x2 時，建議 2。")]
+    public float agentRadius = 2f;
+
+    [Tooltip("直線檢查半徑。0 = 使用 agentRadius。")]
+    public float lineCheckRadius = 2f;
+
+    [Header("Obstacle")]
+    [Tooltip("只放 Building / Ground / Wall 這類靜態障礙。不要包含 Drone / Player / Bullet。")]
     public LayerMask obstacleLayer;
 
-    [Tooltip("兩個 waypoint 超過這個距離就不考慮連線")]
-    public float maxEdgeDistance = 60f;
-
-    [Tooltip("每個 waypoint 最多連到幾個鄰居。waypoint 多時建議 4~8")]
-    public int maxNeighborsPerWaypoint = 6;
-
-    [Tooltip("檢查兩點之間是否被建築擋住的 SphereCast 半徑")]
-    public float edgeCheckRadius = 1f;
-
-    [Tooltip("Play Mode 開始時自動建立 Graph")]
+    [Header("Build Settings")]
     public bool buildOnStart = true;
-
-    [Header("大量 Waypoint 效能設定")]
-    [Tooltip("waypoint 很多時建議打開。會用空間格子先篩選附近 waypoint")]
-    public bool useSpatialCandidateSearch = true;
-
-    [Tooltip("空間格子大小。0 代表自動使用 maxEdgeDistance")]
-    public float spatialCellSize = 0f;
-
-    [Tooltip("如果 waypoint 很多，不建議打開。打開後 Edit Mode 會在參數改變時自動重建")]
     public bool autoRebuildInEditMode = false;
+    public int nearestWalkableSearchRadius = 8;
 
-    [Header("A* 路徑設定")]
-    [Tooltip("讓不同 Drone 算出來的路徑有一點差異。0 = 完全最短路徑")]
+    [Header("A* Settings")]
+    [Tooltip("效能與穩定優先，預設 false。true 會比較順，但需要防切角。")]
+    public bool allowDiagonalMovement = false;
+
+    [Tooltip("避免超大場景搜尋卡死。若常找不到路可調高，但會更吃效能。")]
+    public int maxSearchNodes = 50000;
+
+    [Tooltip("穩定優先預設 false。true 會減少節點，但可能靠近牆角。")]
+    public bool smoothPath = false;
+
     [Range(0f, 0.25f)]
-    public float pathRandomness = 0.08f;
+    public float pathRandomness = 0.02f;
 
-    [Tooltip("路徑快取，降低多台 Drone 重複算相同路徑的成本")]
-    public bool enablePathCache = true;
-
-    [Tooltip("路徑變體數量。越高路線越有變化，但快取數量越多")]
-    public int pathVariantCount = 4;
+    [Header("Random Grid Point Settings")]
+    [Tooltip("從已經快取的 walkable cells 中，隨機抽樣尋找符合距離條件的點。失敗後會 fallback 掃 walkable cache。")]
+    public int randomFilteredPointMaxAttempts = 64;
 
     [Header("Debug Gizmos")]
-    public bool drawGraphGizmos = true;
+    public bool drawGridBounds = true;
+    public bool drawGridCells = false;
+    public bool drawOnlyBlockedCells = false;
+    public int drawCellStep = 8;
+    public int maxGizmoCells = 3000;
 
-    [Tooltip("不用選到 DroneWaypointGraph 物件也畫出 Graph")]
-    public bool alwaysDrawGizmos = true;
-
-    public Color edgeColor = Color.cyan;
-    public Color waypointColor = Color.yellow;
-    public Color disconnectedWaypointColor = Color.red;
-
-    [Tooltip("畫線時避免雙向邊重複畫兩次")]
-    public bool drawEachEdgeOnce = true;
+    public Color boundsColor = Color.white;
+    public Color walkableCellColor = new Color(0f, 1f, 1f, 0.15f);
+    public Color blockedCellColor = new Color(1f, 0f, 0f, 0.25f);
 
     [Header("Build Info")]
-    [SerializeField] private bool graphDirty = true;
-    [SerializeField] private int lastBuildWaypointCount = 0;
-    [SerializeField] private int lastBuildEdgeCount = 0;
+    [SerializeField] private bool gridDirty = true;
+    [SerializeField] private int gridCountX = 0;
+    [SerializeField] private int gridCountY = 0;
+    [SerializeField] private int gridCountZ = 0;
+    [SerializeField] private int totalCellCount = 0;
+    [SerializeField] private int walkableCellCount = 0;
     [SerializeField] private string lastBuildMessage = "Not built yet";
 
-    private class Neighbor
-    {
-        public int index;
-        public float distance;
+    private Vector3 gridMin;
+    private bool[] walkableCells;
 
-        public Neighbor(int index, float distance)
-        {
-            this.index = index;
-            this.distance = distance;
-        }
-    }
+    private readonly List<int> walkableCellIndices = new List<int>();
+    private readonly List<int> reusablePathIndices = new List<int>();
+    private readonly List<Vector3> reusableRawPath = new List<Vector3>();
+    private readonly List<Vector3> reusableSmoothedPath = new List<Vector3>();
+    private readonly List<Vector3Int> neighborOffsets = new List<Vector3Int>();
 
-    private List<Neighbor>[] graphNeighbors;
-    private readonly Dictionary<string, List<int>> pathCache = new Dictionary<string, List<int>>();
+    // A* reusable buffers: avoid per-path large allocations / GC spikes.
+    private float[] gScore;
+    private int[] cameFrom;
+    private int[] openedStamp;
+    private int[] closedStamp;
+    private int searchId = 0;
+    private MinHeap openHeap;
 
-    private readonly Dictionary<Vector3Int, List<int>> spatialBuckets =
-        new Dictionary<Vector3Int, List<int>>();
-
-    private readonly List<Neighbor> reusableCandidates = new List<Neighbor>();
-    private readonly HashSet<int> reusableCandidateSet = new HashSet<int>();
-
-    void OnEnable()
-    {
-        if (Application.isPlaying && buildOnStart)
-        {
-            BuildGraph();
-        }
-    }
+    public int TotalCellCount => totalCellCount;
+    public int WalkableCellCount => walkableCellCount;
+    public string LastBuildMessage => lastBuildMessage;
+    public bool IsReady => walkableCells != null && walkableCells.Length > 0 && !gridDirty;
 
     void Start()
     {
-        if (Application.isPlaying && buildOnStart)
+        // Guarded to prevent double-build when a Manager calls grid APIs before this Start().
+        if (Application.isPlaying && buildOnStart && !IsReady)
         {
             BuildGraph();
         }
@@ -101,14 +97,15 @@ public class DroneWaypointGraph : MonoBehaviour
 
     void OnValidate()
     {
-        maxEdgeDistance = Mathf.Max(0.1f, maxEdgeDistance);
-        maxNeighborsPerWaypoint = Mathf.Max(1, maxNeighborsPerWaypoint);
-        edgeCheckRadius = Mathf.Max(0f, edgeCheckRadius);
-        pathVariantCount = Mathf.Max(1, pathVariantCount);
-        spatialCellSize = Mathf.Max(0f, spatialCellSize);
+        cellSize = Mathf.Max(0.2f, cellSize);
+        agentRadius = Mathf.Max(0.01f, agentRadius);
+        lineCheckRadius = Mathf.Max(0f, lineCheckRadius);
+        nearestWalkableSearchRadius = Mathf.Max(1, nearestWalkableSearchRadius);
+        maxSearchNodes = Mathf.Max(100, maxSearchNodes);
+        randomFilteredPointMaxAttempts = Mathf.Max(1, randomFilteredPointMaxAttempts);
+        drawCellStep = Mathf.Max(1, drawCellStep);
 
-        graphDirty = true;
-        pathCache.Clear();
+        gridDirty = true;
 
         if (!Application.isPlaying && autoRebuildInEditMode)
         {
@@ -116,297 +113,142 @@ public class DroneWaypointGraph : MonoBehaviour
         }
     }
 
-    [ContextMenu("Rebuild Graph")]
+    [ContextMenu("Rebuild 3D Grid")]
     public void RebuildGraphFromInspector()
     {
         BuildGraph();
     }
 
-    [ContextMenu("Clear Graph")]
+    [ContextMenu("Clear 3D Grid")]
     public void ClearGraphFromInspector()
     {
-        graphNeighbors = null;
-        pathCache.Clear();
-        spatialBuckets.Clear();
+        walkableCells = null;
+        walkableCellIndices.Clear();
 
-        lastBuildWaypointCount = 0;
-        lastBuildEdgeCount = 0;
-        lastBuildMessage = "Graph cleared";
-        graphDirty = true;
-    }
+        gScore = null;
+        cameFrom = null;
+        openedStamp = null;
+        closedStamp = null;
+        openHeap = null;
 
-    [ContextMenu("Clear Path Cache")]
-    public void ClearPathCacheFromInspector()
-    {
-        pathCache.Clear();
-    }
+        gridCountX = 0;
+        gridCountY = 0;
+        gridCountZ = 0;
+        totalCellCount = 0;
+        walkableCellCount = 0;
 
-    public void SetWaypoints(Transform[] newWaypoints, bool rebuild = true)
-    {
-        waypoints = newWaypoints;
-        graphDirty = true;
-        pathCache.Clear();
-
-        if (rebuild)
-        {
-            BuildGraph();
-        }
+        lastBuildMessage = "Grid cleared";
+        gridDirty = true;
     }
 
     public void BuildGraph()
     {
-        pathCache.Clear();
-        spatialBuckets.Clear();
+        gridCountX = Mathf.Max(1, Mathf.CeilToInt(gridSize.x / cellSize));
+        gridCountY = Mathf.Max(1, Mathf.CeilToInt(gridSize.y / cellSize));
+        gridCountZ = Mathf.Max(1, Mathf.CeilToInt(gridSize.z / cellSize));
 
-        if (waypoints == null || waypoints.Length == 0)
+        totalCellCount = gridCountX * gridCountY * gridCountZ;
+
+        walkableCells = new bool[totalCellCount];
+        walkableCellIndices.Clear();
+
+        gridMin = gridCenter - gridSize * 0.5f;
+        walkableCellCount = 0;
+
+        for (int x = 0; x < gridCountX; x++)
         {
-            graphNeighbors = new List<Neighbor>[0];
-            lastBuildWaypointCount = 0;
-            lastBuildEdgeCount = 0;
-            lastBuildMessage = "No waypoints";
-            graphDirty = false;
-            return;
-        }
-
-        graphNeighbors = new List<Neighbor>[waypoints.Length];
-
-        for (int i = 0; i < graphNeighbors.Length; i++)
-        {
-            graphNeighbors[i] = new List<Neighbor>();
-        }
-
-        if (useSpatialCandidateSearch)
-        {
-            BuildSpatialBuckets();
-        }
-
-        int validWaypointCount = 0;
-
-        for (int i = 0; i < waypoints.Length; i++)
-        {
-            if (waypoints[i] != null)
+            for (int y = 0; y < gridCountY; y++)
             {
-                validWaypointCount++;
-            }
-        }
-
-        for (int i = 0; i < waypoints.Length; i++)
-        {
-            if (waypoints[i] == null)
-            {
-                continue;
-            }
-
-            reusableCandidates.Clear();
-
-            if (useSpatialCandidateSearch)
-            {
-                CollectSpatialCandidates(i, reusableCandidates);
-            }
-            else
-            {
-                CollectAllCandidates(i, reusableCandidates);
-            }
-
-            reusableCandidates.Sort((a, b) => a.distance.CompareTo(b.distance));
-
-            int count = Mathf.Min(maxNeighborsPerWaypoint, reusableCandidates.Count);
-
-            for (int k = 0; k < count; k++)
-            {
-                int neighborIndex = reusableCandidates[k].index;
-                float distance = reusableCandidates[k].distance;
-
-                AddEdge(i, neighborIndex, distance);
-                AddEdge(neighborIndex, i, distance);
-            }
-        }
-
-        int directedEdgeCount = CountDirectedEdges();
-
-        lastBuildWaypointCount = validWaypointCount;
-        lastBuildEdgeCount = directedEdgeCount;
-        lastBuildMessage =
-            "Built graph: " +
-            validWaypointCount +
-            " waypoints, " +
-            directedEdgeCount +
-            " directed edges";
-
-        graphDirty = false;
-    }
-
-    void BuildSpatialBuckets()
-    {
-        spatialBuckets.Clear();
-
-        float cellSize = GetEffectiveSpatialCellSize();
-
-        for (int i = 0; i < waypoints.Length; i++)
-        {
-            if (waypoints[i] == null)
-            {
-                continue;
-            }
-
-            Vector3Int cell = WorldToCell(waypoints[i].position, cellSize);
-
-            if (!spatialBuckets.TryGetValue(cell, out List<int> list))
-            {
-                list = new List<int>();
-                spatialBuckets[cell] = list;
-            }
-
-            list.Add(i);
-        }
-    }
-
-    void CollectSpatialCandidates(int index, List<Neighbor> candidates)
-    {
-        reusableCandidateSet.Clear();
-
-        float cellSize = GetEffectiveSpatialCellSize();
-        Vector3Int centerCell = WorldToCell(waypoints[index].position, cellSize);
-
-        int searchRange = Mathf.CeilToInt(maxEdgeDistance / cellSize);
-
-        for (int x = -searchRange; x <= searchRange; x++)
-        {
-            for (int y = -searchRange; y <= searchRange; y++)
-            {
-                for (int z = -searchRange; z <= searchRange; z++)
+                for (int z = 0; z < gridCountZ; z++)
                 {
-                    Vector3Int cell = new Vector3Int(
-                        centerCell.x + x,
-                        centerCell.y + y,
-                        centerCell.z + z
+                    int index = ToIndex(x, y, z);
+                    Vector3 world = CellToWorld(x, y, z);
+
+                    bool blocked = Physics.CheckSphere(
+                        world,
+                        agentRadius,
+                        obstacleLayer,
+                        QueryTriggerInteraction.Ignore
                     );
 
-                    if (!spatialBuckets.TryGetValue(cell, out List<int> bucket))
+                    walkableCells[index] = !blocked;
+
+                    if (!blocked)
                     {
-                        continue;
-                    }
-
-                    for (int i = 0; i < bucket.Count; i++)
-                    {
-                        int candidateIndex = bucket[i];
-
-                        if (candidateIndex == index)
-                        {
-                            continue;
-                        }
-
-                        if (reusableCandidateSet.Contains(candidateIndex))
-                        {
-                            continue;
-                        }
-
-                        reusableCandidateSet.Add(candidateIndex);
-                        TryAddCandidate(index, candidateIndex, candidates);
+                        walkableCellCount++;
+                        walkableCellIndices.Add(index);
                     }
                 }
             }
         }
+
+        BuildNeighborOffsets();
+        AllocateSearchBuffers();
+
+        gridDirty = false;
+
+        lastBuildMessage =
+            "Built 3D Grid: " +
+            gridCountX + " x " +
+            gridCountY + " x " +
+            gridCountZ + " = " +
+            totalCellCount +
+            " cells, walkable = " +
+            walkableCellCount;
     }
 
-    void CollectAllCandidates(int index, List<Neighbor> candidates)
+    void AllocateSearchBuffers()
     {
-        for (int j = 0; j < waypoints.Length; j++)
+        gScore = new float[totalCellCount];
+        cameFrom = new int[totalCellCount];
+        openedStamp = new int[totalCellCount];
+        closedStamp = new int[totalCellCount];
+        openHeap = new MinHeap(Mathf.Min(totalCellCount, 8192));
+        searchId = 0;
+    }
+
+    void BuildNeighborOffsets()
+    {
+        neighborOffsets.Clear();
+
+        if (allowDiagonalMovement)
         {
-            if (j == index)
+            for (int x = -1; x <= 1; x++)
             {
-                continue;
-            }
+                for (int y = -1; y <= 1; y++)
+                {
+                    for (int z = -1; z <= 1; z++)
+                    {
+                        if (x == 0 && y == 0 && z == 0)
+                        {
+                            continue;
+                        }
 
-            TryAddCandidate(index, j, candidates);
-        }
-    }
-
-    void TryAddCandidate(int fromIndex, int toIndex, List<Neighbor> candidates)
-    {
-        if (!IsValidIndex(fromIndex) || !IsValidIndex(toIndex))
-        {
-            return;
-        }
-
-        float distance = Vector3.Distance(
-            waypoints[fromIndex].position,
-            waypoints[toIndex].position
-        );
-
-        if (distance > maxEdgeDistance)
-        {
-            return;
-        }
-
-        if (!HasClearPath(
-            waypoints[fromIndex].position,
-            waypoints[toIndex].position
-        ))
-        {
-            return;
-        }
-
-        candidates.Add(new Neighbor(toIndex, distance));
-    }
-
-    float GetEffectiveSpatialCellSize()
-    {
-        if (spatialCellSize > 0.01f)
-        {
-            return spatialCellSize;
-        }
-
-        return Mathf.Max(1f, maxEdgeDistance);
-    }
-
-    Vector3Int WorldToCell(Vector3 position, float cellSize)
-    {
-        return new Vector3Int(
-            Mathf.FloorToInt(position.x / cellSize),
-            Mathf.FloorToInt(position.y / cellSize),
-            Mathf.FloorToInt(position.z / cellSize)
-        );
-    }
-
-    void AddEdge(int from, int to, float distance)
-    {
-        if (!IsValidIndex(from) || !IsValidIndex(to))
-        {
-            return;
-        }
-
-        List<Neighbor> list = graphNeighbors[from];
-
-        for (int i = 0; i < list.Count; i++)
-        {
-            if (list[i].index == to)
-            {
-                return;
+                        neighborOffsets.Add(new Vector3Int(x, y, z));
+                    }
+                }
             }
         }
-
-        list.Add(new Neighbor(to, distance));
+        else
+        {
+            neighborOffsets.Add(new Vector3Int(1, 0, 0));
+            neighborOffsets.Add(new Vector3Int(-1, 0, 0));
+            neighborOffsets.Add(new Vector3Int(0, 1, 0));
+            neighborOffsets.Add(new Vector3Int(0, -1, 0));
+            neighborOffsets.Add(new Vector3Int(0, 0, 1));
+            neighborOffsets.Add(new Vector3Int(0, 0, -1));
+        }
     }
 
-    int CountDirectedEdges()
+    void EnsureGridReady()
     {
-        if (graphNeighbors == null)
+        if (walkableCells == null ||
+            walkableCells.Length == 0 ||
+            gScore == null ||
+            gridDirty)
         {
-            return 0;
+            BuildGraph();
         }
-
-        int count = 0;
-
-        for (int i = 0; i < graphNeighbors.Length; i++)
-        {
-            if (graphNeighbors[i] != null)
-            {
-                count += graphNeighbors[i].Count;
-            }
-        }
-
-        return count;
     }
 
     public bool HasClearPath(Vector3 from, Vector3 to)
@@ -426,9 +268,11 @@ public class DroneWaypointGraph : MonoBehaviour
 
         direction.Normalize();
 
+        float radius = lineCheckRadius > 0f ? lineCheckRadius : agentRadius;
+
         bool blocked = Physics.SphereCast(
             from,
-            edgeCheckRadius,
+            radius,
             direction,
             out RaycastHit hit,
             distance,
@@ -437,47 +281,6 @@ public class DroneWaypointGraph : MonoBehaviour
         );
 
         return !blocked;
-    }
-
-    public int GetClosestWaypointIndex(Vector3 position, bool requireClearPath)
-    {
-        if (waypoints == null || waypoints.Length == 0)
-        {
-            return -1;
-        }
-
-        int bestIndex = -1;
-        float bestDistance = float.MaxValue;
-
-        for (int i = 0; i < waypoints.Length; i++)
-        {
-            if (waypoints[i] == null)
-            {
-                continue;
-            }
-
-            float distance = Vector3.Distance(position, waypoints[i].position);
-
-            if (distance >= bestDistance)
-            {
-                continue;
-            }
-
-            if (requireClearPath && !HasClearPath(position, waypoints[i].position))
-            {
-                continue;
-            }
-
-            bestDistance = distance;
-            bestIndex = i;
-        }
-
-        if (bestIndex < 0 && requireClearPath)
-        {
-            return GetClosestWaypointIndex(position, false);
-        }
-
-        return bestIndex;
     }
 
     public bool TryFindPathPositions(
@@ -491,149 +294,528 @@ public class DroneWaypointGraph : MonoBehaviour
     {
         pathPositions = new List<Vector3>();
 
-        EnsureGraphReady();
+        EnsureGridReady();
 
-        int startIndex = GetClosestWaypointIndex(from, requireClearStart);
-        int goalIndex = GetClosestWaypointIndex(to, requireClearGoal);
+        if (HasClearPath(from, to))
+        {
+            pathPositions.Add(to);
+            return true;
+        }
+
+        int startIndex = FindNearestWalkableCellIndex(from);
+        int goalIndex = FindNearestWalkableCellIndex(to);
 
         if (startIndex < 0 || goalIndex < 0)
         {
             return false;
         }
 
-        List<int> pathIndices = FindPath(startIndex, goalIndex, variant);
+        bool found = FindPathCellIndices(
+            startIndex,
+            goalIndex,
+            reusablePathIndices,
+            variant
+        );
 
-        if (pathIndices == null || pathIndices.Count == 0)
+        if (!found || reusablePathIndices.Count == 0)
         {
             return false;
         }
 
-        for (int i = 0; i < pathIndices.Count; i++)
-        {
-            int index = pathIndices[i];
+        reusableRawPath.Clear();
 
-            if (IsValidIndex(index))
+        for (int i = 0; i < reusablePathIndices.Count; i++)
+        {
+            reusableRawPath.Add(IndexToWorld(reusablePathIndices[i]));
+        }
+
+        if (smoothPath)
+        {
+            SmoothPath(reusableRawPath, reusableSmoothedPath);
+
+            for (int i = 0; i < reusableSmoothedPath.Count; i++)
             {
-                pathPositions.Add(waypoints[index].position);
+                pathPositions.Add(reusableSmoothedPath[i]);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < reusableRawPath.Count; i++)
+            {
+                pathPositions.Add(reusableRawPath[i]);
             }
         }
 
-        return pathPositions.Count > 0;
+        if (pathPositions.Count == 0)
+        {
+            return false;
+        }
+
+        Vector3 last = pathPositions[pathPositions.Count - 1];
+
+        if (Vector3.Distance(last, to) > cellSize * 0.5f && HasClearPath(last, to))
+        {
+            pathPositions.Add(to);
+        }
+
+        return true;
     }
 
-    public List<int> FindPath(int startIndex, int goalIndex, int variant = 0)
+    bool FindPathCellIndices(
+        int startIndex,
+        int goalIndex,
+        List<int> result,
+        int variant
+    )
     {
-        EnsureGraphReady();
-
-        if (!IsValidIndex(startIndex) || !IsValidIndex(goalIndex))
-        {
-            return null;
-        }
+        result.Clear();
 
         if (startIndex == goalIndex)
         {
-            return new List<int> { startIndex };
+            result.Add(startIndex);
+            return true;
         }
 
-        int safeVariant = Mathf.Abs(variant);
-
-        if (pathVariantCount > 0)
-        {
-            safeVariant %= pathVariantCount;
-        }
-
-        string cacheKey = startIndex + "_" + goalIndex + "_" + safeVariant;
-
-        if (enablePathCache && pathCache.TryGetValue(cacheKey, out List<int> cached))
-        {
-            return new List<int>(cached);
-        }
-
-        int count = waypoints.Length;
-
-        float[] gScore = new float[count];
-        float[] fScore = new float[count];
-        int[] cameFrom = new int[count];
-        bool[] closed = new bool[count];
-
-        for (int i = 0; i < count; i++)
-        {
-            gScore[i] = float.MaxValue;
-            fScore[i] = float.MaxValue;
-            cameFrom[i] = -1;
-            closed[i] = false;
-        }
-
-        List<int> open = new List<int>();
+        BeginSearch();
 
         gScore[startIndex] = 0f;
-        fScore[startIndex] = Heuristic(startIndex, goalIndex);
-        open.Add(startIndex);
+        cameFrom[startIndex] = -1;
+        openedStamp[startIndex] = searchId;
+        openHeap.Push(startIndex, HeuristicCost(startIndex, goalIndex));
 
-        while (open.Count > 0)
+        int searchedNodes = 0;
+
+        while (openHeap.Count > 0)
         {
-            int current = GetLowestFScore(open, fScore);
+            int current = openHeap.Pop();
 
-            if (current == goalIndex)
-            {
-                List<int> path = ReconstructPath(cameFrom, current);
-
-                if (enablePathCache)
-                {
-                    pathCache[cacheKey] = new List<int>(path);
-                }
-
-                return path;
-            }
-
-            open.Remove(current);
-            closed[current] = true;
-
-            if (graphNeighbors[current] == null)
+            if (closedStamp[current] == searchId)
             {
                 continue;
             }
 
-            foreach (Neighbor neighbor in graphNeighbors[current])
+            if (current == goalIndex)
             {
-                int next = neighbor.index;
+                ReconstructPath(cameFrom, current, result);
+                return true;
+            }
 
-                if (!IsValidIndex(next) || closed[next])
+            closedStamp[current] = searchId;
+            searchedNodes++;
+
+            if (searchedNodes > maxSearchNodes)
+            {
+                return false;
+            }
+
+            IndexToCell(current, out int cx, out int cy, out int cz);
+
+            for (int i = 0; i < neighborOffsets.Count; i++)
+            {
+                Vector3Int offset = neighborOffsets[i];
+
+                int nx = cx + offset.x;
+                int ny = cy + offset.y;
+                int nz = cz + offset.z;
+
+                if (!IsInsideGrid(nx, ny, nz))
                 {
                     continue;
                 }
 
-                float randomizedCost =
-                    neighbor.distance * GetEdgeCostFactor(current, next, safeVariant);
-
-                float tentativeG = gScore[current] + randomizedCost;
-
-                if (!open.Contains(next))
-                {
-                    open.Add(next);
-                }
-                else if (tentativeG >= gScore[next])
+                if (!IsMoveAllowedWithoutCornerCutting(cx, cy, cz, offset))
                 {
                     continue;
                 }
 
-                cameFrom[next] = current;
-                gScore[next] = tentativeG;
-                fScore[next] = tentativeG + Heuristic(next, goalIndex);
+                int neighborIndex = ToIndex(nx, ny, nz);
+
+                if (!walkableCells[neighborIndex])
+                {
+                    continue;
+                }
+
+                if (closedStamp[neighborIndex] == searchId)
+                {
+                    continue;
+                }
+
+                if (openedStamp[neighborIndex] != searchId)
+                {
+                    openedStamp[neighborIndex] = searchId;
+                    gScore[neighborIndex] = float.MaxValue;
+                    cameFrom[neighborIndex] = -1;
+                }
+
+                float moveCost =
+                    Mathf.Sqrt(
+                        offset.x * offset.x +
+                        offset.y * offset.y +
+                        offset.z * offset.z
+                    ) * cellSize;
+
+                moveCost *= GetEdgeCostFactor(current, neighborIndex, variant);
+
+                float tentativeG = gScore[current] + moveCost;
+
+                if (tentativeG >= gScore[neighborIndex])
+                {
+                    continue;
+                }
+
+                cameFrom[neighborIndex] = current;
+                gScore[neighborIndex] = tentativeG;
+
+                float fScore =
+                    tentativeG +
+                    HeuristicCost(neighborIndex, goalIndex);
+
+                openHeap.Push(neighborIndex, fScore);
             }
         }
 
-        return null;
+        return false;
     }
 
-    void EnsureGraphReady()
+    void BeginSearch()
     {
-        if (graphNeighbors == null ||
-            graphNeighbors.Length == 0 ||
-            graphDirty)
+        searchId++;
+
+        if (searchId == int.MaxValue)
         {
-            BuildGraph();
+            System.Array.Clear(openedStamp, 0, openedStamp.Length);
+            System.Array.Clear(closedStamp, 0, closedStamp.Length);
+            searchId = 1;
         }
+
+        openHeap.Clear();
+    }
+
+    bool IsMoveAllowedWithoutCornerCutting(
+        int cx,
+        int cy,
+        int cz,
+        Vector3Int offset
+    )
+    {
+        if (!allowDiagonalMovement)
+        {
+            return true;
+        }
+
+        int nonZeroCount = 0;
+
+        if (offset.x != 0) nonZeroCount++;
+        if (offset.y != 0) nonZeroCount++;
+        if (offset.z != 0) nonZeroCount++;
+
+        if (nonZeroCount <= 1)
+        {
+            return true;
+        }
+
+        // Conservative 3D corner-cut prevention.
+        for (int x = 0; x <= Mathf.Abs(offset.x); x++)
+        {
+            for (int y = 0; y <= Mathf.Abs(offset.y); y++)
+            {
+                for (int z = 0; z <= Mathf.Abs(offset.z); z++)
+                {
+                    if (x == 0 && y == 0 && z == 0)
+                    {
+                        continue;
+                    }
+
+                    int sx = offset.x == 0 ? 0 : (offset.x > 0 ? x : -x);
+                    int sy = offset.y == 0 ? 0 : (offset.y > 0 ? y : -y);
+                    int sz = offset.z == 0 ? 0 : (offset.z > 0 ? z : -z);
+
+                    int nx = cx + sx;
+                    int ny = cy + sy;
+                    int nz = cz + sz;
+
+                    if (!IsInsideGrid(nx, ny, nz))
+                    {
+                        return false;
+                    }
+
+                    int index = ToIndex(nx, ny, nz);
+
+                    if (!walkableCells[index])
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    void ReconstructPath(int[] cameFromArray, int current, List<int> result)
+    {
+        result.Clear();
+        result.Add(current);
+
+        while (cameFromArray[current] >= 0)
+        {
+            current = cameFromArray[current];
+            result.Add(current);
+        }
+
+        result.Reverse();
+    }
+
+    void SmoothPath(List<Vector3> rawPath, List<Vector3> smoothedPath)
+    {
+        smoothedPath.Clear();
+
+        if (rawPath == null || rawPath.Count == 0)
+        {
+            return;
+        }
+
+        if (rawPath.Count <= 2)
+        {
+            for (int i = 0; i < rawPath.Count; i++)
+            {
+                smoothedPath.Add(rawPath[i]);
+            }
+
+            return;
+        }
+
+        int currentIndex = 0;
+        smoothedPath.Add(rawPath[currentIndex]);
+
+        while (currentIndex < rawPath.Count - 1)
+        {
+            int bestIndex = currentIndex + 1;
+
+            for (int i = rawPath.Count - 1; i > currentIndex + 1; i--)
+            {
+                if (HasClearPath(rawPath[currentIndex], rawPath[i]))
+                {
+                    bestIndex = i;
+                    break;
+                }
+            }
+
+            smoothedPath.Add(rawPath[bestIndex]);
+            currentIndex = bestIndex;
+        }
+    }
+
+    public bool TryGetRandomWalkablePoint(out Vector3 point)
+    {
+        EnsureGridReady();
+
+        point = Vector3.zero;
+
+        if (walkableCellIndices.Count == 0)
+        {
+            return false;
+        }
+
+        int index = walkableCellIndices[Random.Range(0, walkableCellIndices.Count)];
+        point = IndexToWorld(index);
+        return true;
+    }
+
+    public bool TryGetRandomWalkablePointFarFrom(
+        Vector3 origin,
+        float minDistance,
+        out Vector3 point
+    )
+    {
+        EnsureGridReady();
+
+        point = Vector3.zero;
+
+        if (walkableCellIndices.Count == 0)
+        {
+            return false;
+        }
+
+        float minSqr = minDistance * minDistance;
+
+        for (int i = 0; i < randomFilteredPointMaxAttempts; i++)
+        {
+            int index = walkableCellIndices[Random.Range(0, walkableCellIndices.Count)];
+            Vector3 candidate = IndexToWorld(index);
+
+            if ((candidate - origin).sqrMagnitude >= minSqr)
+            {
+                point = candidate;
+                return true;
+            }
+        }
+
+        int bestIndex = -1;
+        float bestDistance = -1f;
+
+        for (int i = 0; i < walkableCellIndices.Count; i++)
+        {
+            int index = walkableCellIndices[i];
+            Vector3 candidate = IndexToWorld(index);
+            float sqr = (candidate - origin).sqrMagnitude;
+
+            if (sqr > bestDistance)
+            {
+                bestDistance = sqr;
+                bestIndex = index;
+            }
+        }
+
+        if (bestIndex >= 0)
+        {
+            point = IndexToWorld(bestIndex);
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool TryGetRandomWalkablePointInRange(
+        Vector3 origin,
+        float minDistance,
+        float maxDistance,
+        out Vector3 point
+    )
+    {
+        EnsureGridReady();
+
+        point = Vector3.zero;
+
+        if (walkableCellIndices.Count == 0)
+        {
+            return false;
+        }
+
+        float minSqr = minDistance * minDistance;
+        float maxSqr = maxDistance > 0f
+            ? maxDistance * maxDistance
+            : float.MaxValue;
+
+        for (int i = 0; i < randomFilteredPointMaxAttempts; i++)
+        {
+            int index = walkableCellIndices[Random.Range(0, walkableCellIndices.Count)];
+            Vector3 candidate = IndexToWorld(index);
+            float sqr = (candidate - origin).sqrMagnitude;
+
+            if (sqr >= minSqr && sqr <= maxSqr)
+            {
+                point = candidate;
+                return true;
+            }
+        }
+
+        return TryGetRandomWalkablePointFarFrom(origin, minDistance, out point);
+    }
+
+    public bool TryGetRandomWalkablePointNear(
+        Vector3 origin,
+        float maxDistance,
+        out Vector3 point
+    )
+    {
+        EnsureGridReady();
+
+        point = Vector3.zero;
+
+        if (walkableCellIndices.Count == 0)
+        {
+            return false;
+        }
+
+        float maxSqr = maxDistance * maxDistance;
+
+        for (int i = 0; i < randomFilteredPointMaxAttempts; i++)
+        {
+            int index = walkableCellIndices[Random.Range(0, walkableCellIndices.Count)];
+            Vector3 candidate = IndexToWorld(index);
+            float sqr = (candidate - origin).sqrMagnitude;
+
+            if (sqr <= maxSqr)
+            {
+                point = candidate;
+                return true;
+            }
+        }
+
+        return TryGetRandomWalkablePoint(out point);
+    }
+
+    int FindNearestWalkableCellIndex(Vector3 worldPosition)
+    {
+        WorldToCell(
+            worldPosition,
+            out int startX,
+            out int startY,
+            out int startZ
+        );
+
+        startX = Mathf.Clamp(startX, 0, gridCountX - 1);
+        startY = Mathf.Clamp(startY, 0, gridCountY - 1);
+        startZ = Mathf.Clamp(startZ, 0, gridCountZ - 1);
+
+        int startIndex = ToIndex(startX, startY, startZ);
+
+        if (walkableCells[startIndex])
+        {
+            return startIndex;
+        }
+
+        int bestIndex = -1;
+        float bestDistance = float.MaxValue;
+
+        for (int r = 1; r <= nearestWalkableSearchRadius; r++)
+        {
+            for (int x = startX - r; x <= startX + r; x++)
+            {
+                for (int y = startY - r; y <= startY + r; y++)
+                {
+                    for (int z = startZ - r; z <= startZ + r; z++)
+                    {
+                        if (!IsInsideGrid(x, y, z))
+                        {
+                            continue;
+                        }
+
+                        int index = ToIndex(x, y, z);
+
+                        if (!walkableCells[index])
+                        {
+                            continue;
+                        }
+
+                        Vector3 cellWorld = CellToWorld(x, y, z);
+                        float sqr = (cellWorld - worldPosition).sqrMagnitude;
+
+                        if (sqr < bestDistance)
+                        {
+                            bestDistance = sqr;
+                            bestIndex = index;
+                        }
+                    }
+                }
+            }
+
+            if (bestIndex >= 0)
+            {
+                return bestIndex;
+            }
+        }
+
+        return -1;
+    }
+
+    float HeuristicCost(int fromIndex, int toIndex)
+    {
+        Vector3 from = IndexToWorld(fromIndex);
+        Vector3 to = IndexToWorld(toIndex);
+
+        return Vector3.Distance(from, to);
     }
 
     float GetEdgeCostFactor(int a, int b, int variant)
@@ -652,139 +834,205 @@ public class DroneWaypointGraph : MonoBehaviour
         return 1f + randomOffset;
     }
 
-    int GetLowestFScore(List<int> open, float[] fScore)
+    void WorldToCell(Vector3 world, out int x, out int y, out int z)
     {
-        int best = open[0];
-        float bestScore = fScore[best];
+        Vector3 local = world - gridMin;
 
-        for (int i = 1; i < open.Count; i++)
-        {
-            int index = open[i];
-
-            if (fScore[index] < bestScore)
-            {
-                bestScore = fScore[index];
-                best = index;
-            }
-        }
-
-        return best;
+        x = Mathf.FloorToInt(local.x / cellSize);
+        y = Mathf.FloorToInt(local.y / cellSize);
+        z = Mathf.FloorToInt(local.z / cellSize);
     }
 
-    float Heuristic(int from, int to)
+    Vector3 CellToWorld(int x, int y, int z)
     {
-        return Vector3.Distance(
-            waypoints[from].position,
-            waypoints[to].position
+        return gridMin + new Vector3(
+            (x + 0.5f) * cellSize,
+            (y + 0.5f) * cellSize,
+            (z + 0.5f) * cellSize
         );
     }
 
-    List<int> ReconstructPath(int[] cameFrom, int current)
+    Vector3 IndexToWorld(int index)
     {
-        List<int> path = new List<int>();
-        path.Add(current);
-
-        while (cameFrom[current] >= 0)
-        {
-            current = cameFrom[current];
-            path.Add(current);
-        }
-
-        path.Reverse();
-        return path;
+        IndexToCell(index, out int x, out int y, out int z);
+        return CellToWorld(x, y, z);
     }
 
-    bool IsValidIndex(int index)
+    int ToIndex(int x, int y, int z)
     {
-        return waypoints != null &&
-               index >= 0 &&
-               index < waypoints.Length &&
-               waypoints[index] != null;
+        return x + gridCountX * (y + gridCountY * z);
     }
 
-    bool HasAnyNeighbor(int index)
+    void IndexToCell(int index, out int x, out int y, out int z)
     {
-        return graphNeighbors != null &&
-               index >= 0 &&
-               index < graphNeighbors.Length &&
-               graphNeighbors[index] != null &&
-               graphNeighbors[index].Count > 0;
+        z = index / (gridCountX * gridCountY);
+        int remain = index - z * gridCountX * gridCountY;
+        y = remain / gridCountX;
+        x = remain - y * gridCountX;
+    }
+
+    bool IsInsideGrid(int x, int y, int z)
+    {
+        return x >= 0 &&
+               y >= 0 &&
+               z >= 0 &&
+               x < gridCountX &&
+               y < gridCountY &&
+               z < gridCountZ;
     }
 
     void OnDrawGizmos()
     {
-        if (!alwaysDrawGizmos)
+        if (drawGridBounds)
+        {
+            Gizmos.color = boundsColor;
+            Gizmos.DrawWireCube(gridCenter, gridSize);
+        }
+
+        if (!drawGridCells ||
+            walkableCells == null ||
+            walkableCells.Length == 0)
         {
             return;
         }
 
-        DrawGraphGizmos();
+        int drawn = 0;
+
+        for (int x = 0; x < gridCountX; x += drawCellStep)
+        {
+            for (int y = 0; y < gridCountY; y += drawCellStep)
+            {
+                for (int z = 0; z < gridCountZ; z += drawCellStep)
+                {
+                    if (drawn >= maxGizmoCells)
+                    {
+                        return;
+                    }
+
+                    int index = ToIndex(x, y, z);
+
+                    if (index < 0 || index >= walkableCells.Length)
+                    {
+                        continue;
+                    }
+
+                    bool walkable = walkableCells[index];
+
+                    if (drawOnlyBlockedCells && walkable)
+                    {
+                        continue;
+                    }
+
+                    Vector3 world = CellToWorld(x, y, z);
+
+                    Gizmos.color = walkable ? walkableCellColor : blockedCellColor;
+                    Gizmos.DrawWireCube(world, Vector3.one * cellSize * 0.85f);
+
+                    drawn++;
+                }
+            }
+        }
     }
 
-    void OnDrawGizmosSelected()
+    private class MinHeap
     {
-        if (alwaysDrawGizmos)
+        private readonly List<int> items;
+        private readonly List<float> priorities;
+
+        public int Count => items.Count;
+
+        public MinHeap(int capacity)
         {
-            return;
+            items = new List<int>(capacity);
+            priorities = new List<float>(capacity);
         }
 
-        DrawGraphGizmos();
-    }
-
-    void DrawGraphGizmos()
-    {
-        if (!drawGraphGizmos || waypoints == null)
+        public void Clear()
         {
-            return;
+            items.Clear();
+            priorities.Clear();
         }
 
-        for (int i = 0; i < waypoints.Length; i++)
+        public void Push(int item, float priority)
         {
-            if (waypoints[i] == null)
+            items.Add(item);
+            priorities.Add(priority);
+            BubbleUp(items.Count - 1);
+        }
+
+        public int Pop()
+        {
+            int result = items[0];
+
+            int lastIndex = items.Count - 1;
+
+            items[0] = items[lastIndex];
+            priorities[0] = priorities[lastIndex];
+
+            items.RemoveAt(lastIndex);
+            priorities.RemoveAt(lastIndex);
+
+            if (items.Count > 0)
             {
-                continue;
+                BubbleDown(0);
             }
 
-            Gizmos.color = HasAnyNeighbor(i)
-                ? waypointColor
-                : disconnectedWaypointColor;
-
-            Gizmos.DrawWireSphere(waypoints[i].position, 0.4f);
+            return result;
         }
 
-        if (graphNeighbors == null)
+        void BubbleUp(int index)
         {
-            return;
-        }
-
-        Gizmos.color = edgeColor;
-
-        for (int i = 0; i < graphNeighbors.Length; i++)
-        {
-            if (!IsValidIndex(i) || graphNeighbors[i] == null)
+            while (index > 0)
             {
-                continue;
-            }
+                int parent = (index - 1) / 2;
 
-            foreach (Neighbor neighbor in graphNeighbors[i])
-            {
-                int j = neighbor.index;
-
-                if (!IsValidIndex(j))
+                if (priorities[parent] <= priorities[index])
                 {
-                    continue;
+                    break;
                 }
 
-                if (drawEachEdgeOnce && j < i)
+                Swap(parent, index);
+                index = parent;
+            }
+        }
+
+        void BubbleDown(int index)
+        {
+            while (true)
+            {
+                int left = index * 2 + 1;
+                int right = index * 2 + 2;
+                int smallest = index;
+
+                if (left < items.Count && priorities[left] < priorities[smallest])
                 {
-                    continue;
+                    smallest = left;
                 }
 
-                Gizmos.DrawLine(
-                    waypoints[i].position,
-                    waypoints[j].position
-                );
+                if (right < items.Count && priorities[right] < priorities[smallest])
+                {
+                    smallest = right;
+                }
+
+                if (smallest == index)
+                {
+                    break;
+                }
+
+                Swap(index, smallest);
+                index = smallest;
             }
+        }
+
+        void Swap(int a, int b)
+        {
+            int itemTemp = items[a];
+            items[a] = items[b];
+            items[b] = itemTemp;
+
+            float priorityTemp = priorities[a];
+            priorities[a] = priorities[b];
+            priorities[b] = priorityTemp;
         }
     }
 }

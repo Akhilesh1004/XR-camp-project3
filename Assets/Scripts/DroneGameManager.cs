@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -7,59 +6,93 @@ public class DroneGameManager : MonoBehaviour
     [Header("DroneNPC Prefab")]
     public DroneNPC dronePrefab;
 
-    [Header("只負責出生點，不再覆蓋 Graph Waypoints")]
-    public Transform[] spawnPoints;
-
-    [Header("Waypoint Graph A*")]
-    public DroneWaypointGraph waypointGraph;
+    [Header("3D Grid")]
+    public DroneWaypointGraph grid;
 
     [Header("場上數量")]
     public int targetDroneCount = 4;
     public bool spawnOnStart = true;
     public float respawnDelay = 3f;
 
+    [Header("Spawn Throttle")]
+    [Tooltip("一次只補一台，避免開場多台 Drone 同一幀 A* 導致 FPS spike")]
+    public float spawnInterval = 0.08f;
+
     [Header("Object Pool")]
-    public int initialPoolSize = 4;
+    public int initialPoolSize = 100;
     public bool allowPoolExpansion = true;
 
-    [Header("生成規則")]
-    public bool allowDuplicateSpawnPoint = true;
+    [Header("生成設定")]
+    public string playerTag = "Player";
+    public bool avoidSpawnNearPlayer = true;
+    public float minSpawnDistanceFromPlayer = 80f;
 
     private readonly List<DroneNPC> activeDrones = new List<DroneNPC>();
     private readonly Queue<DroneNPC> pooledDrones = new Queue<DroneNPC>();
-    private readonly HashSet<int> usedSpawnIndices = new HashSet<int>();
 
     private int pendingRespawnCount = 0;
+    private Transform player;
+    private float nextSpawnTime = 0f;
 
     void Awake()
     {
+        FindPlayer();
         PrewarmPool();
     }
 
     void Start()
     {
-        // 注意：這裡只 BuildGraph，不再 SetWaypoints(spawnPoints)
-        // DroneWaypointGraph.waypoints 請在 Inspector 自己指定真正的路線 waypoint
-        if (waypointGraph != null && waypointGraph.buildOnStart)
-        {
-            waypointGraph.BuildGraph();
-        }
-
-        if (spawnOnStart)
-        {
-            FillDrones();
-        }
+        nextSpawnTime = Time.time + Random.Range(0.1f, 0.4f);
     }
 
     void Update()
     {
         activeDrones.RemoveAll(drone => drone == null || !drone.gameObject.activeSelf);
 
+        if (!spawnOnStart)
+        {
+            return;
+        }
+
+        if (grid == null || !grid.IsReady)
+        {
+            return;
+        }
+
+        TrySpawnOneIfNeeded();
+    }
+
+    void TrySpawnOneIfNeeded()
+    {
+        if (Time.time < nextSpawnTime)
+        {
+            return;
+        }
+
         int expectedCount = activeDrones.Count + pendingRespawnCount;
 
-        if (expectedCount < targetDroneCount)
+        if (expectedCount >= targetDroneCount)
         {
-            FillDrones();
+            return;
+        }
+
+        bool spawned = SpawnOneDrone();
+
+        nextSpawnTime = Time.time + spawnInterval;
+
+        if (!spawned)
+        {
+            nextSpawnTime = Time.time + Mathf.Max(0.5f, spawnInterval);
+        }
+    }
+
+    void FindPlayer()
+    {
+        GameObject playerObject = GameObject.FindGameObjectWithTag(playerTag);
+
+        if (playerObject != null)
+        {
+            player = playerObject.transform;
         }
     }
 
@@ -81,37 +114,46 @@ public class DroneGameManager : MonoBehaviour
         }
     }
 
-    void FillDrones()
-    {
-        while (activeDrones.Count + pendingRespawnCount < targetDroneCount)
-        {
-            bool success = SpawnOneDrone();
-
-            if (!success)
-            {
-                break;
-            }
-        }
-    }
-
     bool SpawnOneDrone()
     {
-        if (dronePrefab == null)
+        if (dronePrefab == null || grid == null || !grid.IsReady)
         {
             return false;
         }
 
-        if (spawnPoints == null || spawnPoints.Length == 0)
+        Vector3 spawnPosition;
+
+        if (avoidSpawnNearPlayer)
         {
-            Debug.LogWarning("DroneGameManager: spawnPoints 沒有設定");
-            return false;
+            if (player == null)
+            {
+                FindPlayer();
+            }
+
+            if (player != null)
+            {
+                if (!grid.TryGetRandomWalkablePointFarFrom(
+                    player.position,
+                    minSpawnDistanceFromPlayer,
+                    out spawnPosition))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (!grid.TryGetRandomWalkablePoint(out spawnPosition))
+                {
+                    return false;
+                }
+            }
         }
-
-        int spawnIndex = GetRandomSpawnIndex();
-
-        if (spawnIndex < 0)
+        else
         {
-            return false;
+            if (!grid.TryGetRandomWalkablePoint(out spawnPosition))
+            {
+                return false;
+            }
         }
 
         DroneNPC drone = GetDroneFromPool();
@@ -121,21 +163,21 @@ public class DroneGameManager : MonoBehaviour
             return false;
         }
 
-        Transform spawnPoint = spawnPoints[spawnIndex];
+        Quaternion spawnRotation = Quaternion.Euler(
+            0f,
+            Random.Range(0f, 360f),
+            0f
+        );
 
         drone.Initialize(
             this,
-            spawnPoint.position,
-            spawnPoint.rotation,
-            spawnIndex,
-            spawnPoints,
-            waypointGraph
+            spawnPosition,
+            spawnRotation,
+            grid
         );
 
         drone.gameObject.SetActive(true);
-
         activeDrones.Add(drone);
-        usedSpawnIndices.Add(spawnIndex);
 
         return true;
     }
@@ -157,34 +199,7 @@ public class DroneGameManager : MonoBehaviour
         return drone;
     }
 
-    int GetRandomSpawnIndex()
-    {
-        List<int> candidates = new List<int>();
-
-        for (int i = 0; i < spawnPoints.Length; i++)
-        {
-            if (spawnPoints[i] == null)
-            {
-                continue;
-            }
-
-            if (!allowDuplicateSpawnPoint && usedSpawnIndices.Contains(i))
-            {
-                continue;
-            }
-
-            candidates.Add(i);
-        }
-
-        if (candidates.Count == 0)
-        {
-            return -1;
-        }
-
-        return candidates[Random.Range(0, candidates.Count)];
-    }
-
-    public void NotifyDroneExploded(DroneNPC drone, int spawnIndex)
+    public void NotifyDroneExploded(DroneNPC drone)
     {
         if (drone == null)
         {
@@ -192,15 +207,15 @@ public class DroneGameManager : MonoBehaviour
         }
 
         activeDrones.Remove(drone);
-
-        if (spawnIndex >= 0)
-        {
-            usedSpawnIndices.Remove(spawnIndex);
-        }
-
         ReturnDroneToPool(drone);
+        pendingRespawnCount++;
+        nextSpawnTime = Mathf.Max(nextSpawnTime, Time.time + respawnDelay);
+        Invoke(nameof(ReleasePendingRespawn), respawnDelay);
+    }
 
-        StartCoroutine(RespawnAfterDelay());
+    void ReleasePendingRespawn()
+    {
+        pendingRespawnCount = Mathf.Max(0, pendingRespawnCount - 1);
     }
 
     void ReturnDroneToPool(DroneNPC drone)
@@ -213,23 +228,6 @@ public class DroneGameManager : MonoBehaviour
         drone.PrepareForPool();
         drone.gameObject.SetActive(false);
         drone.transform.SetParent(transform);
-
         pooledDrones.Enqueue(drone);
-    }
-
-    IEnumerator RespawnAfterDelay()
-    {
-        pendingRespawnCount++;
-
-        yield return new WaitForSeconds(respawnDelay);
-
-        pendingRespawnCount = Mathf.Max(0, pendingRespawnCount - 1);
-
-        activeDrones.RemoveAll(drone => drone == null || !drone.gameObject.activeSelf);
-
-        if (activeDrones.Count < targetDroneCount)
-        {
-            SpawnOneDrone();
-        }
     }
 }
