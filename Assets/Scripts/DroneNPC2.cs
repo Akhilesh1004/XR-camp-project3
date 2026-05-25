@@ -68,6 +68,19 @@ public class DroneNPC2 : MonoBehaviour
     [Tooltip("大量 DroneNPC2 時建議 false。送貨路線已由 A* path 保證安全，卡住再重算即可。")]
     public bool hardStopDuringPathFollow = false;
 
+    [Header("Visual / Far LOD")]
+    public bool enableVisualLOD = true;
+    public string lodTargetTag = "Player";
+    public float visualCullDistance = 240f;
+    public float visualLODCheckInterval = 0.35f;
+    public bool disableFarAnimators = true;
+    public bool disableChildMeshColliders = true;
+    public bool optimizeRendererSettings = true;
+    public bool enableFarSimulationLOD = true;
+    public float farSimulationDistance = 240f;
+    public float farSimulationInterval = 0.15f;
+    public float maxFarSimulationDelta = 0.3f;
+
     [Header("受破壞設定")]
     public LayerMask damageLayer;
     public LayerMask destroyOnCollisionLayer;
@@ -119,6 +132,11 @@ public class DroneNPC2 : MonoBehaviour
     private int currentHealth;
     private bool hasBeenInitialized = false;
     private bool isFinishing = false;
+    private readonly DroneVisualOptimizer visualOptimizer = new DroneVisualOptimizer();
+    private Transform lodTarget;
+    private float nextVisualLODCheckTime = 0f;
+    private float nextFarSimulationTime = 0f;
+    private float accumulatedFarSimulationDt = 0f;
 
     void Awake()
     {
@@ -168,6 +186,20 @@ public class DroneNPC2 : MonoBehaviour
         ClearCargo();
         SpawnRandomCargo();
 
+        visualOptimizer.Initialize(
+            gameObject,
+            disableChildMeshColliders,
+            optimizeRendererSettings
+        );
+
+        FindLODTarget();
+        nextVisualLODCheckTime = 0f;
+        nextFarSimulationTime =
+            Time.time +
+            Random.Range(0f, Mathf.Max(0.01f, farSimulationInterval));
+        accumulatedFarSimulationDt = 0f;
+        UpdateVisualLOD(true);
+
         pathVariantSeed = Random.Range(0, 999999);
         pathRequestToken++;
 
@@ -205,6 +237,13 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
+        UpdateVisualLOD(false);
+
+        if (ShouldThrottleFarSimulation(ref dt))
+        {
+            return;
+        }
+
         CheckStuck();
         CheckPathRequestTimeout();
 
@@ -237,6 +276,121 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         FollowCurrentPath(moveSpeed, dt);
+    }
+
+    void UpdateVisualLOD(bool force)
+    {
+        if (!enableVisualLOD)
+        {
+            if (force)
+            {
+                visualOptimizer.ForceVisible(disableFarAnimators);
+            }
+
+            return;
+        }
+
+        if (!force && Time.time < nextVisualLODCheckTime)
+        {
+            return;
+        }
+
+        float interval = Mathf.Max(0.05f, visualLODCheckInterval);
+        nextVisualLODCheckTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.35f);
+
+        bool shouldBeVisible = true;
+
+        if (TryGetLODTargetPosition(out Vector3 targetPosition))
+        {
+            float cullDistance = Mathf.Max(1f, visualCullDistance);
+            shouldBeVisible =
+                (transform.position - targetPosition).sqrMagnitude <=
+                cullDistance * cullDistance;
+        }
+
+        visualOptimizer.SetVisible(shouldBeVisible, disableFarAnimators);
+    }
+
+    bool ShouldThrottleFarSimulation(ref float dt)
+    {
+        if (!enableFarSimulationLOD || isFinishing)
+        {
+            accumulatedFarSimulationDt = 0f;
+            return false;
+        }
+
+        if (!TryGetLODTargetPosition(out Vector3 targetPosition))
+        {
+            accumulatedFarSimulationDt = 0f;
+            return false;
+        }
+
+        float throttleDistance = Mathf.Max(1f, farSimulationDistance);
+        float distanceSqr = (transform.position - targetPosition).sqrMagnitude;
+
+        if (distanceSqr <= throttleDistance * throttleDistance)
+        {
+            accumulatedFarSimulationDt = 0f;
+            return false;
+        }
+
+        accumulatedFarSimulationDt += dt;
+
+        if (Time.time < nextFarSimulationTime)
+        {
+            return true;
+        }
+
+        float interval = Mathf.Max(0.02f, farSimulationInterval);
+        nextFarSimulationTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.35f);
+
+        dt = Mathf.Min(accumulatedFarSimulationDt, Mathf.Max(dt, maxFarSimulationDelta));
+        accumulatedFarSimulationDt = 0f;
+        return false;
+    }
+
+    bool TryGetLODTargetPosition(out Vector3 position)
+    {
+        if (lodTarget == null)
+        {
+            FindLODTarget();
+        }
+
+        if (lodTarget != null)
+        {
+            position = lodTarget.position;
+            return true;
+        }
+
+        position = Vector3.zero;
+        return false;
+    }
+
+    void FindLODTarget()
+    {
+        if (!string.IsNullOrEmpty(lodTargetTag))
+        {
+            GameObject targetObject = GameObject.FindGameObjectWithTag(lodTargetTag);
+
+            if (targetObject != null)
+            {
+                lodTarget = targetObject.transform;
+                return;
+            }
+        }
+
+        Camera mainCamera = Camera.main;
+
+        if (mainCamera != null)
+        {
+            lodTarget = mainCamera.transform;
+        }
     }
 
     void PickNewDestination()
@@ -989,6 +1143,7 @@ public class DroneNPC2 : MonoBehaviour
         GameObject dropped = currentCargo;
         currentCargo = null;
         dropped.transform.SetParent(null, true);
+        SetCargoRenderersEnabled(dropped, true);
 
         Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>();
 
@@ -1017,6 +1172,26 @@ public class DroneNPC2 : MonoBehaviour
         }
     }
 
+    void SetCargoRenderersEnabled(GameObject cargo, bool enabled)
+    {
+        if (cargo == null)
+        {
+            return;
+        }
+
+        Renderer[] cargoRenderers = cargo.GetComponentsInChildren<Renderer>(true);
+
+        for (int i = 0; i < cargoRenderers.Length; i++)
+        {
+            Renderer cargoRenderer = cargoRenderers[i];
+
+            if (cargoRenderer != null)
+            {
+                cargoRenderer.enabled = enabled;
+            }
+        }
+    }
+
     public void PrepareForPool()
     {
         pathRequestToken++;
@@ -1036,5 +1211,8 @@ public class DroneNPC2 : MonoBehaviour
         blockedStepCount = 0;
         cachedMovementStepBlocked = false;
         nextMovementClearCheckTime = 0f;
+        nextVisualLODCheckTime = 0f;
+        accumulatedFarSimulationDt = 0f;
+        visualOptimizer.ForceVisible(disableFarAnimators);
     }
 }

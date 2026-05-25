@@ -103,6 +103,18 @@ public class DroneNPC : MonoBehaviour
     [Tooltip("Patrol 時是否啟用子彈動態避障。150 台時預設關閉，只讓追擊者更積極閃子彈。")]
     public bool enableDynamicAvoidanceWhilePatrolling = false;
 
+    [Header("Visual / Far LOD")]
+    public bool enableVisualLOD = true;
+    public float visualCullDistance = 240f;
+    public float visualLODCheckInterval = 0.35f;
+    public bool disableFarAnimators = true;
+    public bool disableChildMeshColliders = true;
+    public bool optimizeRendererSettings = true;
+    public bool enableFarSimulationLOD = true;
+    public float farSimulationDistance = 240f;
+    public float farSimulationInterval = 0.12f;
+    public float maxFarSimulationDelta = 0.25f;
+
     [Header("爆炸中斷玩家移動能力")]
     public bool interruptPlayerMobilityOnExplode = true;
     public float mobilityInterruptRadius = 3f;
@@ -167,6 +179,10 @@ public class DroneNPC : MonoBehaviour
     private float outOfRangeTimer = 0f;
     private bool hasBeenInitialized = false;
     private float nextChaseAttemptTime = 0f;
+    private readonly DroneVisualOptimizer visualOptimizer = new DroneVisualOptimizer();
+    private float nextVisualLODCheckTime = 0f;
+    private float nextFarSimulationTime = 0f;
+    private float accumulatedFarSimulationDt = 0f;
 
     public bool CanBecomeForcedHunter
     {
@@ -249,6 +265,20 @@ public class DroneNPC : MonoBehaviour
         hasBeenInitialized = true;
 
         FindPlayer();
+        visualOptimizer.Initialize(
+            gameObject,
+            disableChildMeshColliders,
+            optimizeRendererSettings
+        );
+
+        nextVisualLODCheckTime = 0f;
+        nextFarSimulationTime =
+            Time.time +
+            Random.Range(0f, Mathf.Max(0.01f, farSimulationInterval));
+        accumulatedFarSimulationDt = 0f;
+
+        UpdateVisualLOD(true);
+
         cachedPlayerTarget = player != null ? GetPlayerTarget() : transform.position;
         cachedDistanceToPlayer = player != null
             ? Vector3.Distance(transform.position, cachedPlayerTarget)
@@ -271,6 +301,13 @@ public class DroneNPC : MonoBehaviour
             FindPlayer();
         }
 
+        UpdateVisualLOD(false);
+
+        if (ShouldThrottleFarSimulation(ref dt))
+        {
+            return;
+        }
+
         UpdateCachedPlayerInfo();
 
         UpdateAlertTimer(dt);
@@ -288,6 +325,81 @@ public class DroneNPC : MonoBehaviour
                 HandleChasing(cachedDistanceToPlayer, dt);
                 break;
         }
+    }
+
+    void UpdateVisualLOD(bool force)
+    {
+        if (!enableVisualLOD)
+        {
+            if (force)
+            {
+                visualOptimizer.ForceVisible(disableFarAnimators);
+            }
+
+            return;
+        }
+
+        if (!force && Time.time < nextVisualLODCheckTime)
+        {
+            return;
+        }
+
+        float interval = Mathf.Max(0.05f, visualLODCheckInterval);
+        nextVisualLODCheckTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.35f);
+
+        bool shouldBeVisible = true;
+
+        if (state != DroneState.Chasing && player != null)
+        {
+            float cullDistance = Mathf.Max(1f, visualCullDistance);
+            shouldBeVisible =
+                (transform.position - player.position).sqrMagnitude <=
+                cullDistance * cullDistance;
+        }
+
+        visualOptimizer.SetVisible(shouldBeVisible, disableFarAnimators);
+    }
+
+    bool ShouldThrottleFarSimulation(ref float dt)
+    {
+        if (!enableFarSimulationLOD ||
+            state != DroneState.Patrol ||
+            isAlerted ||
+            isForcedHunter ||
+            player == null)
+        {
+            accumulatedFarSimulationDt = 0f;
+            return false;
+        }
+
+        float throttleDistance = Mathf.Max(1f, farSimulationDistance);
+        float distanceSqr = (transform.position - player.position).sqrMagnitude;
+
+        if (distanceSqr <= throttleDistance * throttleDistance)
+        {
+            accumulatedFarSimulationDt = 0f;
+            return false;
+        }
+
+        accumulatedFarSimulationDt += dt;
+
+        if (Time.time < nextFarSimulationTime)
+        {
+            return true;
+        }
+
+        float interval = Mathf.Max(0.02f, farSimulationInterval);
+        nextFarSimulationTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.35f);
+
+        dt = Mathf.Min(accumulatedFarSimulationDt, Mathf.Max(dt, maxFarSimulationDelta));
+        accumulatedFarSimulationDt = 0f;
+        return false;
     }
 
     void UpdateCachedPlayerInfo()
@@ -1407,5 +1519,8 @@ public class DroneNPC : MonoBehaviour
         cachedLineOfSight = false;
         nextMovementClearCheckTime = 0f;
         nextLineOfSightCheckTime = 0f;
+        nextVisualLODCheckTime = 0f;
+        accumulatedFarSimulationDt = 0f;
+        visualOptimizer.ForceVisible(disableFarAnimators);
     }
 }
