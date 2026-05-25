@@ -25,14 +25,14 @@ public class DroneWaypointGraph : MonoBehaviour
     [Header("Build Settings")]
     public bool buildOnStart = true;
     public bool autoRebuildInEditMode = false;
-    public int nearestWalkableSearchRadius = 8;
+    public int nearestWalkableSearchRadius = 10;
 
     [Header("A* Settings")]
     [Tooltip("效能與穩定優先，預設 false。true 會比較順，但需要防切角。")]
     public bool allowDiagonalMovement = false;
 
     [Tooltip("避免超大場景搜尋卡死。若常找不到路可調高，但會更吃效能。")]
-    public int maxSearchNodes = 50000;
+    public int maxSearchNodes = 30000;
 
     [Tooltip("穩定優先預設 false。true 會減少節點，但可能靠近牆角。")]
     public bool smoothPath = false;

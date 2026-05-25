@@ -18,13 +18,13 @@ public class DronePathRequestManager : MonoBehaviour
     public bool enablePathCache = true;
 
     [Tooltip("快取座標量化大小。越大越容易命中快取，但路線越粗略。")]
-    public float cacheCellSize = 24f;
+    public float cacheCellSize = 32f;
 
     [Tooltip("快取保留秒數。")]
-    public float cacheLifeTime = 8f;
+    public float cacheLifeTime = 10f;
 
     [Tooltip("最多保留幾條路徑。")]
-    public int maxCacheEntries = 512;
+    public int maxCacheEntries = 1024;
 
     private struct PathRequest
     {

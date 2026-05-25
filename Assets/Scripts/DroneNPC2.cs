@@ -16,65 +16,57 @@ public class DroneNPC2 : MonoBehaviour
     public float cargoDropDownVelocity = 1.5f;
 
     [Header("移動設定")]
-    public float moveSpeed = 5.2f;
-    public float rotateSpeed = 9f;
-    public float destinationReachDistance = 3.5f;
+    public float moveSpeed = 5.0f;
+    public float destinationReachDistance = 4f;
 
     [Header("3D Grid Path")]
     public DroneWaypointGraph grid;
-    public float pathNodeReachDistance = 1.8f;
-    public float pathRepathInterval = 8f;
-    public float minDestinationDistanceFromSpawn = 160f;
+    public float pathNodeReachDistance = 5.5f;
+    public float lookAheadDistance = 24f;
+    public float pathRepathInterval = 12f;
+    public float minDestinationDistanceFromSpawn = 180f;
 
-    private readonly List<Vector3> currentPath = new List<Vector3>();
-    private int currentPathIndex = 0;
-    private float nextRepathTime = 0f;
-    private int pathVariantSeed = 0;
-    private int pathRequestToken = 0;
-    private bool waitingForPath = false;
-
-    private Vector3 destinationPosition;
-    private bool hasDestination = false;
-
-    [Header("動態障礙物閃避")]
+    [Header("動態避障：Bullet")]
     public bool enableDynamicObstacleAvoidance = true;
     public LayerMask dynamicObstacleLayer;
-    public float dynamicObstacleDetectRadius = 35f;
-    public float dynamicPredictionTime = 1.1f;
-    public float dynamicThreatRadius = 3.5f;
-    public float dynamicAvoidWeight = 8f;
+    public float dynamicObstacleDetectRadius = 28f;
+    public float dynamicAvoidanceInterval = 0.45f;
+    public float dynamicPredictionTime = 0.8f;
+    public float dynamicThreatRadius = 4.2f;
+    public float dynamicAvoidWeight = 6f;
     public float dynamicUpBias = 0.3f;
-    public float dynamicMinRelativeSpeed = 2f;
+    public float dynamicMinRelativeSpeed = 5f;
     public bool allowBackwardDynamicDodge = true;
     public bool allowDownwardDynamicDodge = true;
     public float dynamicBackwardWeight = 0.7f;
     public float dynamicDownwardWeight = 0.4f;
 
-    [Tooltip("100 台無人機時，不要每個 FixedUpdate 都掃動態障礙")]
-    public float dynamicAvoidanceInterval = 0.18f;
+    [Header("飛行手感")]
+    public float acceleration = 4.5f;
+    public float deceleration = 6f;
+    public float steeringSmooth = 5.5f;
+    public float maxBankAngle = 14f;
+    public float bankSmooth = 3.5f;
 
-    private readonly Collider[] dynamicObstacleHits = new Collider[24];
-    private Vector3 cachedDynamicAvoidance = Vector3.zero;
-    private float nextDynamicAvoidanceTime = 0f;
-    private float currentMoveSpeed = 0f;
-
-    [Header("卡住脫困")]
+    [Header("Anti-Stuck")]
     public float stuckCheckInterval = 0.8f;
     public float stuckMoveThreshold = 0.18f;
+    public int maxStuckCountBeforeNewDestination = 3;
+    public float pathRequestTimeout = 4f;
+    public float pathNodeTimeout = 3.5f;
 
-    private Vector3 lastStuckCheckPosition;
-    private float lastStuckCheckTime;
-    private bool isStuck;
+    [Header("Performance Throttle")]
+    public float movementClearCheckInterval = 1.0f;
+    public int blockedStepTolerance = 4;
+
+    [Tooltip("大量 DroneNPC2 時建議 false。送貨路線已由 A* path 保證安全，卡住再重算即可。")]
+    public bool hardStopDuringPathFollow = false;
 
     [Header("受破壞設定")]
     public LayerMask damageLayer;
     public LayerMask destroyOnCollisionLayer;
-    public float collisionCheckRadius = 1f;
-    public float collisionCheckInterval = 0.2f;
     public int maxHealth = 1;
     public DroneEffectPool destroyedEffectPool;
-
-    private float nextCollisionCheckTime = 0f;
 
     [Header("破壞後警戒 / Forced Hunt")]
     public float alertDuration = 10f;
@@ -82,32 +74,49 @@ public class DroneNPC2 : MonoBehaviour
     public int forcedHunterCountOnDestroyed = 2;
     public bool chooseClosestHuntersToPlayer = true;
 
-    [Header("高度限制，可選")]
-    public bool limitFlightHeight = false;
-    public float minFlightY = 2f;
-    public float maxFlightY = 160f;
+    private readonly List<Vector3> currentPath = new List<Vector3>();
+    private readonly Collider[] dynamicObstacleHits = new Collider[24];
+
+    private int currentPathIndex = 0;
+    private float nextRepathTime = 0f;
+    private int pathVariantSeed = 0;
+    private int pathRequestToken = 0;
+    private bool waitingForPath = false;
+    private float pathRequestStartTime;
+    private float currentNodeStartTime;
+
+    private Vector3 destinationPosition;
+    private bool hasDestination = false;
+
+    private Vector3 cachedDynamicAvoidance = Vector3.zero;
+    private float nextDynamicAvoidanceTime = 0f;
+    private int dynamicFrameOffset = 0;
+
+    private float currentSpeed = 0f;
+    private float currentBankAngle = 0f;
+    private Vector3 currentMoveDirection = Vector3.forward;
+
+    private Vector3 lastStuckCheckPosition;
+    private float lastStuckCheckTime;
+    private bool isStuck;
+    private int stuckCount = 0;
+
+    private float nextMovementClearCheckTime = 0f;
+    private bool cachedMovementStepBlocked = false;
+    private int blockedStepCount = 0;
 
     private Drone2State state = Drone2State.MovingToDestination;
-
     private DroneNPC2Manager manager;
-    private Rigidbody rb;
-
     private Vector3 originPosition;
     private Quaternion originRotation;
-
-    private Vector3 currentMoveDirection;
     private GameObject currentCargo;
-
     private int currentHealth;
     private bool hasBeenInitialized = false;
     private bool isFinishing = false;
 
-    void EnsureDestroyedEffectPool()
+    void Awake()
     {
-        if (destroyedEffectPool == null)
-        {
-            destroyedEffectPool = DroneEffectPool.Instance;
-        }
+        dynamicFrameOffset = Mathf.Abs(GetInstanceID()) % 17;
     }
 
     public void Initialize(
@@ -122,21 +131,17 @@ public class DroneNPC2 : MonoBehaviour
         originRotation = spawnRotation;
         grid = gridReference;
 
-        EnsureDestroyedEffectPool();
+        if (destroyedEffectPool == null)
+        {
+            destroyedEffectPool = DroneEffectPool.Instance;
+        }
 
         transform.position = originPosition;
         transform.rotation = originRotation;
 
-        if (rb != null)
-        {
-            rb.position = originPosition;
-            rb.rotation = originRotation;
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
-
         currentMoveDirection = transform.forward;
-        currentMoveSpeed = 0f;
+        currentSpeed = 0f;
+        currentBankAngle = 0f;
 
         currentHealth = maxHealth;
         isFinishing = false;
@@ -145,9 +150,15 @@ public class DroneNPC2 : MonoBehaviour
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
         isStuck = false;
+        stuckCount = 0;
+        nextMovementClearCheckTime = 0f;
+        cachedMovementStepBlocked = false;
+        blockedStepCount = 0;
+        nextMovementClearCheckTime = 0f;
+        cachedMovementStepBlocked = false;
+        blockedStepCount = 0;
 
         ClearPath();
-
         ClearCargo();
         SpawnRandomCargo();
 
@@ -160,17 +171,6 @@ public class DroneNPC2 : MonoBehaviour
         hasBeenInitialized = true;
     }
 
-    void Awake()
-    {
-        rb = GetComponent<Rigidbody>();
-
-        if (rb != null)
-        {
-            rb.useGravity = false;
-            rb.angularVelocity = Vector3.zero;
-        }
-    }
-
     void OnEnable()
     {
         if (!hasBeenInitialized)
@@ -181,34 +181,26 @@ public class DroneNPC2 : MonoBehaviour
         currentHealth = maxHealth;
         isFinishing = false;
         state = Drone2State.MovingToDestination;
-
         currentMoveDirection = transform.forward;
-        currentMoveSpeed = 0f;
-
+        currentSpeed = 0f;
+        currentBankAngle = 0f;
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
         isStuck = false;
+        stuckCount = 0;
     }
 
-    void FixedUpdate()
+    void Update()
     {
+        float dt = Time.deltaTime;
+
         if (state == Drone2State.Finished || isFinishing)
         {
             return;
-        }
-
-        if (Time.time >= nextCollisionCheckTime)
-        {
-            nextCollisionCheckTime = Time.time + collisionCheckInterval;
-            CheckDestroyByCollisionSphere();
         }
 
         CheckStuck();
-
-        if (state == Drone2State.Finished || isFinishing)
-        {
-            return;
-        }
+        CheckPathRequestTimeout();
 
         if (!hasDestination)
         {
@@ -225,18 +217,12 @@ public class DroneNPC2 : MonoBehaviour
 
         if (!waitingForPath &&
             Time.time >= nextRepathTime &&
-            (currentPath.Count == 0 ||
-             currentPathIndex >= currentPath.Count ||
-             isStuck ||
-             IsCurrentPathSegmentBlocked()))
+            (currentPath.Count == 0 || currentPathIndex >= currentPath.Count || isStuck || IsCurrentPathSegmentBlocked()))
         {
             RequestPathToDestination(false);
         }
 
-        float distanceToDestination = Vector3.Distance(
-            transform.position,
-            destinationPosition
-        );
+        float distanceToDestination = Vector3.Distance(transform.position, destinationPosition);
 
         if (distanceToDestination <= destinationReachDistance)
         {
@@ -244,19 +230,7 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
-        if (waitingForPath && currentPath.Count == 0)
-        {
-            return;
-        }
-
-        if (!FollowCurrentPath(moveSpeed))
-        {
-            // No direct fallback through walls. Wait for path or request another destination.
-            if (!waitingForPath)
-            {
-                RequestPathToDestination(false);
-            }
-        }
+        FollowCurrentPath(moveSpeed, dt);
     }
 
     void PickNewDestination()
@@ -268,10 +242,7 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
-        if (grid.TryGetRandomWalkablePointFarFrom(
-            originPosition,
-            minDestinationDistanceFromSpawn,
-            out Vector3 point))
+        if (grid.TryGetRandomWalkablePointFarFrom(originPosition, minDestinationDistanceFromSpawn, out Vector3 point))
         {
             destinationPosition = point;
             hasDestination = true;
@@ -280,12 +251,7 @@ public class DroneNPC2 : MonoBehaviour
 
     bool IsCurrentPathSegmentBlocked()
     {
-        if (grid == null)
-        {
-            return false;
-        }
-
-        if (currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
+        if (grid == null || currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
         {
             return false;
         }
@@ -301,11 +267,11 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         waitingForPath = true;
+        pathRequestStartTime = Time.time;
         ClearPath();
 
         int token = ++pathRequestToken;
         int variant = pathVariantSeed++;
-
         nextRepathTime = Time.time + pathRepathInterval + Random.Range(0f, 2f);
 
         DronePathRequestManager.RequestPath(
@@ -315,11 +281,7 @@ public class DroneNPC2 : MonoBehaviour
             variant,
             (success, path) =>
             {
-                if (this == null ||
-                    !gameObject.activeInHierarchy ||
-                    token != pathRequestToken ||
-                    state == Drone2State.Finished ||
-                    isFinishing)
+                if (this == null || !gameObject.activeInHierarchy || token != pathRequestToken || state == Drone2State.Finished || isFinishing)
                 {
                     return;
                 }
@@ -331,19 +293,31 @@ public class DroneNPC2 : MonoBehaviour
                     currentPath.Clear();
                     currentPath.AddRange(path);
                     currentPathIndex = 0;
+                    currentNodeStartTime = Time.time;
                     SkipReachedPathNodes();
                 }
                 else
                 {
-                    hasDestination = false;
-                    ClearPath();
+                    HandlePathFailure();
                 }
             },
             highPriority
         );
     }
 
-    bool FollowCurrentPath(float speed)
+    void HandlePathFailure()
+    {
+        stuckCount++;
+
+        if (stuckCount >= maxStuckCountBeforeNewDestination)
+        {
+            stuckCount = 0;
+            hasDestination = false;
+            ClearPath();
+        }
+    }
+
+    bool FollowCurrentPath(float targetSpeed, float dt)
     {
         if (currentPath.Count == 0 || currentPathIndex >= currentPath.Count)
         {
@@ -357,16 +331,51 @@ public class DroneNPC2 : MonoBehaviour
             return false;
         }
 
-        MoveTowards(currentPath[currentPathIndex], speed);
+        Vector3 target = GetLookAheadTarget();
+        MoveTowards(target, targetSpeed, dt);
         return true;
+    }
+
+    Vector3 GetLookAheadTarget()
+    {
+        if (currentPath.Count == 0)
+        {
+            return transform.position + currentMoveDirection * lookAheadDistance;
+        }
+
+        int index = Mathf.Clamp(currentPathIndex, 0, currentPath.Count - 1);
+        Vector3 previous = transform.position;
+        float remaining = lookAheadDistance;
+
+        for (int i = index; i < currentPath.Count; i++)
+        {
+            Vector3 next = currentPath[i];
+            float segment = Vector3.Distance(previous, next);
+
+            if (segment >= remaining)
+            {
+                return Vector3.Lerp(previous, next, remaining / segment);
+            }
+
+            remaining -= segment;
+            previous = next;
+        }
+
+        return currentPath[currentPath.Count - 1];
     }
 
     void SkipReachedPathNodes()
     {
-        while (currentPathIndex < currentPath.Count &&
-               Vector3.Distance(transform.position, currentPath[currentPathIndex]) <= pathNodeReachDistance)
+        while (currentPathIndex < currentPath.Count && Vector3.Distance(transform.position, currentPath[currentPathIndex]) <= pathNodeReachDistance)
         {
             currentPathIndex++;
+            currentNodeStartTime = Time.time;
+        }
+
+        if (currentPathIndex < currentPath.Count && Time.time - currentNodeStartTime > pathNodeTimeout)
+        {
+            currentPathIndex++;
+            currentNodeStartTime = Time.time;
         }
     }
 
@@ -374,87 +383,113 @@ public class DroneNPC2 : MonoBehaviour
     {
         currentPath.Clear();
         currentPathIndex = 0;
+        currentNodeStartTime = Time.time;
     }
 
-    void MoveTowards(Vector3 targetPosition, float speed)
+    void MoveTowards(Vector3 targetPosition, float targetSpeed, float dt)
     {
         Vector3 toTarget = targetPosition - transform.position;
 
         if (toTarget.sqrMagnitude < 0.001f)
         {
+            ApplySpeed(0f, dt);
             return;
         }
 
         Vector3 desiredDirection = toTarget.normalized;
-        currentMoveSpeed = speed;
-
         Vector3 dynamicAvoidance = GetDynamicObstacleAvoidanceThrottled(desiredDirection);
-        Vector3 moveDirection = desiredDirection;
+        Vector3 finalDirection = desiredDirection;
 
         if (dynamicAvoidance.sqrMagnitude > 0.001f)
         {
-            moveDirection = (
-                desiredDirection +
-                dynamicAvoidance.normalized * dynamicAvoidWeight
-            ).normalized;
+            finalDirection = (desiredDirection + dynamicAvoidance.normalized * dynamicAvoidWeight).normalized;
         }
 
-        if (currentMoveDirection.sqrMagnitude < 0.001f)
-        {
-            currentMoveDirection = moveDirection;
-        }
-        else
-        {
-            currentMoveDirection = Vector3.Slerp(
-                currentMoveDirection,
-                moveDirection,
-                Time.fixedDeltaTime * 6f
-            ).normalized;
-        }
+        currentMoveDirection = Vector3.Slerp(
+            currentMoveDirection.sqrMagnitude < 0.001f ? finalDirection : currentMoveDirection,
+            finalDirection,
+            dt * steeringSmooth
+        ).normalized;
 
-        Vector3 nextPosition =
-            transform.position +
-            currentMoveDirection * speed * Time.fixedDeltaTime;
+        ApplySpeed(targetSpeed, dt);
+        Vector3 nextPosition = transform.position + currentMoveDirection * currentSpeed * dt;
 
-        if (grid != null && !grid.HasClearPath(transform.position, nextPosition))
+        if (GetCachedMovementStepBlocked(nextPosition))
         {
-            ClearPath();
-            nextRepathTime = 0f;
-            isStuck = true;
+            blockedStepCount++;
+            currentSpeed = Mathf.Lerp(currentSpeed, 0f, dt * deceleration);
 
-            if (rb != null)
+            if (blockedStepCount >= blockedStepTolerance)
             {
-                rb.velocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
+                isStuck = true;
+                ClearPath();
+                nextRepathTime = 0f;
+                blockedStepCount = 0;
             }
 
             return;
         }
 
-        if (limitFlightHeight)
+        blockedStepCount = 0;
+        transform.position = nextPosition;
+
+        if (currentSpeed > 0.15f)
         {
-            nextPosition.y = Mathf.Clamp(nextPosition.y, minFlightY, maxFlightY);
+            RotateTowards(currentMoveDirection, dt);
         }
 
-        if (rb != null)
+        isStuck = false;
+    }
+
+    bool GetCachedMovementStepBlocked(Vector3 nextPosition)
+    {
+        if (grid == null)
         {
-            rb.MovePosition(nextPosition);
-        }
-        else
-        {
-            transform.position = nextPosition;
+            return false;
         }
 
-        RotateTowards(currentMoveDirection);
+        // 送貨 Drone 不要每步硬停；相信 3D Grid path。
+        // 如果真的卡住，CheckStuck() 會重算路或換目的地。
+        if (!hardStopDuringPathFollow)
+        {
+            return false;
+        }
+
+        if (Time.time < nextMovementClearCheckTime)
+        {
+            return false;
+        }
+
+        nextMovementClearCheckTime =
+            Time.time +
+            movementClearCheckInterval +
+            Random.Range(0f, movementClearCheckInterval * 0.5f);
+
+        cachedMovementStepBlocked = !grid.HasClearPath(transform.position, nextPosition);
+        return cachedMovementStepBlocked;
+    }
+
+    void ApplySpeed(float targetSpeed, float dt)
+    {
+        float rate = targetSpeed > currentSpeed ? acceleration : deceleration;
+        currentSpeed = Mathf.Lerp(currentSpeed, targetSpeed, dt * rate);
     }
 
     Vector3 GetDynamicObstacleAvoidanceThrottled(Vector3 desiredDirection)
     {
+        // 1. CD 時間還沒到，直接沿用上一次的避障結果。
         if (Time.time < nextDynamicAvoidanceTime)
         {
             return cachedDynamicAvoidance;
         }
 
+        // 2. CD 到了，但還不是這台 Drone 的分幀 slot，繼續等，避免同一幀大量 Physics query。
+        if (((Time.frameCount + dynamicFrameOffset) % 23) != 0)
+        {
+            return cachedDynamicAvoidance;
+        }
+
+        // 3. 只有時間到了，而且剛好輪到自己的 frame slot，才執行高成本掃描。
         nextDynamicAvoidanceTime =
             Time.time +
             dynamicAvoidanceInterval +
@@ -479,9 +514,14 @@ public class DroneNPC2 : MonoBehaviour
             QueryTriggerInteraction.Collide
         );
 
+        if (hitCount <= 0)
+        {
+            return Vector3.zero;
+        }
+
         Vector3 droneVelocity = currentMoveDirection.sqrMagnitude > 0.001f
-            ? currentMoveDirection.normalized * currentMoveSpeed
-            : desiredDirection.normalized * currentMoveSpeed;
+            ? currentMoveDirection.normalized * Mathf.Max(currentSpeed, 0.1f)
+            : desiredDirection.normalized * Mathf.Max(currentSpeed, 0.1f);
 
         Vector3 totalAvoidance = Vector3.zero;
 
@@ -489,52 +529,32 @@ public class DroneNPC2 : MonoBehaviour
         {
             Collider obstacle = dynamicObstacleHits[i];
 
-            if (obstacle == null ||
-                obstacle.transform == transform ||
-                obstacle.transform.IsChildOf(transform))
+            if (obstacle == null || obstacle.transform == transform || obstacle.transform.IsChildOf(transform))
             {
                 continue;
             }
 
             Rigidbody obstacleRb = obstacle.attachedRigidbody;
-
-            if (obstacleRb == rb)
-            {
-                continue;
-            }
-
             Vector3 obstaclePosition = obstacle.bounds.center;
             Vector3 obstacleVelocity = obstacleRb != null ? obstacleRb.velocity : Vector3.zero;
 
             Vector3 relativePosition = obstaclePosition - transform.position;
             Vector3 relativeVelocity = obstacleVelocity - droneVelocity;
-
             float relativeSpeedSqr = relativeVelocity.sqrMagnitude;
 
             if (relativeSpeedSqr < dynamicMinRelativeSpeed * dynamicMinRelativeSpeed)
             {
-                float closeDistance = relativePosition.magnitude;
-
-                if (closeDistance < dynamicThreatRadius)
-                {
-                    Vector3 away = -relativePosition.normalized;
-                    totalAvoidance += away * (1f - closeDistance / dynamicThreatRadius);
-                }
-
                 continue;
             }
 
-            float timeToClosest =
-                -Vector3.Dot(relativePosition, relativeVelocity) / relativeSpeedSqr;
+            float timeToClosest = -Vector3.Dot(relativePosition, relativeVelocity) / relativeSpeedSqr;
 
             if (timeToClosest < 0f || timeToClosest > dynamicPredictionTime)
             {
                 continue;
             }
 
-            Vector3 closestRelativePosition =
-                relativePosition + relativeVelocity * timeToClosest;
-
+            Vector3 closestRelativePosition = relativePosition + relativeVelocity * timeToClosest;
             float closestDistance = closestRelativePosition.magnitude;
 
             if (closestDistance > dynamicThreatRadius)
@@ -555,7 +575,6 @@ public class DroneNPC2 : MonoBehaviour
             }
 
             rawDodgeDirection.Normalize();
-
             Vector3 bestDodge = ChooseBestDynamicDodgeDirection(rawDodgeDirection);
 
             float distanceThreat = 1f - Mathf.Clamp01(closestDistance / dynamicThreatRadius);
@@ -570,10 +589,7 @@ public class DroneNPC2 : MonoBehaviour
 
     Vector3 ChooseBestDynamicDodgeDirection(Vector3 rawDodgeDirection)
     {
-        Vector3 forward = currentMoveDirection.sqrMagnitude > 0.001f
-            ? currentMoveDirection.normalized
-            : transform.forward;
-
+        Vector3 forward = currentMoveDirection.sqrMagnitude > 0.001f ? currentMoveDirection.normalized : transform.forward;
         Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
 
         if (right.sqrMagnitude < 0.001f)
@@ -628,21 +644,10 @@ public class DroneNPC2 : MonoBehaviour
 
             float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
             float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
-
-            float downPenalty = candidate.y < 0f
-                ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight)
-                : 0f;
-
+            float downPenalty = candidate.y < 0f ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight) : 0f;
             float backwardDot = Vector3.Dot(candidate, backward);
-            float backwardScore = backwardDot > 0f
-                ? backwardDot * dynamicBackwardWeight
-                : 0f;
-
-            float score =
-                escapeScore * 3f +
-                upScore +
-                backwardScore -
-                downPenalty;
+            float backwardScore = backwardDot > 0f ? backwardDot * dynamicBackwardWeight : 0f;
+            float score = escapeScore * 3f + upScore + backwardScore - downPenalty;
 
             if (score > bestScore)
             {
@@ -654,49 +659,20 @@ public class DroneNPC2 : MonoBehaviour
         return best.normalized;
     }
 
-    void RotateTowards(Vector3 direction)
+    void RotateTowards(Vector3 direction, float dt)
     {
         if (direction.sqrMagnitude < 0.001f)
         {
             return;
         }
 
-        Quaternion targetRotation = Quaternion.LookRotation(direction, Vector3.up);
-
-        Quaternion nextRotation = Quaternion.Slerp(
-            transform.rotation,
-            targetRotation,
-            Time.fixedDeltaTime * rotateSpeed
-        );
-
-        if (rb != null)
-        {
-            rb.MoveRotation(nextRotation);
-        }
-        else
-        {
-            transform.rotation = nextRotation;
-        }
-    }
-
-    void CheckDestroyByCollisionSphere()
-    {
-        if (destroyOnCollisionLayer.value == 0)
-        {
-            return;
-        }
-
-        bool touchingDestroyLayer = Physics.CheckSphere(
-            transform.position,
-            collisionCheckRadius,
-            destroyOnCollisionLayer,
-            QueryTriggerInteraction.Ignore
-        );
-
-        if (touchingDestroyLayer)
-        {
-            DestroyByDamage();
-        }
+        Quaternion lookRotation = Quaternion.LookRotation(direction, Vector3.up);
+        float turnDot = Vector3.Dot(transform.right, direction);
+        float targetBank = -turnDot * maxBankAngle;
+        currentBankAngle = Mathf.Lerp(currentBankAngle, targetBank, dt * bankSmooth);
+        Quaternion bankRotation = Quaternion.Euler(0f, 0f, currentBankAngle);
+        Quaternion targetRotation = lookRotation * bankRotation;
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, dt * steeringSmooth);
     }
 
     void CheckStuck()
@@ -707,14 +683,41 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         float movedDistance = Vector3.Distance(transform.position, lastStuckCheckPosition);
+        isStuck = movedDistance < stuckMoveThreshold && state != Drone2State.Finished && !isFinishing;
 
-        isStuck =
-            movedDistance < stuckMoveThreshold &&
-            state != Drone2State.Finished &&
-            !isFinishing;
+        if (isStuck)
+        {
+            stuckCount++;
+
+            if (stuckCount >= maxStuckCountBeforeNewDestination)
+            {
+                stuckCount = 0;
+                hasDestination = false;
+                ClearPath();
+            }
+        }
+        else
+        {
+            stuckCount = 0;
+        }
 
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
+    }
+
+    void CheckPathRequestTimeout()
+    {
+        if (!waitingForPath)
+        {
+            return;
+        }
+
+        if (Time.time - pathRequestStartTime > pathRequestTimeout)
+        {
+            waitingForPath = false;
+            pathRequestToken++;
+            HandlePathFailure();
+        }
     }
 
     public void TakeDamage(int damage = 1)
@@ -741,8 +744,12 @@ public class DroneNPC2 : MonoBehaviour
 
         isFinishing = true;
         state = Drone2State.Finished;
-
         DropCargo();
+
+        if (destroyedEffectPool == null)
+        {
+            destroyedEffectPool = DroneEffectPool.Instance;
+        }
 
         if (destroyedEffectPool != null)
         {
@@ -776,7 +783,6 @@ public class DroneNPC2 : MonoBehaviour
 
         isFinishing = true;
         state = Drone2State.Finished;
-
         ClearCargo();
 
         if (manager != null)
@@ -786,20 +792,6 @@ public class DroneNPC2 : MonoBehaviour
         else
         {
             gameObject.SetActive(false);
-        }
-    }
-
-    void OnCollisionEnter(Collision collision)
-    {
-        if (IsInLayerMask(collision.gameObject.layer, damageLayer))
-        {
-            TakeDamage(1);
-            return;
-        }
-
-        if (IsInLayerMask(collision.gameObject.layer, destroyOnCollisionLayer))
-        {
-            DestroyByDamage();
         }
     }
 
@@ -892,7 +884,6 @@ public class DroneNPC2 : MonoBehaviour
 
         GameObject dropped = currentCargo;
         currentCargo = null;
-
         dropped.transform.SetParent(null, true);
 
         Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>();
@@ -926,26 +917,20 @@ public class DroneNPC2 : MonoBehaviour
     {
         pathRequestToken++;
         waitingForPath = false;
-
         ClearCargo();
         ClearPath();
-
         isFinishing = false;
         state = Drone2State.Finished;
-
         hasDestination = false;
         destinationPosition = Vector3.zero;
-
         currentMoveDirection = transform.forward;
-        currentMoveSpeed = 0f;
+        currentSpeed = 0f;
+        currentBankAngle = 0f;
         currentHealth = maxHealth;
-
         isStuck = false;
-
-        if (rb != null)
-        {
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
+        stuckCount = 0;
+        blockedStepCount = 0;
+        cachedMovementStepBlocked = false;
+        nextMovementClearCheckTime = 0f;
     }
 }

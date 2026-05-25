@@ -19400,7 +19400,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!135 &1557151759482102484
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -19437,3 +19437,4 @@ MonoBehaviour:
   targetLayers:
     serializedVersion: 2
     m_Bits: 584
+  lifetimeLimit: 5

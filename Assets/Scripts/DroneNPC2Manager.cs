@@ -10,7 +10,7 @@ public class DroneNPC2Manager : MonoBehaviour
     public DroneWaypointGraph grid;
 
     [Header("場上數量")]
-    public int targetDroneCount = 2;
+    public int targetDroneCount = 40;
     public bool spawnOnStart = true;
     public float respawnDelay = 5f;
 
@@ -19,7 +19,7 @@ public class DroneNPC2Manager : MonoBehaviour
     public float spawnInterval = 0.15f;
 
     [Header("Object Pool")]
-    public int initialPoolSize = 30;
+    public int initialPoolSize = 40;
     public bool allowPoolExpansion = true;
 
     private readonly List<DroneNPC2> activeDrones = new List<DroneNPC2>();

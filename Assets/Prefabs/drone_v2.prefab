@@ -9,7 +9,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 39636257312797319}
-  - component: {fileID: 8980574948822310103}
   - component: {fileID: 1324584677570740490}
   - component: {fileID: -6696707304959212025}
   m_Layer: 9
@@ -35,33 +34,6 @@ Transform:
   - {fileID: 8169425916890257530}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!54 &8980574948822310103
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6408481135060080913}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 0
-  m_IsKinematic: 1
-  m_Interpolate: 1
-  m_Constraints: 0
-  m_CollisionDetection: 3
 --- !u!135 &1324584677570740490
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -77,7 +49,7 @@ SphereCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
@@ -96,22 +68,59 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerTag: Player
-  detectRange: 50
-  giveUpRange: 150
-  giveUpDelay: 4
-  chaseSpeed: 11
-  patrolSpeed: 5.5
-  rotateSpeed: 12
   playerTargetOffset: {x: 0, y: 1, z: 0}
-  alertChaseSpeedMultiplier: 1.2
-  alertGiveUpExtraRange: 60
-  forcedHunterSpeedMultiplier: 1.3
-  explodeRange: 1.3
+  detectRange: 55
+  giveUpRange: 180
+  giveUpDelay: 4
+  patrolSpeed: 5.2
+  chaseSpeed: 10.5
+  explodeRange: 2
   explodeOnCollisionLayer:
     serializedVersion: 2
     m_Bits: 328
-  collisionExplodeRadius: 0.45
   explosionPool: {fileID: 0}
+  closeAttackRange: 22
+  forceDirectAttackRange: 10
+  directChaseLockDuration: 1
+  ignoreAvoidanceDuringCloseAttack: 1
+  closeAttackCollisionRadius: 0.45
+  blockedCloseAttackExplodeRange: 3
+  grid: {fileID: 0}
+  pathNodeReachDistance: 1.8
+  lookAheadDistance: 14
+  patrolRepathInterval: 10
+  chaseRepathInterval: 3
+  forcedHuntRepathInterval: 2.2
+  minPatrolDestinationDistance: 80
+  maxPatrolDestinationDistance: 220
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 72
+  enableDynamicObstacleAvoidance: 1
+  dynamicObstacleLayer:
+    serializedVersion: 2
+    m_Bits: 256
+  dynamicObstacleDetectRadius: 35
+  dynamicAvoidanceInterval: 0.18
+  dynamicPredictionTime: 1.1
+  dynamicThreatRadius: 3.5
+  dynamicAvoidWeight: 9
+  dynamicUpBias: 0.3
+  dynamicMinRelativeSpeed: 2
+  allowBackwardDynamicDodge: 1
+  allowDownwardDynamicDodge: 1
+  dynamicBackwardWeight: 0.6
+  dynamicDownwardWeight: 0.4
+  acceleration: 6
+  deceleration: 8
+  steeringSmooth: 9
+  closeAttackSteeringSmooth: 18
+  maxBankAngle: 30
+  bankSmooth: 6
+  stuckCheckInterval: 0.8
+  stuckMoveThreshold: 0.18
+  pathRequestTimeout: 3
+  pathNodeTimeout: 2.8
   interruptPlayerMobilityOnExplode: 1
   mobilityInterruptRadius: 3
   mobilityInterruptLayer:
@@ -119,63 +128,9 @@ MonoBehaviour:
     m_Bits: 1024
   mobilityDisableDuration: 0.6
   clearPlayerVelocityOnInterrupt: 0
-  grid: {fileID: 0}
-  minPatrolDestinationDistance: 60
-  maxPatrolDestinationDistance: 180
-  patrolRepathInterval: 5
-  chaseRepathInterval: 1.75
-  forcedHuntRepathInterval: 1.25
-  pathNodeReachDistance: 1.8
-  directChaseWhenClear: 1
-  directChaseSpeedMultiplier: 1.08
-  lineOfSightCheckInterval: 0.35
-  closeAttackRange: 22
-  forceDirectAttackRange: 10
-  directChaseLockDuration: 1
-  ignoreAvoidanceDuringCloseAttack: 1
-  closeAttackSteeringSmooth: 18
-  useSmallCollisionCheckDuringCloseAttack: 1
-  closeAttackCollisionRadius: 0.7
-  blockedCloseAttackExplodeRange: 3
-  enableLocalAvoidance: 1
-  obstacleLayer:
-    serializedVersion: 2
-    m_Bits: 72
-  obstacleDetectDistance: 10
-  obstacleAvoidRadius: 1
-  obstacleAvoidWeight: 2.1
-  upwardAvoidWeight: 1.1
-  candidateCheckDistance: 6
-  steeringSmooth: 10
-  sideProbeAngle: 35
-  wideProbeAngle: 70
-  targetDirectionWeight: 1.6
-  clearanceWeight: 2.3
-  smoothDirectionWeight: 1.1
-  emergencyAvoidRadius: 2
-  emergencyAvoidWeight: 2.8
-  avoidanceMemoryDuration: 0.6
-  enableDynamicObstacleAvoidance: 1
-  dynamicObstacleLayer:
-    serializedVersion: 2
-    m_Bits: 256
-  dynamicObstacleDetectRadius: 45
-  dynamicPredictionTime: 1.2
-  dynamicThreatRadius: 3.5
-  dynamicAvoidWeight: 10
-  dynamicUpBias: 0.3
-  dynamicMinRelativeSpeed: 2
-  allowBackwardDynamicDodge: 1
-  allowDownwardDynamicDodge: 1
-  dynamicBackwardWeight: 0.6
-  dynamicDownwardWeight: 0.4
-  dynamicAvoidanceInterval: 0.18
-  stuckCheckInterval: 0.6
-  stuckMoveThreshold: 0.2
-  stuckUpwardEscapeWeight: 2.5
-  limitFlightHeight: 0
-  minFlightY: 2
-  maxFlightY: 160
+  alertChaseSpeedMultiplier: 1.15
+  alertGiveUpExtraRange: 80
+  forcedHunterSpeedMultiplier: 1.25
 --- !u!1001 &8164948442230097146
 PrefabInstance:
   m_ObjectHideFlags: 0

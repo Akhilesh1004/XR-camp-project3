@@ -10,7 +10,7 @@ public class DroneGameManager : MonoBehaviour
     public DroneWaypointGraph grid;
 
     [Header("場上數量")]
-    public int targetDroneCount = 4;
+    public int targetDroneCount = 110;
     public bool spawnOnStart = true;
     public float respawnDelay = 3f;
 
@@ -19,13 +19,13 @@ public class DroneGameManager : MonoBehaviour
     public float spawnInterval = 0.08f;
 
     [Header("Object Pool")]
-    public int initialPoolSize = 100;
+    public int initialPoolSize = 110;
     public bool allowPoolExpansion = true;
 
     [Header("生成設定")]
     public string playerTag = "Player";
     public bool avoidSpawnNearPlayer = true;
-    public float minSpawnDistanceFromPlayer = 80f;
+    public float minSpawnDistanceFromPlayer = 100f;
 
     private readonly List<DroneNPC> activeDrones = new List<DroneNPC>();
     private readonly Queue<DroneNPC> pooledDrones = new Queue<DroneNPC>();
