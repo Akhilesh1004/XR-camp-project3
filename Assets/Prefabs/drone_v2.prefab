@@ -68,13 +68,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   playerTag: Player
-  playerTargetOffset: {x: 0, y: 1, z: 0}
+  playerTargetOffset: {x: 0, y: 1.1, z: 0}
+  patrolPlayerCheckInterval: 0.6
+  chasePlayerCheckInterval: 0.16
   detectRange: 55
-  giveUpRange: 180
+  giveUpRange: 220
   giveUpDelay: 4
   patrolSpeed: 5.2
   chaseSpeed: 10.5
-  explodeRange: 2
+  explodeRange: 2.2
   explodeOnCollisionLayer:
     serializedVersion: 2
     m_Bits: 328
@@ -83,14 +85,16 @@ MonoBehaviour:
   forceDirectAttackRange: 10
   directChaseLockDuration: 1
   ignoreAvoidanceDuringCloseAttack: 1
-  closeAttackCollisionRadius: 0.45
+  closeAttackCollisionRadius: 0.6
   blockedCloseAttackExplodeRange: 3
   grid: {fileID: 0}
-  pathNodeReachDistance: 1.8
-  lookAheadDistance: 14
-  patrolRepathInterval: 10
-  chaseRepathInterval: 3
-  forcedHuntRepathInterval: 2.2
+  pathNodeReachDistance: 6
+  lookAheadDistance: 26
+  pathAdvanceDistance: 2.5
+  behindTargetDotThreshold: -0.15
+  patrolRepathInterval: 15.9
+  chaseRepathInterval: 5
+  forcedHuntRepathInterval: 3.5
   minPatrolDestinationDistance: 80
   maxPatrolDestinationDistance: 220
   obstacleLayer:
@@ -100,27 +104,32 @@ MonoBehaviour:
   dynamicObstacleLayer:
     serializedVersion: 2
     m_Bits: 256
-  dynamicObstacleDetectRadius: 35
-  dynamicAvoidanceInterval: 0.18
-  dynamicPredictionTime: 1.1
-  dynamicThreatRadius: 3.5
-  dynamicAvoidWeight: 9
-  dynamicUpBias: 0.3
-  dynamicMinRelativeSpeed: 2
+  dynamicObstacleDetectRadius: 26
+  dynamicAvoidanceInterval: 0.5
+  dynamicPredictionTime: 0.8
+  dynamicThreatRadius: 4
+  dynamicAvoidWeight: 6
+  dynamicUpBias: 0.35
+  dynamicMinRelativeSpeed: 5
   allowBackwardDynamicDodge: 1
   allowDownwardDynamicDodge: 1
-  dynamicBackwardWeight: 0.6
+  dynamicBackwardWeight: 0.7
   dynamicDownwardWeight: 0.4
   acceleration: 6
   deceleration: 8
-  steeringSmooth: 9
+  steeringSmooth: 6.5
   closeAttackSteeringSmooth: 18
-  maxBankAngle: 30
-  bankSmooth: 6
-  stuckCheckInterval: 0.8
+  maxBankAngle: 18
+  bankSmooth: 4
+  stuckCheckInterval: 1.2
   stuckMoveThreshold: 0.18
-  pathRequestTimeout: 3
+  pathRequestTimeout: 5
   pathNodeTimeout: 2.8
+  movementClearCheckInterval: 0.9
+  lineOfSightCheckInterval: 1
+  blockedStepTolerance: 4
+  hardStopDuringPathFollow: 0
+  enableDynamicAvoidanceWhilePatrolling: 0
   interruptPlayerMobilityOnExplode: 1
   mobilityInterruptRadius: 3
   mobilityInterruptLayer:

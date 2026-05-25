@@ -2171,38 +2171,43 @@ MonoBehaviour:
   cargoAnchor: {fileID: 3804312018070178424}
   addRigidbodyToDroppedCargo: 1
   cargoDropDownVelocity: 1.5
-  moveSpeed: 5.2
-  destinationReachDistance: 3.5
+  moveSpeed: 5
+  destinationReachDistance: 4
   grid: {fileID: 0}
-  pathNodeReachDistance: 1.8
-  lookAheadDistance: 16
-  pathRepathInterval: 8
-  minDestinationDistanceFromSpawn: 160
+  pathNodeReachDistance: 6.5
+  lookAheadDistance: 28
+  pathAdvanceDistance: 2.5
+  behindTargetDotThreshold: -0.15
+  pathRepathInterval: 20
+  minDestinationDistanceFromSpawn: 180
   enableDynamicObstacleAvoidance: 0
   dynamicObstacleLayer:
     serializedVersion: 2
     m_Bits: 256
-  dynamicObstacleDetectRadius: 35
-  dynamicAvoidanceInterval: 0.18
-  dynamicPredictionTime: 1.1
-  dynamicThreatRadius: 3.5
-  dynamicAvoidWeight: 8
+  dynamicObstacleDetectRadius: 22
+  dynamicAvoidanceInterval: 0.75
+  dynamicPredictionTime: 0.8
+  dynamicThreatRadius: 4.2
+  dynamicAvoidWeight: 4.5
   dynamicUpBias: 0.3
-  dynamicMinRelativeSpeed: 2
+  dynamicMinRelativeSpeed: 5
   allowBackwardDynamicDodge: 1
   allowDownwardDynamicDodge: 1
   dynamicBackwardWeight: 0.7
   dynamicDownwardWeight: 0.4
   acceleration: 4.5
   deceleration: 6
-  steeringSmooth: 7
-  maxBankAngle: 22
-  bankSmooth: 5
-  stuckCheckInterval: 0.8
+  steeringSmooth: 5.5
+  maxBankAngle: 14
+  bankSmooth: 3.5
+  stuckCheckInterval: 1.4
   stuckMoveThreshold: 0.18
   maxStuckCountBeforeNewDestination: 3
-  pathRequestTimeout: 4
-  pathNodeTimeout: 3.5
+  pathRequestTimeout: 6
+  pathNodeTimeout: 5
+  movementClearCheckInterval: 1
+  blockedStepTolerance: 4
+  hardStopDuringPathFollow: 0
   damageLayer:
     serializedVersion: 2
     m_Bits: 0
