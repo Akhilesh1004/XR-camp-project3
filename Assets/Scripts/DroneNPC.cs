@@ -21,6 +21,9 @@ public class DroneNPC : MonoBehaviour
     [Tooltip("Chasing 狀態多久更新一次玩家距離快取。Close Attack 仍會用即時 target。")]
     public float chasePlayerCheckInterval = 0.16f;
 
+    [Tooltip("追擊名額滿時，巡邏 Drone 多久重試一次。避免大量 Drone 每幀搶同一個 chase slot。")]
+    public float chaseSlotRetryInterval = 0.35f;
+
     [Header("偵測與追逐")]
     public float detectRange = 55f;
     public float giveUpRange = 220f;
@@ -163,6 +166,7 @@ public class DroneNPC : MonoBehaviour
 
     private float outOfRangeTimer = 0f;
     private bool hasBeenInitialized = false;
+    private float nextChaseAttemptTime = 0f;
 
     public bool CanBecomeForcedHunter
     {
@@ -177,7 +181,7 @@ public class DroneNPC : MonoBehaviour
 
     void Awake()
     {
-        dynamicFrameOffset = Mathf.Abs(GetInstanceID()) % 17;
+        dynamicFrameOffset = Mathf.Abs(GetInstanceID()) % 31;
     }
 
     void OnEnable()
@@ -250,6 +254,7 @@ public class DroneNPC : MonoBehaviour
             ? Vector3.Distance(transform.position, cachedPlayerTarget)
             : Mathf.Infinity;
         nextPlayerCheckTime = Time.time + Random.Range(0f, patrolPlayerCheckInterval);
+        nextChaseAttemptTime = Time.time + Random.Range(0f, chaseSlotRetryInterval);
     }
 
     void Update()
@@ -340,13 +345,13 @@ public class DroneNPC : MonoBehaviour
 
     void HandlePatrol(float distanceToPlayer, float dt)
     {
-        isCloseAttacking = false;
-        outOfRangeTimer = 0f;
-
-        if (crowdDirector != null)
+        if (isCloseAttacking && crowdDirector != null)
         {
             crowdDirector.ExitCloseAttack(this);
         }
+
+        isCloseAttacking = false;
+        outOfRangeTimer = 0f;
 
         float effectiveDetectRange = isAlerted
             ? Mathf.Max(detectRange, currentAlertDetectRange)
@@ -354,12 +359,21 @@ public class DroneNPC : MonoBehaviour
 
         if (player != null && distanceToPlayer <= effectiveDetectRange)
         {
-            if (crowdDirector == null || crowdDirector.TryEnterChase(this))
+            if (Time.time >= nextChaseAttemptTime)
             {
-                ClearPath();
-                state = DroneState.Chasing;
-                nextRepathTime = Time.time + Random.Range(0.2f, 1.0f);
-                return;
+                float retryInterval = Mathf.Max(0.05f, chaseSlotRetryInterval);
+                nextChaseAttemptTime =
+                    Time.time +
+                    retryInterval +
+                    Random.Range(0f, retryInterval * 0.5f);
+
+                if (crowdDirector == null || crowdDirector.TryEnterChase(this))
+                {
+                    ClearPath();
+                    state = DroneState.Chasing;
+                    nextRepathTime = Time.time + Random.Range(0.2f, 1.0f);
+                    return;
+                }
             }
         }
 
@@ -674,12 +688,16 @@ public class DroneNPC : MonoBehaviour
             return;
         }
 
+        float nodeReachDistanceSqr = pathNodeReachDistance * pathNodeReachDistance;
+        float advanceDistance = lookAheadDistance + pathAdvanceDistance;
+        float advanceDistanceSqr = advanceDistance * advanceDistance;
+
         while (currentPathIndex < currentPath.Count)
         {
             Vector3 node = currentPath[currentPathIndex];
-            float distanceToNode = Vector3.Distance(transform.position, node);
+            float distanceToNodeSqr = (transform.position - node).sqrMagnitude;
 
-            if (distanceToNode <= pathNodeReachDistance)
+            if (distanceToNodeSqr <= nodeReachDistanceSqr)
             {
                 currentPathIndex++;
                 currentNodeStartTime = Time.time;
@@ -696,7 +714,7 @@ public class DroneNPC : MonoBehaviour
                 float t = Vector3.Dot(transform.position - segmentStart, segment) / segmentLengthSqr;
 
                 // 已經通過這個 node 一段距離，就不要回頭追，直接進下一段。
-                if (t > 1.0f && distanceToNode <= lookAheadDistance + pathAdvanceDistance)
+                if (t > 1.0f && distanceToNodeSqr <= advanceDistanceSqr)
                 {
                     currentPathIndex++;
                     currentNodeStartTime = Time.time;
@@ -791,7 +809,7 @@ public class DroneNPC : MonoBehaviour
 
         Vector3 nextPosition = transform.position + currentMoveDirection * currentSpeed * dt;
 
-        if (GetCachedMovementStepBlocked(nextPosition, GetPlayerTarget(), closeAttack))
+        if (GetCachedMovementStepBlocked(nextPosition, targetPosition, closeAttack))
         {
             blockedStepCount++;
             currentSpeed = Mathf.Lerp(currentSpeed, 0f, dt * deceleration);
@@ -911,9 +929,9 @@ public class DroneNPC : MonoBehaviour
             return false;
         }
 
-        float distanceToTarget = Vector3.Distance(transform.position, attackTarget);
+        float explodeDistanceSqr = blockedCloseAttackExplodeRange * blockedCloseAttackExplodeRange;
 
-        if (distanceToTarget <= blockedCloseAttackExplodeRange)
+        if ((transform.position - attackTarget).sqrMagnitude <= explodeDistanceSqr)
         {
             Explode();
         }
@@ -1052,65 +1070,67 @@ public class DroneNPC : MonoBehaviour
 
         Vector3 backward = -forward;
 
-        Vector3[] candidates =
-        {
-            rawDodgeDirection,
-            right,
-            -right,
-            Vector3.up,
-            Vector3.down,
-            backward,
-            (right + Vector3.up).normalized,
-            (-right + Vector3.up).normalized,
-            (right + Vector3.down).normalized,
-            (-right + Vector3.down).normalized,
-            (backward + Vector3.up).normalized,
-            (backward + Vector3.down).normalized
-        };
-
         Vector3 best = rawDodgeDirection;
         float bestScore = Vector3.Dot(best, rawDodgeDirection);
 
-        foreach (Vector3 raw in candidates)
+        ConsiderDynamicDodgeCandidate(rawDodgeDirection, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(right, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(-right, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(backward, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(right + Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(-right + Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(right + Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(-right + Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(backward + Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(backward + Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+
+        return best.normalized;
+    }
+
+    void ConsiderDynamicDodgeCandidate(
+        Vector3 raw,
+        Vector3 rawDodgeDirection,
+        Vector3 backward,
+        ref Vector3 best,
+        ref float bestScore
+    )
+    {
+        if (raw.sqrMagnitude < 0.001f)
         {
-            if (raw.sqrMagnitude < 0.001f)
+            return;
+        }
+
+        Vector3 candidate = raw.normalized;
+
+        if (!allowDownwardDynamicDodge && candidate.y < -0.2f)
+        {
+            return;
+        }
+
+        if (!allowBackwardDynamicDodge)
+        {
+            float backwardAmount = Vector3.Dot(candidate, backward);
+
+            if (backwardAmount > 0.5f)
             {
-                continue;
-            }
-
-            Vector3 candidate = raw.normalized;
-
-            if (!allowDownwardDynamicDodge && candidate.y < -0.2f)
-            {
-                continue;
-            }
-
-            if (!allowBackwardDynamicDodge)
-            {
-                float backwardAmount = Vector3.Dot(candidate, backward);
-
-                if (backwardAmount > 0.5f)
-                {
-                    continue;
-                }
-            }
-
-            float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
-            float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
-            float downPenalty = candidate.y < 0f ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight) : 0f;
-            float backwardDot = Vector3.Dot(candidate, backward);
-            float backwardScore = backwardDot > 0f ? backwardDot * dynamicBackwardWeight : 0f;
-
-            float score = escapeScore * 3f + upScore + backwardScore - downPenalty;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                best = candidate;
+                return;
             }
         }
 
-        return best.normalized;
+        float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
+        float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
+        float downPenalty = candidate.y < 0f ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight) : 0f;
+        float backwardDot = Vector3.Dot(candidate, backward);
+        float backwardScore = backwardDot > 0f ? backwardDot * dynamicBackwardWeight : 0f;
+        float score = escapeScore * 3f + upScore + backwardScore - downPenalty;
+
+        if (score > bestScore)
+        {
+            bestScore = score;
+            best = candidate;
+        }
     }
 
     void RotateTowards(Vector3 direction, float dt)
@@ -1149,8 +1169,10 @@ public class DroneNPC : MonoBehaviour
             return;
         }
 
-        float movedDistance = Vector3.Distance(transform.position, lastStuckCheckPosition);
-        isStuck = movedDistance < stuckMoveThreshold && state != DroneState.Exploding;
+        float stuckThresholdSqr = stuckMoveThreshold * stuckMoveThreshold;
+        isStuck =
+            (transform.position - lastStuckCheckPosition).sqrMagnitude < stuckThresholdSqr &&
+            state != DroneState.Exploding;
 
         lastStuckCheckPosition = transform.position;
         lastStuckCheckTime = Time.time;
@@ -1193,9 +1215,9 @@ public class DroneNPC : MonoBehaviour
 
         if (player != null)
         {
-            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+            float alertRangeSqr = currentAlertDetectRange * currentAlertDetectRange;
 
-            if (distanceToPlayer <= currentAlertDetectRange)
+            if ((transform.position - player.position).sqrMagnitude <= alertRangeSqr)
             {
                 if (crowdDirector == null || crowdDirector.TryEnterChase(this))
                 {
@@ -1236,11 +1258,11 @@ public class DroneNPC : MonoBehaviour
 
             if (player != null)
             {
-                return Vector3.Distance(transform.position, player.position);
+                return (transform.position - player.position).sqrMagnitude;
             }
         }
 
-        return Vector3.Distance(transform.position, alertPosition);
+        return (transform.position - alertPosition).sqrMagnitude;
     }
 
     public void BeginForcedHunt()

@@ -22,6 +22,9 @@ public class DroneGameManager : MonoBehaviour
     public int initialPoolSize = 110;
     public bool allowPoolExpansion = true;
 
+    [Header("Performance")]
+    public float activeListCleanupInterval = 1f;
+
     [Header("生成設定")]
     public string playerTag = "Player";
     public bool avoidSpawnNearPlayer = true;
@@ -33,6 +36,7 @@ public class DroneGameManager : MonoBehaviour
     private int pendingRespawnCount = 0;
     private Transform player;
     private float nextSpawnTime = 0f;
+    private float nextActiveListCleanupTime = 0f;
 
     void Awake()
     {
@@ -47,7 +51,7 @@ public class DroneGameManager : MonoBehaviour
 
     void Update()
     {
-        activeDrones.RemoveAll(drone => drone == null || !drone.gameObject.activeSelf);
+        CleanupInactiveDronesThrottled();
 
         if (!spawnOnStart)
         {
@@ -60,6 +64,26 @@ public class DroneGameManager : MonoBehaviour
         }
 
         TrySpawnOneIfNeeded();
+    }
+
+    void CleanupInactiveDronesThrottled()
+    {
+        if (Time.time < nextActiveListCleanupTime)
+        {
+            return;
+        }
+
+        nextActiveListCleanupTime = Time.time + Mathf.Max(0.1f, activeListCleanupInterval);
+
+        for (int i = activeDrones.Count - 1; i >= 0; i--)
+        {
+            DroneNPC drone = activeDrones[i];
+
+            if (drone == null || !drone.gameObject.activeSelf)
+            {
+                activeDrones.RemoveAt(i);
+            }
+        }
     }
 
     void TrySpawnOneIfNeeded()

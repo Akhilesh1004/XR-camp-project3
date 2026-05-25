@@ -22,11 +22,15 @@ public class DroneNPC2Manager : MonoBehaviour
     public int initialPoolSize = 40;
     public bool allowPoolExpansion = true;
 
+    [Header("Performance")]
+    public float activeListCleanupInterval = 1f;
+
     private readonly List<DroneNPC2> activeDrones = new List<DroneNPC2>();
     private readonly Queue<DroneNPC2> pooledDrones = new Queue<DroneNPC2>();
 
     private int pendingRespawnCount = 0;
     private float nextSpawnTime = 0f;
+    private float nextActiveListCleanupTime = 0f;
 
     void Awake()
     {
@@ -40,7 +44,7 @@ public class DroneNPC2Manager : MonoBehaviour
 
     void Update()
     {
-        activeDrones.RemoveAll(drone => drone == null || !drone.gameObject.activeSelf);
+        CleanupInactiveDronesThrottled();
 
         if (!spawnOnStart)
         {
@@ -53,6 +57,26 @@ public class DroneNPC2Manager : MonoBehaviour
         }
 
         TrySpawnOneIfNeeded();
+    }
+
+    void CleanupInactiveDronesThrottled()
+    {
+        if (Time.time < nextActiveListCleanupTime)
+        {
+            return;
+        }
+
+        nextActiveListCleanupTime = Time.time + Mathf.Max(0.1f, activeListCleanupInterval);
+
+        for (int i = activeDrones.Count - 1; i >= 0; i--)
+        {
+            DroneNPC2 drone = activeDrones[i];
+
+            if (drone == null || !drone.gameObject.activeSelf)
+            {
+                activeDrones.RemoveAt(i);
+            }
+        }
     }
 
     void TrySpawnOneIfNeeded()

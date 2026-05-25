@@ -122,7 +122,7 @@ public class DroneNPC2 : MonoBehaviour
 
     void Awake()
     {
-        dynamicFrameOffset = Mathf.Abs(GetInstanceID()) % 17;
+        dynamicFrameOffset = Mathf.Abs(GetInstanceID()) % 37;
     }
 
     public void Initialize(
@@ -228,9 +228,9 @@ public class DroneNPC2 : MonoBehaviour
             RequestPathToDestination(false);
         }
 
-        float distanceToDestination = Vector3.Distance(transform.position, destinationPosition);
+        float destinationReachDistanceSqr = destinationReachDistance * destinationReachDistance;
 
-        if (distanceToDestination <= destinationReachDistance)
+        if ((transform.position - destinationPosition).sqrMagnitude <= destinationReachDistanceSqr)
         {
             FinishNormally();
             return;
@@ -405,12 +405,16 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
+        float nodeReachDistanceSqr = pathNodeReachDistance * pathNodeReachDistance;
+        float advanceDistance = lookAheadDistance + pathAdvanceDistance;
+        float advanceDistanceSqr = advanceDistance * advanceDistance;
+
         while (currentPathIndex < currentPath.Count)
         {
             Vector3 node = currentPath[currentPathIndex];
-            float distanceToNode = Vector3.Distance(transform.position, node);
+            float distanceToNodeSqr = (transform.position - node).sqrMagnitude;
 
-            if (distanceToNode <= pathNodeReachDistance)
+            if (distanceToNodeSqr <= nodeReachDistanceSqr)
             {
                 currentPathIndex++;
                 currentNodeStartTime = Time.time;
@@ -426,7 +430,7 @@ public class DroneNPC2 : MonoBehaviour
             {
                 float t = Vector3.Dot(transform.position - segmentStart, segment) / segmentLengthSqr;
 
-                if (t > 1.0f && distanceToNode <= lookAheadDistance + pathAdvanceDistance)
+                if (t > 1.0f && distanceToNodeSqr <= advanceDistanceSqr)
                 {
                     currentPathIndex++;
                     currentNodeStartTime = Time.time;
@@ -680,64 +684,67 @@ public class DroneNPC2 : MonoBehaviour
 
         Vector3 backward = -forward;
 
-        Vector3[] candidates =
-        {
-            rawDodgeDirection,
-            right,
-            -right,
-            Vector3.up,
-            Vector3.down,
-            backward,
-            (right + Vector3.up).normalized,
-            (-right + Vector3.up).normalized,
-            (right + Vector3.down).normalized,
-            (-right + Vector3.down).normalized,
-            (backward + Vector3.up).normalized,
-            (backward + Vector3.down).normalized
-        };
-
         Vector3 best = rawDodgeDirection;
         float bestScore = Vector3.Dot(best, rawDodgeDirection);
 
-        foreach (Vector3 raw in candidates)
+        ConsiderDynamicDodgeCandidate(rawDodgeDirection, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(right, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(-right, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(backward, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(right + Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(-right + Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(right + Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(-right + Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(backward + Vector3.up, rawDodgeDirection, backward, ref best, ref bestScore);
+        ConsiderDynamicDodgeCandidate(backward + Vector3.down, rawDodgeDirection, backward, ref best, ref bestScore);
+
+        return best.normalized;
+    }
+
+    void ConsiderDynamicDodgeCandidate(
+        Vector3 raw,
+        Vector3 rawDodgeDirection,
+        Vector3 backward,
+        ref Vector3 best,
+        ref float bestScore
+    )
+    {
+        if (raw.sqrMagnitude < 0.001f)
         {
-            if (raw.sqrMagnitude < 0.001f)
+            return;
+        }
+
+        Vector3 candidate = raw.normalized;
+
+        if (!allowDownwardDynamicDodge && candidate.y < -0.2f)
+        {
+            return;
+        }
+
+        if (!allowBackwardDynamicDodge)
+        {
+            float backwardAmount = Vector3.Dot(candidate, backward);
+
+            if (backwardAmount > 0.5f)
             {
-                continue;
-            }
-
-            Vector3 candidate = raw.normalized;
-
-            if (!allowDownwardDynamicDodge && candidate.y < -0.2f)
-            {
-                continue;
-            }
-
-            if (!allowBackwardDynamicDodge)
-            {
-                float backwardAmount = Vector3.Dot(candidate, backward);
-
-                if (backwardAmount > 0.5f)
-                {
-                    continue;
-                }
-            }
-
-            float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
-            float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
-            float downPenalty = candidate.y < 0f ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight) : 0f;
-            float backwardDot = Vector3.Dot(candidate, backward);
-            float backwardScore = backwardDot > 0f ? backwardDot * dynamicBackwardWeight : 0f;
-            float score = escapeScore * 3f + upScore + backwardScore - downPenalty;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                best = candidate;
+                return;
             }
         }
 
-        return best.normalized;
+        float escapeScore = Vector3.Dot(candidate, rawDodgeDirection);
+        float upScore = candidate.y > 0f ? dynamicUpBias : 0f;
+        float downPenalty = candidate.y < 0f ? Mathf.Abs(candidate.y) * (1f - dynamicDownwardWeight) : 0f;
+        float backwardDot = Vector3.Dot(candidate, backward);
+        float backwardScore = backwardDot > 0f ? backwardDot * dynamicBackwardWeight : 0f;
+        float score = escapeScore * 3f + upScore + backwardScore - downPenalty;
+
+        if (score > bestScore)
+        {
+            bestScore = score;
+            best = candidate;
+        }
     }
 
     void RotateTowards(Vector3 direction, float dt)
@@ -776,8 +783,11 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
-        float movedDistance = Vector3.Distance(transform.position, lastStuckCheckPosition);
-        isStuck = movedDistance < stuckMoveThreshold && state != Drone2State.Finished && !isFinishing;
+        float stuckThresholdSqr = stuckMoveThreshold * stuckMoveThreshold;
+        isStuck =
+            (transform.position - lastStuckCheckPosition).sqrMagnitude < stuckThresholdSqr &&
+            state != Drone2State.Finished &&
+            !isFinishing;
 
         if (isStuck)
         {

@@ -9,9 +9,12 @@ public class DroneCrowdDirector : MonoBehaviour
     [Header("Attack Limits")]
     public int maxChasingDrones = 16;
     public int maxCloseAttackDrones = 4;
+    public float cleanupInterval = 0.5f;
 
     private readonly HashSet<DroneNPC> chasingDrones = new HashSet<DroneNPC>();
     private readonly HashSet<DroneNPC> closeAttackDrones = new HashSet<DroneNPC>();
+    private readonly List<DroneNPC> staleDrones = new List<DroneNPC>();
+    private float nextCleanupTime = 0f;
 
     void Awake()
     {
@@ -122,7 +125,32 @@ public class DroneCrowdDirector : MonoBehaviour
 
     void CleanupNulls()
     {
-        chasingDrones.RemoveWhere(drone => drone == null || !drone.gameObject.activeInHierarchy);
-        closeAttackDrones.RemoveWhere(drone => drone == null || !drone.gameObject.activeInHierarchy);
+        if (Time.time < nextCleanupTime)
+        {
+            return;
+        }
+
+        nextCleanupTime = Time.time + Mathf.Max(0.1f, cleanupInterval);
+
+        RemoveInvalidDrones(chasingDrones);
+        RemoveInvalidDrones(closeAttackDrones);
+    }
+
+    void RemoveInvalidDrones(HashSet<DroneNPC> drones)
+    {
+        staleDrones.Clear();
+
+        foreach (DroneNPC drone in drones)
+        {
+            if (drone == null || !drone.gameObject.activeInHierarchy)
+            {
+                staleDrones.Add(drone);
+            }
+        }
+
+        for (int i = 0; i < staleDrones.Count; i++)
+        {
+            drones.Remove(staleDrones[i]);
+        }
     }
 }
