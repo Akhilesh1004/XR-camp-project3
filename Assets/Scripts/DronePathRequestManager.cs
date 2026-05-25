@@ -27,6 +27,9 @@ public class DronePathRequestManager : MonoBehaviour
     [Tooltip("最多保留幾條路徑。")]
     public int maxCacheEntries = 1024;
 
+    [Tooltip("false 會把快取/暫存路徑直接傳給 callback，callback 若要保留路徑必須自行複製。DroneNPC / DroneNPC2 會立即 AddRange，可關閉以減少 GC。")]
+    public bool copyPathForCallbacks = false;
+
     private struct PathRequest
     {
         public DroneWaypointGraph grid;
@@ -37,16 +40,79 @@ public class DronePathRequestManager : MonoBehaviour
         public Action<bool, List<Vector3>> callback;
     }
 
-    private class CacheEntry
+    private struct CacheEntry
     {
         public List<Vector3> path;
         public float expireTime;
     }
 
+    private struct PathCacheKey : IEquatable<PathCacheKey>
+    {
+        private readonly int gridId;
+        private readonly int ax;
+        private readonly int ay;
+        private readonly int az;
+        private readonly int bx;
+        private readonly int by;
+        private readonly int bz;
+        private readonly int variantBucket;
+
+        public PathCacheKey(
+            int gridId,
+            Vector3Int from,
+            Vector3Int to,
+            int variantBucket
+        )
+        {
+            this.gridId = gridId;
+            ax = from.x;
+            ay = from.y;
+            az = from.z;
+            bx = to.x;
+            by = to.y;
+            bz = to.z;
+            this.variantBucket = variantBucket;
+        }
+
+        public bool Equals(PathCacheKey other)
+        {
+            return gridId == other.gridId &&
+                   ax == other.ax &&
+                   ay == other.ay &&
+                   az == other.az &&
+                   bx == other.bx &&
+                   by == other.by &&
+                   bz == other.bz &&
+                   variantBucket == other.variantBucket;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is PathCacheKey other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = gridId;
+                hash = hash * 397 ^ ax;
+                hash = hash * 397 ^ ay;
+                hash = hash * 397 ^ az;
+                hash = hash * 397 ^ bx;
+                hash = hash * 397 ^ by;
+                hash = hash * 397 ^ bz;
+                hash = hash * 397 ^ variantBucket;
+                return hash;
+            }
+        }
+    }
+
     private readonly Queue<PathRequest> highPriorityQueue = new Queue<PathRequest>();
     private readonly Queue<PathRequest> normalQueue = new Queue<PathRequest>();
-    private readonly Dictionary<string, CacheEntry> pathCache = new Dictionary<string, CacheEntry>();
-    private readonly List<string> keysToRemove = new List<string>();
+    private readonly Dictionary<PathCacheKey, CacheEntry> pathCache = new Dictionary<PathCacheKey, CacheEntry>();
+    private readonly List<PathCacheKey> keysToRemove = new List<PathCacheKey>();
+    private readonly List<Vector3> reusablePathResult = new List<Vector3>();
 
     private readonly Stopwatch stopwatch = new Stopwatch();
     private float nextPathSearchTime = 0f;
@@ -203,19 +269,19 @@ public class DronePathRequestManager : MonoBehaviour
             return;
         }
 
-        bool found = request.grid.TryFindPathPositions(
+        bool found = request.grid.TryFindPathPositionsNonAlloc(
             request.from,
             request.to,
-            out List<Vector3> path,
+            reusablePathResult,
             request.variant,
             false,
             false
         );
 
-        if (found && path != null)
+        if (found && reusablePathResult.Count > 0)
         {
-            StoreCache(request, path);
-            request.callback(true, new List<Vector3>(path));
+            StoreCache(request, reusablePathResult);
+            ReturnPath(request, reusablePathResult);
         }
         else
         {
@@ -230,7 +296,7 @@ public class DronePathRequestManager : MonoBehaviour
             return false;
         }
 
-        string key = MakeCacheKey(request);
+        PathCacheKey key = MakeCacheKey(request);
 
         if (!pathCache.TryGetValue(key, out CacheEntry entry))
         {
@@ -243,8 +309,19 @@ public class DronePathRequestManager : MonoBehaviour
             return false;
         }
 
-        request.callback(true, new List<Vector3>(entry.path));
+        ReturnPath(request, entry.path);
         return true;
+    }
+
+    void ReturnPath(PathRequest request, List<Vector3> path)
+    {
+        if (copyPathForCallbacks)
+        {
+            request.callback(true, new List<Vector3>(path));
+            return;
+        }
+
+        request.callback(true, path);
     }
 
     void StoreCache(PathRequest request, List<Vector3> path)
@@ -259,7 +336,7 @@ public class DronePathRequestManager : MonoBehaviour
             RemoveExpiredOrOldestCacheEntry();
         }
 
-        string key = MakeCacheKey(request);
+        PathCacheKey key = MakeCacheKey(request);
 
         pathCache[key] = new CacheEntry
         {
@@ -270,14 +347,16 @@ public class DronePathRequestManager : MonoBehaviour
 
     void RemoveExpiredOrOldestCacheEntry()
     {
-        string oldestKey = null;
+        PathCacheKey oldestKey = default(PathCacheKey);
+        bool hasOldestKey = false;
         float oldestExpire = float.MaxValue;
 
-        foreach (KeyValuePair<string, CacheEntry> pair in pathCache)
+        foreach (KeyValuePair<PathCacheKey, CacheEntry> pair in pathCache)
         {
-            if (pair.Value == null || Time.time > pair.Value.expireTime)
+            if (pair.Value.path == null || Time.time > pair.Value.expireTime)
             {
                 oldestKey = pair.Key;
+                hasOldestKey = true;
                 break;
             }
 
@@ -285,10 +364,11 @@ public class DronePathRequestManager : MonoBehaviour
             {
                 oldestExpire = pair.Value.expireTime;
                 oldestKey = pair.Key;
+                hasOldestKey = true;
             }
         }
 
-        if (!string.IsNullOrEmpty(oldestKey))
+        if (hasOldestKey)
         {
             pathCache.Remove(oldestKey);
         }
@@ -309,9 +389,9 @@ public class DronePathRequestManager : MonoBehaviour
 
         keysToRemove.Clear();
 
-        foreach (KeyValuePair<string, CacheEntry> pair in pathCache)
+        foreach (KeyValuePair<PathCacheKey, CacheEntry> pair in pathCache)
         {
-            if (pair.Value == null || Time.time > pair.Value.expireTime)
+            if (pair.Value.path == null || Time.time > pair.Value.expireTime)
             {
                 keysToRemove.Add(pair.Key);
             }
@@ -323,7 +403,7 @@ public class DronePathRequestManager : MonoBehaviour
         }
     }
 
-    string MakeCacheKey(PathRequest request)
+    PathCacheKey MakeCacheKey(PathRequest request)
     {
         int gridId = request.grid != null ? request.grid.GetInstanceID() : 0;
 
@@ -331,12 +411,9 @@ public class DronePathRequestManager : MonoBehaviour
         Vector3Int b = Quantize(request.to);
 
         // Ignore exact variant to improve cache hit rate for large crowds.
-        int variantBucket = Mathf.Abs(request.variant) % 2;
+        int variantBucket = request.variant & 1;
 
-        return gridId + "|" +
-               a.x + "," + a.y + "," + a.z + "|" +
-               b.x + "," + b.y + "," + b.z + "|" +
-               variantBucket;
+        return new PathCacheKey(gridId, a, b, variantBucket);
     }
 
     Vector3Int Quantize(Vector3 p)

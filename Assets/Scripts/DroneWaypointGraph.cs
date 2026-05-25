@@ -72,6 +72,7 @@ public class DroneWaypointGraph : MonoBehaviour
     private readonly List<Vector3> reusableRawPath = new List<Vector3>();
     private readonly List<Vector3> reusableSmoothedPath = new List<Vector3>();
     private readonly List<Vector3Int> neighborOffsets = new List<Vector3Int>();
+    private readonly List<float> neighborMoveCosts = new List<float>();
 
     // A* reusable buffers: avoid per-path large allocations / GC spikes.
     private float[] gScore;
@@ -210,6 +211,7 @@ public class DroneWaypointGraph : MonoBehaviour
     void BuildNeighborOffsets()
     {
         neighborOffsets.Clear();
+        neighborMoveCosts.Clear();
 
         if (allowDiagonalMovement)
         {
@@ -224,20 +226,28 @@ public class DroneWaypointGraph : MonoBehaviour
                             continue;
                         }
 
-                        neighborOffsets.Add(new Vector3Int(x, y, z));
+                        AddNeighborOffset(x, y, z);
                     }
                 }
             }
         }
         else
         {
-            neighborOffsets.Add(new Vector3Int(1, 0, 0));
-            neighborOffsets.Add(new Vector3Int(-1, 0, 0));
-            neighborOffsets.Add(new Vector3Int(0, 1, 0));
-            neighborOffsets.Add(new Vector3Int(0, -1, 0));
-            neighborOffsets.Add(new Vector3Int(0, 0, 1));
-            neighborOffsets.Add(new Vector3Int(0, 0, -1));
+            AddNeighborOffset(1, 0, 0);
+            AddNeighborOffset(-1, 0, 0);
+            AddNeighborOffset(0, 1, 0);
+            AddNeighborOffset(0, -1, 0);
+            AddNeighborOffset(0, 0, 1);
+            AddNeighborOffset(0, 0, -1);
         }
+    }
+
+    void AddNeighborOffset(int x, int y, int z)
+    {
+        neighborOffsets.Add(new Vector3Int(x, y, z));
+        neighborMoveCosts.Add(
+            Mathf.Sqrt(x * x + y * y + z * z) * cellSize
+        );
     }
 
     void EnsureGridReady()
@@ -293,6 +303,32 @@ public class DroneWaypointGraph : MonoBehaviour
     )
     {
         pathPositions = new List<Vector3>();
+
+        return TryFindPathPositionsNonAlloc(
+            from,
+            to,
+            pathPositions,
+            variant,
+            requireClearStart,
+            requireClearGoal
+        );
+    }
+
+    public bool TryFindPathPositionsNonAlloc(
+        Vector3 from,
+        Vector3 to,
+        List<Vector3> pathPositions,
+        int variant = 0,
+        bool requireClearStart = false,
+        bool requireClearGoal = false
+    )
+    {
+        if (pathPositions == null)
+        {
+            return false;
+        }
+
+        pathPositions.Clear();
 
         EnsureGridReady();
 
@@ -352,8 +388,9 @@ public class DroneWaypointGraph : MonoBehaviour
         }
 
         Vector3 last = pathPositions[pathPositions.Count - 1];
+        float snapDistance = cellSize * 0.5f;
 
-        if (Vector3.Distance(last, to) > cellSize * 0.5f && HasClearPath(last, to))
+        if ((last - to).sqrMagnitude > snapDistance * snapDistance && HasClearPath(last, to))
         {
             pathPositions.Add(to);
         }
@@ -378,10 +415,16 @@ public class DroneWaypointGraph : MonoBehaviour
 
         BeginSearch();
 
+        IndexToCell(startIndex, out int startX, out int startY, out int startZ);
+        IndexToCell(goalIndex, out int goalX, out int goalY, out int goalZ);
+
         gScore[startIndex] = 0f;
         cameFrom[startIndex] = -1;
         openedStamp[startIndex] = searchId;
-        openHeap.Push(startIndex, HeuristicCost(startIndex, goalIndex));
+        openHeap.Push(
+            startIndex,
+            HeuristicCost(startX, startY, startZ, goalX, goalY, goalZ)
+        );
 
         int searchedNodes = 0;
 
@@ -413,6 +456,7 @@ public class DroneWaypointGraph : MonoBehaviour
             for (int i = 0; i < neighborOffsets.Count; i++)
             {
                 Vector3Int offset = neighborOffsets[i];
+                float moveCost = neighborMoveCosts[i];
 
                 int nx = cx + offset.x;
                 int ny = cy + offset.y;
@@ -447,13 +491,6 @@ public class DroneWaypointGraph : MonoBehaviour
                     cameFrom[neighborIndex] = -1;
                 }
 
-                float moveCost =
-                    Mathf.Sqrt(
-                        offset.x * offset.x +
-                        offset.y * offset.y +
-                        offset.z * offset.z
-                    ) * cellSize;
-
                 moveCost *= GetEdgeCostFactor(current, neighborIndex, variant);
 
                 float tentativeG = gScore[current] + moveCost;
@@ -468,7 +505,7 @@ public class DroneWaypointGraph : MonoBehaviour
 
                 float fScore =
                     tentativeG +
-                    HeuristicCost(neighborIndex, goalIndex);
+                    HeuristicCost(nx, ny, nz, goalX, goalY, goalZ);
 
                 openHeap.Push(neighborIndex, fScore);
             }
@@ -810,12 +847,24 @@ public class DroneWaypointGraph : MonoBehaviour
         return -1;
     }
 
-    float HeuristicCost(int fromIndex, int toIndex)
+    float HeuristicCost(
+        int fromX,
+        int fromY,
+        int fromZ,
+        int toX,
+        int toY,
+        int toZ
+    )
     {
-        Vector3 from = IndexToWorld(fromIndex);
-        Vector3 to = IndexToWorld(toIndex);
+        int dx = Mathf.Abs(fromX - toX);
+        int dy = Mathf.Abs(fromY - toY);
+        int dz = Mathf.Abs(fromZ - toZ);
 
-        return Vector3.Distance(from, to);
+        float cost = allowDiagonalMovement
+            ? Mathf.Sqrt(dx * dx + dy * dy + dz * dz) * cellSize
+            : (dx + dy + dz) * cellSize;
+
+        return cost * Mathf.Max(0f, 1f - pathRandomness);
     }
 
     float GetEdgeCostFactor(int a, int b, int variant)
