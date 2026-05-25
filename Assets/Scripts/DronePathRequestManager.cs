@@ -12,7 +12,8 @@ public class DronePathRequestManager : MonoBehaviour
     public int maxRequestsPerFrame = 1;
 
     [Tooltip("每幀尋路預算，毫秒。注意單次 A* 仍然可能超過這個時間。")]
-    public float maxMillisecondsPerFrame = 2f;
+    public float maxMillisecondsPerFrame = 1.5f;
+    public float minSecondsBetweenPathSearches = 0.04f;
 
     [Header("Path Cache")]
     public bool enablePathCache = true;
@@ -48,6 +49,7 @@ public class DronePathRequestManager : MonoBehaviour
     private readonly List<string> keysToRemove = new List<string>();
 
     private readonly Stopwatch stopwatch = new Stopwatch();
+    private float nextPathSearchTime = 0f;
 
     void Awake()
     {
@@ -62,6 +64,7 @@ public class DronePathRequestManager : MonoBehaviour
 
         maxRequestsPerFrame = Mathf.Max(1, maxRequestsPerFrame);
         maxMillisecondsPerFrame = Mathf.Max(0.25f, maxMillisecondsPerFrame);
+        minSecondsBetweenPathSearches = Mathf.Max(0f, minSecondsBetweenPathSearches);
         cacheCellSize = Mathf.Max(1f, cacheCellSize);
         cacheLifeTime = Mathf.Max(0.5f, cacheLifeTime);
         maxCacheEntries = Mathf.Max(32, maxCacheEntries);
@@ -140,6 +143,12 @@ public class DronePathRequestManager : MonoBehaviour
 
     void Update()
     {
+        if (Time.time < nextPathSearchTime)
+        {
+            CleanupCache();
+            return;
+        }
+
         int processed = 0;
         stopwatch.Restart();
 
@@ -154,10 +163,15 @@ public class DronePathRequestManager : MonoBehaviour
             PathRequest request = DequeueRequest();
             ProcessRequest(request);
             processed++;
+
+            if (minSecondsBetweenPathSearches > 0f)
+            {
+                nextPathSearchTime = Time.time + minSecondsBetweenPathSearches;
+                break;
+            }
         }
 
         stopwatch.Stop();
-
         CleanupCache();
     }
 

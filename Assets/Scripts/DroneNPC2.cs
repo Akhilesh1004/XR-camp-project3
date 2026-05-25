@@ -21,19 +21,25 @@ public class DroneNPC2 : MonoBehaviour
 
     [Header("3D Grid Path")]
     public DroneWaypointGraph grid;
-    public float pathNodeReachDistance = 5.5f;
-    public float lookAheadDistance = 24f;
-    public float pathRepathInterval = 12f;
+    public float pathNodeReachDistance = 6.5f;
+    public float lookAheadDistance = 28f;
+
+    [Tooltip("路徑段落進度推進距離。避免追過 node 後目標跑到身後造成繞圈。")]
+    public float pathAdvanceDistance = 2.5f;
+
+    [Tooltip("如果目標點落在身後，直接跳到下一段，不原地轉回去追。")]
+    public float behindTargetDotThreshold = -0.15f;
+    public float pathRepathInterval = 20f;
     public float minDestinationDistanceFromSpawn = 180f;
 
     [Header("動態避障：Bullet")]
     public bool enableDynamicObstacleAvoidance = true;
     public LayerMask dynamicObstacleLayer;
-    public float dynamicObstacleDetectRadius = 28f;
-    public float dynamicAvoidanceInterval = 0.45f;
+    public float dynamicObstacleDetectRadius = 22f;
+    public float dynamicAvoidanceInterval = 0.75f;
     public float dynamicPredictionTime = 0.8f;
     public float dynamicThreatRadius = 4.2f;
-    public float dynamicAvoidWeight = 6f;
+    public float dynamicAvoidWeight = 4.5f;
     public float dynamicUpBias = 0.3f;
     public float dynamicMinRelativeSpeed = 5f;
     public bool allowBackwardDynamicDodge = true;
@@ -49,11 +55,11 @@ public class DroneNPC2 : MonoBehaviour
     public float bankSmooth = 3.5f;
 
     [Header("Anti-Stuck")]
-    public float stuckCheckInterval = 0.8f;
+    public float stuckCheckInterval = 1.4f;
     public float stuckMoveThreshold = 0.18f;
     public int maxStuckCountBeforeNewDestination = 3;
-    public float pathRequestTimeout = 4f;
-    public float pathNodeTimeout = 3.5f;
+    public float pathRequestTimeout = 6f;
+    public float pathNodeTimeout = 5.0f;
 
     [Header("Performance Throttle")]
     public float movementClearCheckInterval = 1.0f;
@@ -324,7 +330,7 @@ public class DroneNPC2 : MonoBehaviour
             return false;
         }
 
-        SkipReachedPathNodes();
+        AdvancePathIndexByProgress();
 
         if (currentPathIndex >= currentPath.Count)
         {
@@ -332,6 +338,24 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         Vector3 target = GetLookAheadTarget();
+
+        Vector3 toLookTarget = target - transform.position;
+
+        if (toLookTarget.sqrMagnitude > 0.001f &&
+            currentMoveDirection.sqrMagnitude > 0.001f &&
+            Vector3.Dot(currentMoveDirection.normalized, toLookTarget.normalized) < behindTargetDotThreshold)
+        {
+            currentPathIndex++;
+            currentNodeStartTime = Time.time;
+
+            if (currentPathIndex >= currentPath.Count)
+            {
+                return false;
+            }
+
+            target = GetLookAheadTarget();
+        }
+
         MoveTowards(target, targetSpeed, dt);
         return true;
     }
@@ -340,11 +364,16 @@ public class DroneNPC2 : MonoBehaviour
     {
         if (currentPath.Count == 0)
         {
-            return transform.position + currentMoveDirection * lookAheadDistance;
+            return transform.position + currentMoveDirection.normalized * lookAheadDistance;
         }
 
         int index = Mathf.Clamp(currentPathIndex, 0, currentPath.Count - 1);
-        Vector3 previous = transform.position;
+
+        Vector3 segmentStart = index == 0 ? transform.position : currentPath[index - 1];
+        Vector3 segmentEnd = currentPath[index];
+
+        Vector3 projected = ProjectPointOnSegment(transform.position, segmentStart, segmentEnd);
+        Vector3 previous = projected;
         float remaining = lookAheadDistance;
 
         for (int i = index; i < currentPath.Count; i++)
@@ -366,17 +395,69 @@ public class DroneNPC2 : MonoBehaviour
 
     void SkipReachedPathNodes()
     {
-        while (currentPathIndex < currentPath.Count && Vector3.Distance(transform.position, currentPath[currentPathIndex]) <= pathNodeReachDistance)
+        AdvancePathIndexByProgress();
+    }
+
+    void AdvancePathIndexByProgress()
+    {
+        if (currentPath.Count == 0)
         {
-            currentPathIndex++;
-            currentNodeStartTime = Time.time;
+            return;
         }
 
-        if (currentPathIndex < currentPath.Count && Time.time - currentNodeStartTime > pathNodeTimeout)
+        while (currentPathIndex < currentPath.Count)
         {
-            currentPathIndex++;
-            currentNodeStartTime = Time.time;
+            Vector3 node = currentPath[currentPathIndex];
+            float distanceToNode = Vector3.Distance(transform.position, node);
+
+            if (distanceToNode <= pathNodeReachDistance)
+            {
+                currentPathIndex++;
+                currentNodeStartTime = Time.time;
+                continue;
+            }
+
+            Vector3 segmentStart = currentPathIndex == 0 ? transform.position : currentPath[currentPathIndex - 1];
+            Vector3 segmentEnd = currentPath[currentPathIndex];
+            Vector3 segment = segmentEnd - segmentStart;
+            float segmentLengthSqr = segment.sqrMagnitude;
+
+            if (segmentLengthSqr > 0.001f)
+            {
+                float t = Vector3.Dot(transform.position - segmentStart, segment) / segmentLengthSqr;
+
+                if (t > 1.0f && distanceToNode <= lookAheadDistance + pathAdvanceDistance)
+                {
+                    currentPathIndex++;
+                    currentNodeStartTime = Time.time;
+                    continue;
+                }
+            }
+
+            if (Time.time - currentNodeStartTime > pathNodeTimeout)
+            {
+                currentPathIndex++;
+                currentNodeStartTime = Time.time;
+                continue;
+            }
+
+            break;
         }
+    }
+
+    Vector3 ProjectPointOnSegment(Vector3 point, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float lengthSqr = ab.sqrMagnitude;
+
+        if (lengthSqr <= 0.001f)
+        {
+            return b;
+        }
+
+        float t = Vector3.Dot(point - a, ab) / lengthSqr;
+        t = Mathf.Clamp01(t);
+        return a + ab * t;
     }
 
     void ClearPath()
@@ -484,7 +565,7 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         // 2. CD 到了，但還不是這台 Drone 的分幀 slot，繼續等，避免同一幀大量 Physics query。
-        if (((Time.frameCount + dynamicFrameOffset) % 23) != 0)
+        if (((Time.frameCount + dynamicFrameOffset) % 37) != 0)
         {
             return cachedDynamicAvoidance;
         }
@@ -667,11 +748,24 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         Quaternion lookRotation = Quaternion.LookRotation(direction, Vector3.up);
-        float turnDot = Vector3.Dot(transform.right, direction);
-        float targetBank = -turnDot * maxBankAngle;
+
+        Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+        Vector3 flatDirection = Vector3.ProjectOnPlane(direction, Vector3.up).normalized;
+
+        float signedTurn = 0f;
+
+        if (flatForward.sqrMagnitude > 0.001f && flatDirection.sqrMagnitude > 0.001f)
+        {
+            signedTurn = Vector3.SignedAngle(flatForward, flatDirection, Vector3.up) / 90f;
+            signedTurn = Mathf.Clamp(signedTurn, -1f, 1f);
+        }
+
+        float targetBank = -signedTurn * maxBankAngle;
         currentBankAngle = Mathf.Lerp(currentBankAngle, targetBank, dt * bankSmooth);
+
         Quaternion bankRotation = Quaternion.Euler(0f, 0f, currentBankAngle);
         Quaternion targetRotation = lookRotation * bankRotation;
+
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, dt * steeringSmooth);
     }
 

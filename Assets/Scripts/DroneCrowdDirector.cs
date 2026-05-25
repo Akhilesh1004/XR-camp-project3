@@ -7,8 +7,8 @@ public class DroneCrowdDirector : MonoBehaviour
     public static DroneCrowdDirector Instance { get; private set; }
 
     [Header("Attack Limits")]
-    public int maxChasingDrones = 24;
-    public int maxCloseAttackDrones = 6;
+    public int maxChasingDrones = 16;
+    public int maxCloseAttackDrones = 4;
 
     private readonly HashSet<DroneNPC> chasingDrones = new HashSet<DroneNPC>();
     private readonly HashSet<DroneNPC> closeAttackDrones = new HashSet<DroneNPC>();

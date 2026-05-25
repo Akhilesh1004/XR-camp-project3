@@ -14,6 +14,13 @@ public class DroneNPC : MonoBehaviour
     public string playerTag = "Player";
     public Vector3 playerTargetOffset = new Vector3(0f, 1.1f, 0f);
 
+    [Header("AI LOD / FPS 50")]
+    [Tooltip("Patrol 狀態多久檢查一次玩家距離。提高可大幅降低 110 台巡邏 Drone 的 CPU。")]
+    public float patrolPlayerCheckInterval = 0.6f;
+
+    [Tooltip("Chasing 狀態多久更新一次玩家距離快取。Close Attack 仍會用即時 target。")]
+    public float chasePlayerCheckInterval = 0.16f;
+
     [Header("偵測與追逐")]
     public float detectRange = 55f;
     public float giveUpRange = 220f;
@@ -36,11 +43,17 @@ public class DroneNPC : MonoBehaviour
 
     [Header("3D Grid Path")]
     public DroneWaypointGraph grid;
-    public float pathNodeReachDistance = 5f;
-    public float lookAheadDistance = 22f;
-    public float patrolRepathInterval = 10f;
-    public float chaseRepathInterval = 3.5f;
-    public float forcedHuntRepathInterval = 2.5f;
+    public float pathNodeReachDistance = 6f;
+    public float lookAheadDistance = 26f;
+
+    [Tooltip("路徑段落進度推進距離。避免追過 node 後目標跑到身後造成繞圈。")]
+    public float pathAdvanceDistance = 2.5f;
+
+    [Tooltip("如果目標點落在身後，直接跳到下一段，不原地轉回去追。")]
+    public float behindTargetDotThreshold = -0.15f;
+    public float patrolRepathInterval = 16f;
+    public float chaseRepathInterval = 5.0f;
+    public float forcedHuntRepathInterval = 3.5f;
     public float minPatrolDestinationDistance = 80f;
     public float maxPatrolDestinationDistance = 220f;
 
@@ -50,11 +63,11 @@ public class DroneNPC : MonoBehaviour
     [Header("動態避障：Bullet")]
     public bool enableDynamicObstacleAvoidance = true;
     public LayerMask dynamicObstacleLayer;
-    public float dynamicObstacleDetectRadius = 32f;
-    public float dynamicAvoidanceInterval = 0.32f;
+    public float dynamicObstacleDetectRadius = 26f;
+    public float dynamicAvoidanceInterval = 0.5f;
     public float dynamicPredictionTime = 0.8f;
     public float dynamicThreatRadius = 4.0f;
-    public float dynamicAvoidWeight = 8f;
+    public float dynamicAvoidWeight = 6f;
     public float dynamicUpBias = 0.35f;
     public float dynamicMinRelativeSpeed = 5f;
     public bool allowBackwardDynamicDodge = true;
@@ -71,14 +84,14 @@ public class DroneNPC : MonoBehaviour
     public float bankSmooth = 4f;
 
     [Header("Anti-Stuck")]
-    public float stuckCheckInterval = 0.8f;
+    public float stuckCheckInterval = 1.2f;
     public float stuckMoveThreshold = 0.18f;
-    public float pathRequestTimeout = 3f;
+    public float pathRequestTimeout = 5f;
     public float pathNodeTimeout = 2.8f;
 
     [Header("Performance Throttle")]
     public float movementClearCheckInterval = 0.9f;
-    public float lineOfSightCheckInterval = 0.6f;
+    public float lineOfSightCheckInterval = 1.0f;
     public int blockedStepTolerance = 4;
 
     [Tooltip("大量 Drone 時建議 false。一般 path 已由 3D Grid 保證安全，不要每台每段移動都 SphereCast。")]
@@ -144,6 +157,9 @@ public class DroneNPC : MonoBehaviour
     private DroneGameManager manager;
     private DroneCrowdDirector crowdDirector;
     private Transform player;
+    private Vector3 cachedPlayerTarget;
+    private float cachedDistanceToPlayer = Mathf.Infinity;
+    private float nextPlayerCheckTime = 0f;
 
     private float outOfRangeTimer = 0f;
     private bool hasBeenInitialized = false;
@@ -229,6 +245,11 @@ public class DroneNPC : MonoBehaviour
         hasBeenInitialized = true;
 
         FindPlayer();
+        cachedPlayerTarget = player != null ? GetPlayerTarget() : transform.position;
+        cachedDistanceToPlayer = player != null
+            ? Vector3.Distance(transform.position, cachedPlayerTarget)
+            : Mathf.Infinity;
+        nextPlayerCheckTime = Time.time + Random.Range(0f, patrolPlayerCheckInterval);
     }
 
     void Update()
@@ -245,25 +266,56 @@ public class DroneNPC : MonoBehaviour
             FindPlayer();
         }
 
+        UpdateCachedPlayerInfo();
+
         UpdateAlertTimer(dt);
         CheckStuck();
         CheckPathRequestTimeout();
         UpdateDirectChaseLock(dt);
 
-        float distanceToPlayer = player != null
-            ? Vector3.Distance(transform.position, GetPlayerTarget())
-            : Mathf.Infinity;
-
         switch (state)
         {
             case DroneState.Patrol:
-                HandlePatrol(distanceToPlayer, dt);
+                HandlePatrol(cachedDistanceToPlayer, dt);
                 break;
 
             case DroneState.Chasing:
-                HandleChasing(distanceToPlayer, dt);
+                HandleChasing(cachedDistanceToPlayer, dt);
                 break;
         }
+    }
+
+    void UpdateCachedPlayerInfo()
+    {
+        if (player == null)
+        {
+            cachedPlayerTarget = transform.position;
+            cachedDistanceToPlayer = Mathf.Infinity;
+            nextPlayerCheckTime = Time.time + 0.5f;
+            return;
+        }
+
+        float interval = state == DroneState.Patrol
+            ? patrolPlayerCheckInterval
+            : chasePlayerCheckInterval;
+
+        if (isCloseAttacking || directChaseLockTimer > 0f)
+        {
+            interval = Mathf.Min(interval, 0.06f);
+        }
+
+        if (Time.time < nextPlayerCheckTime)
+        {
+            return;
+        }
+
+        cachedPlayerTarget = GetPlayerTarget();
+        cachedDistanceToPlayer = Vector3.Distance(transform.position, cachedPlayerTarget);
+
+        nextPlayerCheckTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.5f);
     }
 
     void FindPlayer()
@@ -545,7 +597,7 @@ public class DroneNPC : MonoBehaviour
             return false;
         }
 
-        SkipReachedPathNodes();
+        AdvancePathIndexByProgress();
 
         if (currentPathIndex >= currentPath.Count)
         {
@@ -553,6 +605,25 @@ public class DroneNPC : MonoBehaviour
         }
 
         Vector3 lookTarget = GetLookAheadTarget();
+
+        // 防止 Drone 追過頭後，lookTarget 掉到身後，導致原地繞圈。
+        Vector3 toLookTarget = lookTarget - transform.position;
+
+        if (toLookTarget.sqrMagnitude > 0.001f &&
+            currentMoveDirection.sqrMagnitude > 0.001f &&
+            Vector3.Dot(currentMoveDirection.normalized, toLookTarget.normalized) < behindTargetDotThreshold)
+        {
+            currentPathIndex++;
+            currentNodeStartTime = Time.time;
+
+            if (currentPathIndex >= currentPath.Count)
+            {
+                return false;
+            }
+
+            lookTarget = GetLookAheadTarget();
+        }
+
         MoveTowards(lookTarget, targetSpeed, dt, closeAttack);
         return true;
     }
@@ -561,11 +632,17 @@ public class DroneNPC : MonoBehaviour
     {
         if (currentPath.Count == 0)
         {
-            return transform.position + currentMoveDirection * lookAheadDistance;
+            return transform.position + currentMoveDirection.normalized * lookAheadDistance;
         }
 
         int index = Mathf.Clamp(currentPathIndex, 0, currentPath.Count - 1);
-        Vector3 previous = transform.position;
+
+        // 從目前位置在「目前段落」上的投影點開始往前看，而不是從 transform.position 直接追某個 node。
+        Vector3 segmentStart = index == 0 ? transform.position : currentPath[index - 1];
+        Vector3 segmentEnd = currentPath[index];
+
+        Vector3 projected = ProjectPointOnSegment(transform.position, segmentStart, segmentEnd);
+        Vector3 previous = projected;
         float remaining = lookAheadDistance;
 
         for (int i = index; i < currentPath.Count; i++)
@@ -587,19 +664,70 @@ public class DroneNPC : MonoBehaviour
 
     void SkipReachedPathNodes()
     {
-        while (currentPathIndex < currentPath.Count &&
-               Vector3.Distance(transform.position, currentPath[currentPathIndex]) <= pathNodeReachDistance)
+        AdvancePathIndexByProgress();
+    }
+
+    void AdvancePathIndexByProgress()
+    {
+        if (currentPath.Count == 0)
         {
-            currentPathIndex++;
-            currentNodeStartTime = Time.time;
+            return;
         }
 
-        if (currentPathIndex < currentPath.Count &&
-            Time.time - currentNodeStartTime > pathNodeTimeout)
+        while (currentPathIndex < currentPath.Count)
         {
-            currentPathIndex++;
-            currentNodeStartTime = Time.time;
+            Vector3 node = currentPath[currentPathIndex];
+            float distanceToNode = Vector3.Distance(transform.position, node);
+
+            if (distanceToNode <= pathNodeReachDistance)
+            {
+                currentPathIndex++;
+                currentNodeStartTime = Time.time;
+                continue;
+            }
+
+            Vector3 segmentStart = currentPathIndex == 0 ? transform.position : currentPath[currentPathIndex - 1];
+            Vector3 segmentEnd = currentPath[currentPathIndex];
+            Vector3 segment = segmentEnd - segmentStart;
+            float segmentLengthSqr = segment.sqrMagnitude;
+
+            if (segmentLengthSqr > 0.001f)
+            {
+                float t = Vector3.Dot(transform.position - segmentStart, segment) / segmentLengthSqr;
+
+                // 已經通過這個 node 一段距離，就不要回頭追，直接進下一段。
+                if (t > 1.0f && distanceToNode <= lookAheadDistance + pathAdvanceDistance)
+                {
+                    currentPathIndex++;
+                    currentNodeStartTime = Time.time;
+                    continue;
+                }
+            }
+
+            if (Time.time - currentNodeStartTime > pathNodeTimeout)
+            {
+                currentPathIndex++;
+                currentNodeStartTime = Time.time;
+                continue;
+            }
+
+            break;
         }
+    }
+
+    Vector3 ProjectPointOnSegment(Vector3 point, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float lengthSqr = ab.sqrMagnitude;
+
+        if (lengthSqr <= 0.001f)
+        {
+            return b;
+        }
+
+        float t = Vector3.Dot(point - a, ab) / lengthSqr;
+        t = Mathf.Clamp01(t);
+        return a + ab * t;
     }
 
     bool IsCurrentPathSegmentBlocked()
@@ -802,7 +930,7 @@ public class DroneNPC : MonoBehaviour
         }
 
         // 2. CD 到了，但還不是這台 Drone 的分幀 slot，繼續等，避免同一幀大量 Physics query。
-        if (((Time.frameCount + dynamicFrameOffset) % 19) != 0)
+        if (((Time.frameCount + dynamicFrameOffset) % 31) != 0)
         {
             return cachedDynamicAvoidance;
         }
@@ -993,8 +1121,19 @@ public class DroneNPC : MonoBehaviour
         }
 
         Quaternion lookRotation = Quaternion.LookRotation(direction, Vector3.up);
-        float turnDot = Vector3.Dot(transform.right, direction);
-        float targetBank = -turnDot * maxBankAngle;
+
+        Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+        Vector3 flatDirection = Vector3.ProjectOnPlane(direction, Vector3.up).normalized;
+
+        float signedTurn = 0f;
+
+        if (flatForward.sqrMagnitude > 0.001f && flatDirection.sqrMagnitude > 0.001f)
+        {
+            signedTurn = Vector3.SignedAngle(flatForward, flatDirection, Vector3.up) / 90f;
+            signedTurn = Mathf.Clamp(signedTurn, -1f, 1f);
+        }
+
+        float targetBank = -signedTurn * maxBankAngle;
         currentBankAngle = Mathf.Lerp(currentBankAngle, targetBank, dt * bankSmooth);
 
         Quaternion bankRotation = Quaternion.Euler(0f, 0f, currentBankAngle);
