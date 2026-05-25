@@ -15,6 +15,7 @@ public class WristUIController : MonoBehaviour
 
     [Header("射線與滑鼠圖標設定")]
     public RectTransform customCursor;
+    public bool StartVisible = false;
 
     [Header("縮放效果設定")]
     [Tooltip("射線指著按鈕時的縮放倍率，乘上按鈕原本大小")]
@@ -32,7 +33,7 @@ public class WristUIController : MonoBehaviour
 
     void Start()
     {
-        if (uiCanvasGroup != null) SetUIVisibility(false);
+        if (uiCanvasGroup != null) SetUIVisibility(StartVisible);
         SpawnOrderOptions();
     }
 
