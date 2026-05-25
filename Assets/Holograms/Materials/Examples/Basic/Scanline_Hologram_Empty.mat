@@ -21,7 +21,8 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Scanline_Hologram_Empty
-  m_Shader: {fileID: -6465566751694194690, guid: eccfcaef82ebd42de87abcf38e3c9d5e, type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: eccfcaef82ebd42de87abcf38e3c9d5e,
+    type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -99,4 +100,3 @@ Material:
     - _Pattern_Direction_Vertical: {r: 1, g: 0, b: 0, a: 0}
     - _Texture_Tint_Color: {r: 0, g: 0.37397557, b: 0.4433962, a: 0.29803923}
   m_BuildTextureStacks: []
-  m_AllowLocking: 1
