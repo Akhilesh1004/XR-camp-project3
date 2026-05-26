@@ -49,6 +49,10 @@ public class DroneNPC : MonoBehaviour
     public float pathNodeReachDistance = 6f;
     public float lookAheadDistance = 26f;
 
+    [Tooltip("用 3D Grid 的 walkable cell 檢查 look-ahead 捷徑，避免轉角切進建築。比每步 SphereCast 便宜。")]
+    public bool preventGridCornerCutting = true;
+    public float gridCornerCheckStepMultiplier = 0.5f;
+
     [Tooltip("路徑段落進度推進距離。避免追過 node 後目標跑到身後造成繞圈。")]
     public float pathAdvanceDistance = 2.5f;
 
@@ -750,8 +754,36 @@ public class DroneNPC : MonoBehaviour
             lookTarget = GetLookAheadTarget();
         }
 
+        lookTarget = ClampLookTargetToWalkableLine(lookTarget);
+
         MoveTowards(lookTarget, targetSpeed, dt, closeAttack);
         return true;
+    }
+
+    Vector3 ClampLookTargetToWalkableLine(Vector3 desiredTarget)
+    {
+        if (!preventGridCornerCutting || grid == null || currentPath.Count == 0)
+        {
+            return desiredTarget;
+        }
+
+        float step = GetGridCornerCheckStep();
+
+        if (grid.HasWalkableGridLine(transform.position, desiredTarget, step))
+        {
+            return desiredTarget;
+        }
+
+        Vector3 currentNode = currentPath[Mathf.Clamp(currentPathIndex, 0, currentPath.Count - 1)];
+
+        if (grid.HasWalkableGridLine(transform.position, currentNode, step))
+        {
+            return currentNode;
+        }
+
+        isStuck = true;
+        nextRepathTime = 0f;
+        return transform.position;
     }
 
     Vector3 GetLookAheadTarget()
@@ -921,6 +953,22 @@ public class DroneNPC : MonoBehaviour
 
         Vector3 nextPosition = transform.position + currentMoveDirection * currentSpeed * dt;
 
+        if (!closeAttack && IsGridMovementBlocked(nextPosition))
+        {
+            blockedStepCount++;
+            currentSpeed = Mathf.Lerp(currentSpeed, 0f, dt * deceleration);
+
+            if (blockedStepCount >= blockedStepTolerance)
+            {
+                isStuck = true;
+                ClearPath();
+                nextRepathTime = 0f;
+                blockedStepCount = 0;
+            }
+
+            return;
+        }
+
         if (GetCachedMovementStepBlocked(nextPosition, targetPosition, closeAttack))
         {
             blockedStepCount++;
@@ -1007,6 +1055,26 @@ public class DroneNPC : MonoBehaviour
 
         cachedMovementStepBlocked = IsMovementStepBlocked(nextPosition, attackTarget, false);
         return cachedMovementStepBlocked;
+    }
+
+    bool IsGridMovementBlocked(Vector3 nextPosition)
+    {
+        if (!preventGridCornerCutting || grid == null)
+        {
+            return false;
+        }
+
+        return !grid.HasWalkableGridLine(transform.position, nextPosition, GetGridCornerCheckStep());
+    }
+
+    float GetGridCornerCheckStep()
+    {
+        if (grid == null)
+        {
+            return 1f;
+        }
+
+        return Mathf.Max(1f, grid.cellSize * Mathf.Max(0.1f, gridCornerCheckStepMultiplier));
     }
 
     bool IsMovementStepBlocked(Vector3 nextPosition, Vector3 attackTarget, bool closeAttack)

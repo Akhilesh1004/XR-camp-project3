@@ -293,6 +293,40 @@ public class DroneWaypointGraph : MonoBehaviour
         return !blocked;
     }
 
+    public bool IsWorldPositionWalkable(Vector3 worldPosition)
+    {
+        EnsureGridReady();
+        return IsWorldPositionWalkableNoBuild(worldPosition);
+    }
+
+    public bool HasWalkableGridLine(Vector3 from, Vector3 to, float sampleStep = 0f)
+    {
+        EnsureGridReady();
+
+        Vector3 delta = to - from;
+        float distance = delta.magnitude;
+
+        if (distance <= 0.01f)
+        {
+            return IsWorldPositionWalkableNoBuild(to);
+        }
+
+        float step = sampleStep > 0f ? sampleStep : Mathf.Max(1f, cellSize * 0.5f);
+        int samples = Mathf.Max(1, Mathf.CeilToInt(distance / step));
+
+        for (int i = 1; i <= samples; i++)
+        {
+            Vector3 sample = Vector3.Lerp(from, to, i / (float)samples);
+
+            if (!IsWorldPositionWalkableNoBuild(sample))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public bool TryFindPathPositions(
         Vector3 from,
         Vector3 to,
@@ -928,6 +962,18 @@ public class DroneWaypointGraph : MonoBehaviour
                x < gridCountX &&
                y < gridCountY &&
                z < gridCountZ;
+    }
+
+    bool IsWorldPositionWalkableNoBuild(Vector3 worldPosition)
+    {
+        WorldToCell(worldPosition, out int x, out int y, out int z);
+
+        if (!IsInsideGrid(x, y, z))
+        {
+            return false;
+        }
+
+        return walkableCells[ToIndex(x, y, z)];
     }
 
     void OnDrawGizmos()
