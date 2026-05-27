@@ -61,6 +61,9 @@ public class WebSwinger : MonoBehaviour
     private bool canShoot = false;
     private bool ThisHandGrabbing = false;
 
+    [Header("音效檔案")]
+    public AudioClip webShootSound;
+
     private SpringJoint joint;
     private Vector3 swingPoint;
 
@@ -120,6 +123,7 @@ public class WebSwinger : MonoBehaviour
                 {
                     StartSwing();
                 }
+                DeliveryGameManager.Instance.PlaySound(webShootSound);
             }
             OnEnableR();
             swingStartTime = Time.time;

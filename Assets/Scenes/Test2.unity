@@ -13419,6 +13419,7 @@ GameObject:
   m_Component:
   - component: {fileID: 925125560}
   - component: {fileID: 925125561}
+  - component: {fileID: 925125562}
   m_Layer: 0
   m_Name: DeliverySystem
   m_TagString: Untagged
@@ -13460,13 +13461,6 @@ MonoBehaviour:
   maxWaitingOrders: 3
   brokenFoodPenalty: 50
   wrongFoodPenalty: 50
-  timePenaltyPerSecond: 1
-  pickupPoints:
-  - {fileID: 2033386772}
-  - {fileID: 353581462}
-  - {fileID: 1824370419}
-  - {fileID: 1061688953}
-  - {fileID: 517886535}
   destinationPoints:
   - {fileID: 582920634}
   - {fileID: 1847691934}
@@ -13476,13 +13470,20 @@ MonoBehaviour:
   foodOptions:
   - foodName: Burger
     maxHealth: 100
+    foodValue: 100
+    maxDeliveryTime: 2
     cargoPrefab: {fileID: 4853817637203723034, guid: 75b7c21ff079a4bfebb693d868119b2c,
       type: 3}
+    restaurantPickupPoint: {fileID: 2033386772}
   - foodName: Fries
     maxHealth: 100
+    foodValue: 100
+    maxDeliveryTime: 2
     cargoPrefab: {fileID: 4853817637203723034, guid: 596b5731756324d4dbe5ce82c3e7cd38,
       type: 3}
+    restaurantPickupPoint: {fileID: 1061688953}
   fallbackCargoPrefab: {fileID: 0}
+  fallbackPickupPoint: {fileID: 0}
   pickupMarkerPrefab: {fileID: 3499235213008294977, guid: 50f07fbaa2756de41877fbea0ffa19bc,
     type: 3}
   destinationMarkerPrefab: {fileID: 0}
@@ -13503,6 +13504,104 @@ MonoBehaviour:
   orderText: {fileID: 1240535673}
   cargoHealthText: {fileID: 1512369091}
   messageText: {fileID: 1311292815}
+  pickupMarkerHeightOffset: -0.3
+  globalAudioSource: {fileID: 925125562}
+--- !u!82 &925125562
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 925125559}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_PlayOnAwake: 0
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1 &929334342
 GameObject:
   m_ObjectHideFlags: 0
@@ -19100,7 +19199,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1353922697
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -22174,6 +22273,7 @@ MonoBehaviour:
   firePoint: {fileID: 79486503}
   bulletSpeed: 50
   shootCooldown: 0.2
+  webShootSound: {fileID: 0}
 --- !u!114 &1573214322
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -23147,9 +23247,9 @@ LineRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1631731903}
   m_Enabled: 1
-  m_CastShadows: 1
+  m_CastShadows: 0
   m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
+  m_DynamicOccludee: 0
   m_StaticShadowCaster: 0
   m_MotionVectors: 0
   m_LightProbeUsage: 0
@@ -23159,7 +23259,7 @@ LineRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 16c2050101d26544097b7be6550ea76d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -23182,10 +23282,10 @@ LineRenderer:
   m_SortingOrder: 0
   m_Positions:
   - {x: 0, y: 0, z: 0}
-  - {x: 0, y: 0, z: 1}
+  - {x: 0, y: 0, z: 5}
   m_Parameters:
     serializedVersion: 3
-    widthMultiplier: 0.01
+    widthMultiplier: 0.1
     widthCurve:
       serializedVersion: 2
       m_Curve:
@@ -23198,13 +23298,31 @@ LineRenderer:
         weightedMode: 0
         inWeight: 0.33333334
         outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 0.79593277
+        value: 0.8243936
+        inSlope: -0.8372755
+        outSlope: -0.8372755
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.11051432
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.9866761
+        value: 0.5707316
+        inSlope: -1.3663749
+        outSlope: -1.3663749
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.82353
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
     colorGradient:
       serializedVersion: 2
-      key0: {r: 1, g: 1, b: 1, a: 1}
-      key1: {r: 1, g: 1, b: 1, a: 1}
+      key0: {r: 1, g: 0.32069808, b: 0, a: 1}
+      key1: {r: 0.4264151, g: 0.4264151, b: 0.09896045, a: 0}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -23212,7 +23330,7 @@ LineRenderer:
       key6: {r: 0, g: 0, b: 0, a: 0}
       key7: {r: 0, g: 0, b: 0, a: 0}
       ctime0: 0
-      ctime1: 65535
+      ctime1: 65458
       ctime2: 0
       ctime3: 0
       ctime4: 0
@@ -23221,14 +23339,14 @@ LineRenderer:
       ctime7: 0
       atime0: 0
       atime1: 65535
-      atime2: 0
+      atime2: 65535
       atime3: 0
       atime4: 0
       atime5: 0
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: -1
+      m_ColorSpace: 0
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 0
@@ -23380,6 +23498,7 @@ MonoBehaviour:
   firePoint: {fileID: 742669403}
   bulletSpeed: 50
   shootCooldown: 0.2
+  webShootSound: {fileID: 0}
 --- !u!114 &1644529190
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -23456,6 +23575,12 @@ MonoBehaviour:
   contentContainer: {fileID: 2088253700}
   acceptedOrderContainer: {fileID: 2088253699}
   acceptedOrderEntryPrefab: {fileID: 0}
+  scoreTextMeshPro: {fileID: 2088253701}
+  scoreStandardText: {fileID: 0}
+  uiOpenSound: {fileID: 8300000, guid: 2ed60eec9eaa34d94867ae89722393a7, type: 3}
+  uiCloseSound: {fileID: 8300000, guid: 64f006c99c9794a928a967d7ecb14f7c, type: 3}
+  uiClickSound: {fileID: 8300000, guid: 89725b70e72044f5cac8a82609c064bb, type: 3}
+  uiCancelSound: {fileID: 8300000, guid: 6a13b29edfd9e4ab5a0b4d7103015a13, type: 3}
 --- !u!1 &1646690231
 GameObject:
   m_ObjectHideFlags: 0
@@ -24886,9 +25011,9 @@ LineRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1785593085}
   m_Enabled: 1
-  m_CastShadows: 1
+  m_CastShadows: 0
   m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
+  m_DynamicOccludee: 0
   m_StaticShadowCaster: 0
   m_MotionVectors: 0
   m_LightProbeUsage: 0
@@ -24898,7 +25023,7 @@ LineRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 16c2050101d26544097b7be6550ea76d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -24921,10 +25046,10 @@ LineRenderer:
   m_SortingOrder: 0
   m_Positions:
   - {x: 0, y: 0, z: 0}
-  - {x: 0, y: 0, z: 1}
+  - {x: 0, y: 0, z: 5}
   m_Parameters:
     serializedVersion: 3
-    widthMultiplier: 0.01
+    widthMultiplier: 0.1
     widthCurve:
       serializedVersion: 2
       m_Curve:
@@ -24937,13 +25062,31 @@ LineRenderer:
         weightedMode: 0
         inWeight: 0.33333334
         outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 0.79593277
+        value: 0.8243936
+        inSlope: -0.8372755
+        outSlope: -0.8372755
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.11051432
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.9866761
+        value: 0.5707316
+        inSlope: -1.3663749
+        outSlope: -1.3663749
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.82353
+        outWeight: 0
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
     colorGradient:
       serializedVersion: 2
-      key0: {r: 1, g: 1, b: 1, a: 1}
-      key1: {r: 1, g: 1, b: 1, a: 1}
+      key0: {r: 1, g: 0.32069808, b: 0, a: 1}
+      key1: {r: 0.4264151, g: 0.4264151, b: 0.09896045, a: 0}
       key2: {r: 0, g: 0, b: 0, a: 0}
       key3: {r: 0, g: 0, b: 0, a: 0}
       key4: {r: 0, g: 0, b: 0, a: 0}
@@ -24951,7 +25094,7 @@ LineRenderer:
       key6: {r: 0, g: 0, b: 0, a: 0}
       key7: {r: 0, g: 0, b: 0, a: 0}
       ctime0: 0
-      ctime1: 65535
+      ctime1: 65458
       ctime2: 0
       ctime3: 0
       ctime4: 0
@@ -24960,14 +25103,14 @@ LineRenderer:
       ctime7: 0
       atime0: 0
       atime1: 65535
-      atime2: 0
+      atime2: 65535
       atime3: 0
       atime4: 0
       atime5: 0
       atime6: 0
       atime7: 0
       m_Mode: 0
-      m_ColorSpace: -1
+      m_ColorSpace: 0
       m_NumColorKeys: 2
       m_NumAlphaKeys: 2
     numCornerVertices: 0
@@ -28813,130 +28956,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 229844908}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &2006847314
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2006847316}
-  - component: {fileID: 2006847318}
-  - component: {fileID: 2006847315}
-  - component: {fileID: 2006847317}
-  m_Layer: 0
-  m_Name: DroneSystem
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &2006847315
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2006847314}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8453df852ca0146a0bb764388a5ed4c0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  dronePrefab: {fileID: -6696707304959212025, guid: f5e0491a5159145f786d615bb104e9c8,
-    type: 3}
-  grid: {fileID: 0}
-  targetDroneCount: 10
-  spawnOnStart: 1
-  respawnDelay: 3
-  spawnInterval: 0.08
-  initialPoolSize: 10
-  allowPoolExpansion: 1
-  activeListCleanupInterval: 1
-  playerTag: Player
-  avoidSpawnNearPlayer: 1
-  minSpawnDistanceFromPlayer: 100
---- !u!4 &2006847316
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2006847314}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 600.1882, y: 398.924, z: 521.2}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &2006847317
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2006847314}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0d92c9a18548044179f5f7bfcfbc36e0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  dronePrefab: {fileID: 9178425330184493608, guid: bbd21f64a0204964697fadb4e6a79d07,
-    type: 3}
-  grid: {fileID: 0}
-  targetDroneCount: 10
-  spawnOnStart: 1
-  respawnDelay: 5
-  spawnInterval: 0.15
-  initialPoolSize: 10
-  allowPoolExpansion: 1
-  activeListCleanupInterval: 1
---- !u!114 &2006847318
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2006847314}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7d1c1af1a496e43f28f5cc9921ff6709, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  gridCenter: {x: 0, y: 80, z: 0}
-  gridSize: {x: 1200, y: 160, z: 900}
-  cellSize: 8
-  agentRadius: 2
-  lineCheckRadius: 2
-  obstacleLayer:
-    serializedVersion: 2
-    m_Bits: 72
-  buildOnStart: 1
-  autoRebuildInEditMode: 0
-  nearestWalkableSearchRadius: 10
-  allowDiagonalMovement: 0
-  maxSearchNodes: 30000
-  smoothPath: 0
-  pathRandomness: 0.08
-  randomFilteredPointMaxAttempts: 64
-  drawGridBounds: 1
-  drawGridCells: 0
-  drawOnlyBlockedCells: 0
-  drawCellStep: 8
-  maxGizmoCells: 3000
-  boundsColor: {r: 1, g: 1, b: 1, a: 1}
-  walkableCellColor: {r: 0, g: 1, b: 1, a: 0.15}
-  blockedCellColor: {r: 1, g: 0, b: 0, a: 0.25}
-  gridDirty: 1
-  gridCountX: 0
-  gridCountY: 0
-  gridCountZ: 0
-  totalCellCount: 0
-  walkableCellCount: 0
-  lastBuildMessage: 'Built graph: 79 waypoints, 336 directed edges'
 --- !u!1 &2011673510
 GameObject:
   m_ObjectHideFlags: 0
@@ -29778,11 +29797,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: WristUI
       objectReference: {fileID: 0}
-    - target: {fileID: 5886748475688653909, guid: 750ee261c8178d849a83f58b21a7d312,
-        type: 3}
-      propertyPath: m_PresetInfoIsWorld
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 6869233804058923278, guid: 750ee261c8178d849a83f58b21a7d312,
         type: 3}
       propertyPath: m_Pivot.x
@@ -29906,6 +29920,18 @@ RectTransform:
     type: 3}
   m_PrefabInstance: {fileID: 2088253697}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2088253701 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 8574585784657785422, guid: 750ee261c8178d849a83f58b21a7d312,
+    type: 3}
+  m_PrefabInstance: {fileID: 2088253697}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!225 &2088253704 stripped
 CanvasGroup:
   m_CorrespondingSourceObject: {fileID: 5981115155002482964, guid: 750ee261c8178d849a83f58b21a7d312,
@@ -30393,6 +30419,184 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1363365347}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2144748326
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2144748333}
+  - component: {fileID: 2144748332}
+  - component: {fileID: 2144748331}
+  - component: {fileID: 2144748330}
+  - component: {fileID: 2144748329}
+  - component: {fileID: 2144748328}
+  - component: {fileID: 2144748327}
+  m_Layer: 0
+  m_Name: DroneSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2144748327
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f8cdb4bb62e554aa999b4d2205208b61, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxChasingDrones: 16
+  maxCloseAttackDrones: 4
+  cleanupInterval: 0.5
+--- !u!114 &2144748328
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85f0ba434dc98564f8606e6483cc2e9a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maxRequestsPerFrame: 1
+  maxMillisecondsPerFrame: 1.5
+  minSecondsBetweenPathSearches: 0.04
+  enablePathCache: 1
+  cacheCellSize: 32
+  cacheLifeTime: 10
+  maxCacheEntries: 1024
+  copyPathForCallbacks: 0
+--- !u!114 &2144748329
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d99bde16925007458ed8fb5e7ae7bc0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  effectPrefab: {fileID: 960503599694511667, guid: 67a684e320da6e7439421a07e3fa265c,
+    type: 3}
+  initialPoolSize: 12
+  allowExpansion: 1
+--- !u!114 &2144748330
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d92c9a18548044179f5f7bfcfbc36e0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  dronePrefab: {fileID: 9178425330184493608, guid: bbd21f64a0204964697fadb4e6a79d07,
+    type: 3}
+  grid: {fileID: 2144748332}
+  targetDroneCount: 10
+  spawnOnStart: 1
+  respawnDelay: 5
+  spawnInterval: 0.15
+  initialPoolSize: 40
+  allowPoolExpansion: 1
+  activeListCleanupInterval: 1
+--- !u!114 &2144748331
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8453df852ca0146a0bb764388a5ed4c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  dronePrefab: {fileID: -6696707304959212025, guid: f5e0491a5159145f786d615bb104e9c8,
+    type: 3}
+  grid: {fileID: 2144748332}
+  targetDroneCount: 30
+  spawnOnStart: 1
+  respawnDelay: 3
+  spawnInterval: 0.08
+  initialPoolSize: 55
+  allowPoolExpansion: 1
+  activeListCleanupInterval: 1
+  playerTag: Player
+  avoidSpawnNearPlayer: 1
+  minSpawnDistanceFromPlayer: 100
+--- !u!114 &2144748332
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d1c1af1a496e43f28f5cc9921ff6709, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  gridCenter: {x: 579.8, y: 466.3, z: 533}
+  gridSize: {x: 400, y: 130, z: 250}
+  cellSize: 8
+  agentRadius: 2
+  lineCheckRadius: 2
+  obstacleLayer:
+    serializedVersion: 2
+    m_Bits: 72
+  buildOnStart: 1
+  autoRebuildInEditMode: 0
+  nearestWalkableSearchRadius: 10
+  allowDiagonalMovement: 0
+  maxSearchNodes: 30000
+  smoothPath: 0
+  pathRandomness: 0.02
+  randomFilteredPointMaxAttempts: 64
+  drawGridBounds: 1
+  drawGridCells: 0
+  drawOnlyBlockedCells: 0
+  drawCellStep: 8
+  maxGizmoCells: 3000
+  boundsColor: {r: 1, g: 1, b: 1, a: 1}
+  walkableCellColor: {r: 0, g: 1, b: 1, a: 0.15}
+  blockedCellColor: {r: 1, g: 0, b: 0, a: 0.25}
+  gridDirty: 1
+  gridCountX: 50
+  gridCountY: 17
+  gridCountZ: 32
+  totalCellCount: 27200
+  walkableCellCount: 26044
+  lastBuildMessage: 'Built 3D Grid: 50 x 17 x 32 = 27200 cells, walkable = 26044'
+--- !u!4 &2144748333
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2144748326}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 600.1882, y: 398.6, z: 506.0135}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &5116590087197088686
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -30551,7 +30755,6 @@ SceneRoots:
   - {fileID: 2058188551}
   - {fileID: 5116590087197088686}
   - {fileID: 720484200}
-  - {fileID: 2006847316}
   - {fileID: 1987928319}
   - {fileID: 242246503}
   - {fileID: 925125560}
@@ -30564,3 +30767,4 @@ SceneRoots:
   - {fileID: 1403371189}
   - {fileID: 7541282364699841973}
   - {fileID: 86290867}
+  - {fileID: 2144748333}

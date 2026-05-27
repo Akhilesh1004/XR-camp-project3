@@ -31,6 +31,18 @@ public class WristUIController : MonoBehaviour
     public Transform acceptedOrderContainer;
     public GameObject acceptedOrderEntryPrefab;
 
+    [Header("獨立分數顯示")]
+    [Tooltip("專門拿來顯示獨立分數的 TextMeshPro 元件")]
+    public TextMeshProUGUI scoreTextMeshPro; 
+    [Tooltip("專門拿來顯示獨立分數的傳統 Text 元件 (若沒用 TMP 可以用這個)")]
+    public Text scoreStandardText;
+
+    [Header("手腕專屬音效檔案")]
+    public AudioClip uiOpenSound;
+    public AudioClip uiCloseSound;
+    public AudioClip uiClickSound;
+    public AudioClip uiCancelSound;
+
     private Dictionary<Button, Vector3> buttonOriginalScales = new Dictionary<Button, Vector3>();
     private Button lastHoveredButton;
     private GameObject lastHoveredOrderObject;
@@ -56,6 +68,14 @@ public class WristUIController : MonoBehaviour
         if (OVRInput.GetDown(Button))
         {
             Debug.Log("Toggle UI visibility");
+            if (uiCanvasGroup.alpha > 0.9f)
+            {
+                DeliveryGameManager.Instance.PlaySound(uiCloseSound, 0.1f);
+            }
+            else
+            {
+                DeliveryGameManager.Instance.PlaySound(uiOpenSound, 0.1f);
+            }
             SetUIVisibility(uiCanvasGroup.alpha < 0.1f);
         }
 
@@ -64,6 +84,7 @@ public class WristUIController : MonoBehaviour
         {
             UpdateUIDowncountTimers();
             UpdateActiveOrderTimer();
+            UpdateIndependentScore();
         }
 
         Button currentHoveredButton = null;
@@ -103,6 +124,15 @@ public class WristUIController : MonoBehaviour
 
                     if (OVRInput.GetDown(OVRInput.Button.One))
                     {
+                        if (hit.collider.name == "YesBotton")
+                        {
+                            DeliveryGameManager.Instance.PlaySound(uiClickSound);
+                        }
+                        else if (hit.collider.name == "NoBotton")
+                        {
+                            DeliveryGameManager.Instance.PlaySound(uiCancelSound);
+                        }
+                        DeliveryGameManager.Instance.PlaySound(uiClickSound);
                         Debug.Log($"點擊了按鈕: {hit.collider.name}");
                         targetButton.onClick.Invoke();
                     }
@@ -199,20 +229,25 @@ public class WristUIController : MonoBehaviour
             int currentOrderId = order.orderId;
             string foodName = order.food.foodName;
 
+            // 這裡取得我們剛綁定在食物物件上的金額與時限(N)
+            int foodValue = order.food.foodValue;
+            float maxDeliveryTime = order.food.maxDeliveryTime;
+
             // 生成整個 OrderOption 項目
             GameObject newOrderObj = Instantiate(orderOptionPrefab, contentContainer);
             newOrderObj.name = $"Order_UI_{currentOrderId}";
             newOrderObj.transform.localPosition = new Vector3(newOrderObj.transform.localPosition.x, newOrderObj.transform.localPosition.y, 0f);
 
-            // 【找字 1】修改標題文字，加上倒數描述
+            // 【找字 1】修改標題文字，加上倒數描述、金額與時限顯示
             Transform infoTransform = newOrderObj.transform.Find("OrderInfo");
             if (infoTransform != null)
             {
                 TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
                 if (infoText != null) 
                 {
-                    // 先給初始文字，格式如: "Burger (15.0s)"
-                    infoText.text = $"{foodName} ({order.waitingTimer:F1}s)";
+                    // 改動這裡：格式化顯示食物名稱、接單倒數、食物金額與送餐時限上限
+                    infoText.text = $"{foodName} ({order.waitingTimer:F1}sec)\n" +
+                                    $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
                 }
             }
 
@@ -276,11 +311,17 @@ public class WristUIController : MonoBehaviour
                 Transform infoTransform = uiObj.transform.Find("OrderInfo");
                 if (infoTransform != null)
                 {
+                    int currentOrderId = dataOrder.orderId;
+                    string foodName = dataOrder.food.foodName;
+                    int foodValue = dataOrder.food.foodValue;
+                    float maxDeliveryTime = dataOrder.food.maxDeliveryTime;
                     TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
                     if (infoText != null)
                     {
                         // 即時同步顯示 15 秒剩餘時間
-                        infoText.text = $"{dataOrder.food.foodName} ({Mathf.Max(0, dataOrder.waitingTimer):F1}s)";
+                        // infoText.text = $"{dataOrder.food.foodName} ({Mathf.Max(0, dataOrder.waitingTimer):F1}sec)";
+                        infoText.text = $"{foodName} ({Mathf.Max(0, dataOrder.waitingTimer):F1}sec)\n" +
+                                    $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
                     }
                 }
             }
@@ -376,10 +417,16 @@ public class WristUIController : MonoBehaviour
         Transform infoTransform = orderUIEntry.transform.Find("OrderInfo");
         if (infoTransform != null)
         {
+            int currentOrderId = order.orderId;
+            string foodName = order.food.foodName;
+            int foodValue = order.food.foodValue;
+            float maxDeliveryTime = order.food.maxDeliveryTime;
             TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
             if (infoText != null)
             {
-                infoText.text = $"{order.food.foodName} ({order.activeTimer:F1}s)";
+                // infoText.text = $"{order.food.foodName} ({order.activeTimer:F1}sec)";
+                infoText.text = $"{foodName} ({order.activeTimer:F1}sec)\n" +
+                                    $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
             }
         }
 
@@ -487,6 +534,26 @@ public class WristUIController : MonoBehaviour
         foreach (Button btn in buttons)
         {
             if (buttonOriginalScales.ContainsKey(btn)) buttonOriginalScales.Remove(btn);
+        }
+    }
+
+    private void UpdateIndependentScore()
+    {
+        if (DeliveryGameManager.Instance == null) return;
+
+        // 從 GameManager 的單例直接拿到目前的總得分
+        int currentScore = DeliveryGameManager.Instance.Score;
+
+        // 更新 TextMeshProUGUI 顯示
+        if (scoreTextMeshPro != null)
+        {
+            scoreTextMeshPro.text = $"Score: {currentScore}";
+        }
+
+        // 更新舊版 Text 顯示 (預留相容性)
+        if (scoreStandardText != null)
+        {
+            scoreStandardText.text = $"Score: {currentScore}";
         }
     }
 }
