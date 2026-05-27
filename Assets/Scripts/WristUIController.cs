@@ -58,6 +58,9 @@ public class WristUIController : MonoBehaviour
         
         // 初始時先清空容器（安全起見）
         ClearUIList();
+
+        // if (DeliveryGameManager.Instance == null) Debug.LogWarning("無法更新分數顯示：DeliveryGameManager 實例不存在");
+        // else Debug.Log($"初始分數顯示: {DeliveryGameManager.Instance.Score}");
     }
 
     void Update()
@@ -82,6 +85,7 @@ public class WristUIController : MonoBehaviour
         // ➔ 【整合新邏輯】：如果 UI 正開啟，且遊戲進行中，動態更新 UI 上的倒數計時文字
         if (uiCanvasGroup.alpha > 0.9f && DeliveryGameManager.Instance != null && DeliveryGameManager.Instance.GameActive)
         {
+            Debug.Log("Updating UI timers...");
             UpdateUIDowncountTimers();
             UpdateActiveOrderTimer();
             UpdateIndependentScore();
@@ -100,12 +104,40 @@ public class WristUIController : MonoBehaviour
                 if (customCursor != null)
                 {
                     if (!customCursor.gameObject.activeSelf) customCursor.gameObject.SetActive(true);
-                    // customCursor.position = hit.point;
                     Vector3 exactHitPoint = hit.point;
                     customCursor.position = exactHitPoint + (rayOrigin - exactHitPoint).normalized * 0.005f;
                     customCursor.rotation = Quaternion.LookRotation(-hit.normal, uiCanvasGroup.transform.up);
                 }
 
+                // ➔ 【核心改動 1】：不管是打到按鈕還是卡片本身，先透過 FindOrderEntryRoot 往上抓出 Order_UI_ 根節點
+                GameObject hoveredOrderEntry = FindOrderEntryRoot(hit.collider.transform);
+                
+                if (hoveredOrderEntry != null && hoveredOrderEntry.name.StartsWith("Order_UI_"))
+                {
+                    // 只要指著這張卡片範圍（不論是否在按鈕上），都顯示手腕 UI 原本的內建 Preview 物件
+                    ShowHoverPreviewForOrder(hoveredOrderEntry);
+
+                    // 解析 ID 並觸發外送小地圖預覽
+                    string idString = hoveredOrderEntry.name.Replace("Order_UI_", "");
+                    if (int.TryParse(idString, out int hoveredOrderId))
+                    {
+                        // 🎯 呼叫顯示小地圖預覽
+                        if (DeliveryGameManager.Instance != null)
+                        {
+                            DeliveryGameManager.Instance.ShowOrderLocationPreview(hoveredOrderId);
+                        }
+                    }
+                }
+                else
+                {
+                    // 如果射線在 UI 面板上，但沒射中任何訂單卡片，就關閉地圖預覽
+                    if (DeliveryGameManager.Instance != null)
+                    {
+                        DeliveryGameManager.Instance.ClearOrderLocationPreview();
+                    }
+                }
+
+                // ➔ 【核心改動 2】：單獨處理按鈕的變大縮放與點擊事件（不干涉預覽邏輯）
                 Button targetButton = hit.collider.GetComponent<Button>();
 
                 if (targetButton != null && targetButton.interactable)
@@ -119,9 +151,6 @@ public class WristUIController : MonoBehaviour
                         Time.deltaTime * lerpSpeed
                     );
 
-                    GameObject hoveredOrderEntry = FindOrderEntryRoot(targetButton.transform);
-                    ShowHoverPreviewForOrder(hoveredOrderEntry);
-
                     if (OVRInput.GetDown(OVRInput.Button.One))
                     {
                         if (hit.collider.name == "YesBotton")
@@ -132,19 +161,34 @@ public class WristUIController : MonoBehaviour
                         {
                             DeliveryGameManager.Instance.PlaySound(uiCancelSound);
                         }
-                        DeliveryGameManager.Instance.PlaySound(uiClickSound);
+                        
                         Debug.Log($"點擊了按鈕: {hit.collider.name}");
+                        
+                        // 點擊後要立刻清除地圖預覽，避免殘留
+                        if (DeliveryGameManager.Instance != null)
+                        {
+                            DeliveryGameManager.Instance.ClearOrderLocationPreview();
+                        }
+
                         targetButton.onClick.Invoke();
                     }
                 }
             }
             else
             {
+                // ➔ 【核心改動 3】：當射線完全離開整個 UI 面板時的清理
                 if (customCursor != null && customCursor.gameObject.activeSelf)
                 {
                     customCursor.gameObject.SetActive(false);
                 }
+                
                 HideHoverPreviewForOrder(lastHoveredOrderObject);
+
+                // 🎯 射線移開面板，徹底清除小地圖預覽
+                if (DeliveryGameManager.Instance != null)
+                {
+                    DeliveryGameManager.Instance.ClearOrderLocationPreview();
+                }
             }
         }
 
@@ -501,6 +545,8 @@ public class WristUIController : MonoBehaviour
     {
         if (DeliveryGameManager.Instance == null) return;
 
+        DeliveryGameManager.Instance.ClearOrderLocationPreview();
+
         if (isAccepted)
         {
             Debug.Log($"【UI確認】玩家接受了訂單編號: {orderId}");
@@ -554,6 +600,23 @@ public class WristUIController : MonoBehaviour
         if (scoreStandardText != null)
         {
             scoreStandardText.text = $"Score: {currentScore}";
+        }
+    }
+
+    public void OnOrderCardHoverEnter(int orderId)
+    {
+        if (DeliveryGameManager.Instance != null)
+        {
+            DeliveryGameManager.Instance.ShowOrderLocationPreview(orderId);
+        }
+    }
+
+    // 當射線離開該訂單 UI 卡片時
+    public void OnOrderCardHoverExit()
+    {
+        if (DeliveryGameManager.Instance != null)
+        {
+            DeliveryGameManager.Instance.ClearOrderLocationPreview();
         }
     }
 }
