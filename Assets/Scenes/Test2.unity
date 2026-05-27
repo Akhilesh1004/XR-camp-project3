@@ -5602,9 +5602,10 @@ MonoBehaviour:
   pageText: {fileID: 1711129453}
   pageSprites:
   - {fileID: 21300000, guid: 64e31e261cc664172a6f1384f606f312, type: 3}
-  - {fileID: 21300000, guid: 10b971680e32843aa8046a85471cb5cb, type: 3}
-  - {fileID: 21300000, guid: 3ff69d901ec7143dbaa3bffc975e6177, type: 3}
-  - {fileID: 21300000, guid: d090d2f6e861944b9bf022cc34f066d9, type: 3}
+  - {fileID: 21300000, guid: 155c527552ea94b8da30eaf4c87a69b5, type: 3}
+  - {fileID: 21300000, guid: 52c80af87dffb48d4965366ec5ce3335, type: 3}
+  - {fileID: 21300000, guid: 7422ac83068934082a1a1d26e54ffc6f, type: 3}
+  - {fileID: 21300000, guid: e7f82f685303a4be0b490e06ce1cbbda, type: 3}
   distanceFromFace: 1.2
   verticalOffset: -0.05
   followHeadWhileOpen: 1
@@ -29370,93 +29371,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   dronePrefab: {fileID: -6696707304959212025, guid: f5e0491a5159145f786d615bb104e9c8,
     type: 3}
-  spawnPoints:
-  - {fileID: 1824209609}
-  - {fileID: 1907393000}
-  - {fileID: 869275407}
-  - {fileID: 1303270200}
-  - {fileID: 1071756340}
-  - {fileID: 1534274098}
-  - {fileID: 682280258}
-  - {fileID: 1972430262}
-  - {fileID: 279874336}
-  - {fileID: 745273398}
-  - {fileID: 7057808}
-  - {fileID: 1592227721}
-  - {fileID: 981520169}
-  - {fileID: 461825347}
-  - {fileID: 464043845}
-  - {fileID: 1793186893}
-  - {fileID: 1012121221}
-  - {fileID: 907462421}
-  - {fileID: 395101827}
-  - {fileID: 36346308}
-  - {fileID: 1263022323}
-  - {fileID: 1329451216}
-  - {fileID: 340798569}
-  - {fileID: 1102119748}
-  - {fileID: 481499219}
-  - {fileID: 1890934886}
-  - {fileID: 313058191}
-  - {fileID: 2003130193}
-  - {fileID: 391083198}
-  - {fileID: 227409473}
-  - {fileID: 222102193}
-  - {fileID: 1817281408}
-  - {fileID: 990129056}
-  - {fileID: 1146658075}
-  - {fileID: 1544008021}
-  - {fileID: 229332286}
-  - {fileID: 59741572}
-  - {fileID: 205684927}
-  - {fileID: 750762053}
-  - {fileID: 1346093606}
-  - {fileID: 28429924}
-  - {fileID: 1822001294}
-  - {fileID: 591128703}
-  - {fileID: 1646690232}
-  - {fileID: 1568015972}
-  - {fileID: 1080156574}
-  - {fileID: 1978046283}
-  - {fileID: 1044395512}
-  - {fileID: 191024392}
-  - {fileID: 790839842}
-  - {fileID: 250130606}
-  - {fileID: 845217523}
-  - {fileID: 1616418750}
-  - {fileID: 664848729}
-  - {fileID: 605230336}
-  - {fileID: 1951717324}
-  - {fileID: 1167082997}
-  - {fileID: 1946032605}
-  - {fileID: 1396734693}
-  - {fileID: 1108242291}
-  - {fileID: 1171153630}
-  - {fileID: 518512440}
-  - {fileID: 1250654854}
-  - {fileID: 139588293}
-  - {fileID: 1997901035}
-  - {fileID: 702524664}
-  - {fileID: 1956041163}
-  - {fileID: 1076355992}
-  - {fileID: 979142936}
-  - {fileID: 204089289}
-  - {fileID: 1627033575}
-  - {fileID: 1487164584}
-  - {fileID: 1551714230}
-  - {fileID: 641286330}
-  - {fileID: 294989412}
-  - {fileID: 485692873}
-  - {fileID: 1389694327}
-  - {fileID: 803409696}
-  - {fileID: 1981897911}
-  waypointGraph: {fileID: 2006847318}
+  grid: {fileID: 0}
   targetDroneCount: 10
   spawnOnStart: 1
   respawnDelay: 3
+  spawnInterval: 0.08
   initialPoolSize: 10
   allowPoolExpansion: 1
-  allowDuplicateSpawnPoint: 1
+  activeListCleanupInterval: 1
+  playerTag: Player
+  avoidSpawnNearPlayer: 1
+  minSpawnDistanceFromPlayer: 100
 --- !u!4 &2006847316
 Transform:
   m_ObjectHideFlags: 0
@@ -29486,102 +29411,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   dronePrefab: {fileID: 9178425330184493608, guid: bbd21f64a0204964697fadb4e6a79d07,
     type: 3}
-  spawnPoints:
-  - {fileID: 1824209609}
-  - {fileID: 1907393000}
-  - {fileID: 869275407}
-  - {fileID: 1303270200}
-  - {fileID: 1071756340}
-  - {fileID: 1534274098}
-  - {fileID: 682280258}
-  - {fileID: 1972430262}
-  - {fileID: 279874336}
-  - {fileID: 745273398}
-  - {fileID: 7057808}
-  - {fileID: 1592227721}
-  - {fileID: 981520169}
-  - {fileID: 461825347}
-  - {fileID: 464043845}
-  - {fileID: 1793186893}
-  - {fileID: 1012121221}
-  - {fileID: 907462421}
-  - {fileID: 395101827}
-  - {fileID: 36346308}
-  - {fileID: 1263022323}
-  - {fileID: 1329451216}
-  - {fileID: 340798569}
-  - {fileID: 1102119748}
-  - {fileID: 481499219}
-  - {fileID: 1890934886}
-  - {fileID: 313058191}
-  - {fileID: 2003130193}
-  - {fileID: 391083198}
-  - {fileID: 227409473}
-  - {fileID: 222102193}
-  - {fileID: 1817281408}
-  - {fileID: 990129056}
-  - {fileID: 1146658075}
-  - {fileID: 1544008021}
-  - {fileID: 229332286}
-  - {fileID: 59741572}
-  - {fileID: 205684927}
-  - {fileID: 750762053}
-  - {fileID: 1346093606}
-  - {fileID: 28429924}
-  - {fileID: 1822001294}
-  - {fileID: 591128703}
-  - {fileID: 1646690232}
-  - {fileID: 1568015972}
-  - {fileID: 1080156574}
-  - {fileID: 1978046283}
-  - {fileID: 1044395512}
-  - {fileID: 191024392}
-  - {fileID: 790839842}
-  - {fileID: 250130606}
-  - {fileID: 845217523}
-  - {fileID: 1616418750}
-  - {fileID: 664848729}
-  - {fileID: 605230336}
-  - {fileID: 1951717324}
-  - {fileID: 1167082997}
-  - {fileID: 1946032605}
-  - {fileID: 1396734693}
-  - {fileID: 1108242291}
-  - {fileID: 1171153630}
-  - {fileID: 518512440}
-  - {fileID: 1250654854}
-  - {fileID: 139588293}
-  - {fileID: 1997901035}
-  - {fileID: 702524664}
-  - {fileID: 1956041163}
-  - {fileID: 1076355992}
-  - {fileID: 979142936}
-  - {fileID: 204089289}
-  - {fileID: 1627033575}
-  - {fileID: 1487164584}
-  - {fileID: 1551714230}
-  - {fileID: 641286330}
-  - {fileID: 294989412}
-  - {fileID: 485692873}
-  - {fileID: 1389694327}
-  - {fileID: 803409696}
-  - {fileID: 1981897911}
-  waypointGraph: {fileID: 2006847318}
+  grid: {fileID: 0}
   targetDroneCount: 10
   spawnOnStart: 1
   respawnDelay: 5
+  spawnInterval: 0.15
   initialPoolSize: 10
   allowPoolExpansion: 1
-  allowDuplicateSpawnPoint: 0
-  playerCamera: {fileID: 1791752590}
-  visibilityBlockerLayer:
-    serializedVersion: 2
-    m_Bits: 585
-  spawnOnlyWhenHiddenFromPlayer: 1
-  minHiddenSpawnDistance: 25
-  viewportPadding: 0.1
-  allowVisibleSpawnFallback: 0
-  hiddenSpawnRetryDelay: 1
+  activeListCleanupInterval: 1
 --- !u!114 &2006847318
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -29594,108 +29431,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d1c1af1a496e43f28f5cc9921ff6709, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  waypoints:
-  - {fileID: 1824209609}
-  - {fileID: 1907393000}
-  - {fileID: 869275407}
-  - {fileID: 1303270200}
-  - {fileID: 1071756340}
-  - {fileID: 1534274098}
-  - {fileID: 682280258}
-  - {fileID: 1972430262}
-  - {fileID: 279874336}
-  - {fileID: 745273398}
-  - {fileID: 7057808}
-  - {fileID: 1592227721}
-  - {fileID: 981520169}
-  - {fileID: 461825347}
-  - {fileID: 464043845}
-  - {fileID: 1793186893}
-  - {fileID: 1012121221}
-  - {fileID: 907462421}
-  - {fileID: 395101827}
-  - {fileID: 36346308}
-  - {fileID: 1263022323}
-  - {fileID: 1329451216}
-  - {fileID: 340798569}
-  - {fileID: 1102119748}
-  - {fileID: 481499219}
-  - {fileID: 1890934886}
-  - {fileID: 313058191}
-  - {fileID: 2003130193}
-  - {fileID: 391083198}
-  - {fileID: 227409473}
-  - {fileID: 222102193}
-  - {fileID: 1817281408}
-  - {fileID: 990129056}
-  - {fileID: 1146658075}
-  - {fileID: 1544008021}
-  - {fileID: 229332286}
-  - {fileID: 59741572}
-  - {fileID: 205684927}
-  - {fileID: 750762053}
-  - {fileID: 1346093606}
-  - {fileID: 28429924}
-  - {fileID: 1822001294}
-  - {fileID: 591128703}
-  - {fileID: 1646690232}
-  - {fileID: 1568015972}
-  - {fileID: 1080156574}
-  - {fileID: 1978046283}
-  - {fileID: 1044395512}
-  - {fileID: 191024392}
-  - {fileID: 790839842}
-  - {fileID: 250130606}
-  - {fileID: 845217523}
-  - {fileID: 1616418750}
-  - {fileID: 664848729}
-  - {fileID: 605230336}
-  - {fileID: 1951717324}
-  - {fileID: 1167082997}
-  - {fileID: 1946032605}
-  - {fileID: 1396734693}
-  - {fileID: 1108242291}
-  - {fileID: 1171153630}
-  - {fileID: 518512440}
-  - {fileID: 1250654854}
-  - {fileID: 139588293}
-  - {fileID: 1997901035}
-  - {fileID: 702524664}
-  - {fileID: 1956041163}
-  - {fileID: 1076355992}
-  - {fileID: 979142936}
-  - {fileID: 204089289}
-  - {fileID: 1627033575}
-  - {fileID: 1487164584}
-  - {fileID: 1551714230}
-  - {fileID: 641286330}
-  - {fileID: 294989412}
-  - {fileID: 485692873}
-  - {fileID: 1389694327}
-  - {fileID: 803409696}
-  - {fileID: 1981897911}
+  gridCenter: {x: 0, y: 80, z: 0}
+  gridSize: {x: 1200, y: 160, z: 900}
+  cellSize: 8
+  agentRadius: 2
+  lineCheckRadius: 2
   obstacleLayer:
     serializedVersion: 2
     m_Bits: 72
-  maxEdgeDistance: 60
-  maxNeighborsPerWaypoint: 6
-  edgeCheckRadius: 1
   buildOnStart: 1
-  useSpatialCandidateSearch: 1
-  spatialCellSize: 0
   autoRebuildInEditMode: 0
+  nearestWalkableSearchRadius: 10
+  allowDiagonalMovement: 0
+  maxSearchNodes: 30000
+  smoothPath: 0
   pathRandomness: 0.08
-  enablePathCache: 1
-  pathVariantCount: 4
-  drawGraphGizmos: 1
-  alwaysDrawGizmos: 1
-  edgeColor: {r: 0, g: 1, b: 1, a: 1}
-  waypointColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
-  disconnectedWaypointColor: {r: 1, g: 0, b: 0, a: 1}
-  drawEachEdgeOnce: 1
-  graphDirty: 1
-  lastBuildWaypointCount: 79
-  lastBuildEdgeCount: 336
+  randomFilteredPointMaxAttempts: 64
+  drawGridBounds: 1
+  drawGridCells: 0
+  drawOnlyBlockedCells: 0
+  drawCellStep: 8
+  maxGizmoCells: 3000
+  boundsColor: {r: 1, g: 1, b: 1, a: 1}
+  walkableCellColor: {r: 0, g: 1, b: 1, a: 0.15}
+  blockedCellColor: {r: 1, g: 0, b: 0, a: 0.25}
+  gridDirty: 1
+  gridCountX: 0
+  gridCountY: 0
+  gridCountZ: 0
+  totalCellCount: 0
+  walkableCellCount: 0
   lastBuildMessage: 'Built graph: 79 waypoints, 336 directed edges'
 --- !u!1 &2011673510
 GameObject:
