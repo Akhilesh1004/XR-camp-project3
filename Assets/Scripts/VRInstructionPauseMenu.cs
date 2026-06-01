@@ -32,6 +32,7 @@ public class VRInstructionPauseMenu : MonoBehaviour
     public bool openOnStart = true;
     public bool startDeliveryGameOnFirstClose = true;
     public DeliveryGameManager deliveryGameManager;
+    public WristUIController wristUIController;
 
     [Header("Pause")]
     public bool pauseGameWhenOpen = true;
@@ -44,6 +45,18 @@ public class VRInstructionPauseMenu : MonoBehaviour
     private float lastPageSwitchTime = -999f;
 
     private float previousTimeScale = 1f;
+
+    void Awake()
+    {
+        if (deliveryGameManager == null)
+        {
+            deliveryGameManager = FindFirstObjectByType<DeliveryGameManager>();
+        }
+        if (wristUIController == null)
+        {
+            wristUIController = FindFirstObjectByType<WristUIController>();
+        }
+    }
 
     void Start()
     {
@@ -65,9 +78,10 @@ public class VRInstructionPauseMenu : MonoBehaviour
         {
             hasStartedGame = true;
 
-            if (deliveryGameManager != null && startDeliveryGameOnFirstClose)
+            if (deliveryGameManager != null && startDeliveryGameOnFirstClose && wristUIController != null)
             {
                 deliveryGameManager.StartGame();
+                wristUIController.StartGame();
             }
         }
     }
@@ -160,9 +174,10 @@ public class VRInstructionPauseMenu : MonoBehaviour
         {
             hasStartedGame = true;
 
-            if (startDeliveryGameOnFirstClose && deliveryGameManager != null)
+            if (startDeliveryGameOnFirstClose && deliveryGameManager != null && wristUIController != null)
             {
                 deliveryGameManager.StartGame();
+                wristUIController.StartGame();
             }
         }
     }

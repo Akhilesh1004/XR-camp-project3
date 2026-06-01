@@ -282,6 +282,8 @@ public class DeliveryGameManager : MonoBehaviour
         {
             newOrder.state = OrderState.WaitingAccept;
             SetMessage("New Order Available: " + newOrder.food.foodName);
+            if (OrderNotificationController.Instance != null)
+                OrderNotificationController.Instance.TriggerNotification();
         }
         else
         {
@@ -601,6 +603,8 @@ public class DeliveryGameManager : MonoBehaviour
         {
             newOrder.state = OrderState.WaitingAccept;
             SetMessage("External Order Arrived: " + newOrder.food.foodName);
+            if (OrderNotificationController.Instance != null)
+                OrderNotificationController.Instance.TriggerNotification();
         }
         else
         {

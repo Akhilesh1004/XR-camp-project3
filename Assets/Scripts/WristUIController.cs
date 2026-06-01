@@ -3,6 +3,9 @@ using UnityEngine;
 using Debug = UnityEngine.Debug;
 using UnityEngine.UI;
 using TMPro;
+using System.Numerics;
+using Vector3 = UnityEngine.Vector3;
+using Quaternion = UnityEngine.Quaternion;
 
 public class WristUIController : MonoBehaviour
 {
@@ -20,8 +23,7 @@ public class WristUIController : MonoBehaviour
     [Header("縮放效果設定")]
     [Tooltip("射線指著按鈕時的縮放倍率，乘上按鈕原本大小")]
     public float hoveredScale = 1.1f;
-    [Tooltip("正常狀態下的縮放倍率，乘上按鈕原本大小")]
-    public float normalScale = 1f;
+    // [Tooltip("正常狀態下的縮放倍率，乘上按鈕原本大小")]
     [Tooltip("縮放動畫速度")]
     public float lerpSpeed = 10f;
 
@@ -30,6 +32,7 @@ public class WristUIController : MonoBehaviour
     public Transform contentContainer;
     public Transform acceptedOrderContainer;
     public GameObject acceptedOrderEntryPrefab;
+    public UnityEngine.Vector3 originalPrefabScale = Vector3.one;
 
     [Header("獨立分數顯示")]
     [Tooltip("專門拿來顯示獨立分數的 TextMeshPro 元件")]
@@ -43,7 +46,28 @@ public class WristUIController : MonoBehaviour
     public AudioClip uiClickSound;
     public AudioClip uiCancelSound;
 
-    private Dictionary<Button, Vector3> buttonOriginalScales = new Dictionary<Button, Vector3>();
+    [Header("隨身聽音樂播放器設定")]
+    [Tooltip("用來播放背景音樂的 AudioSource（建議掛在同一個物件上）")]
+    public AudioSource bgmAudioSource;
+    [Tooltip("背景音樂歌曲清單")]
+    public List<AudioClip> playlist = new List<AudioClip>();
+    public List<string> playlistNames = new List<string>();
+
+    [Header("隨身聽 UI 顯示面版")]
+    [Tooltip("手腕 UI 上顯示歌名的 TextMeshPro 元件 (SongName)")]
+    public TextMeshProUGUI songNameText;
+    [Tooltip("PlaySong 按鈕上的 Image 元件")]
+    public Image playButtonImage;
+    [Tooltip("播放狀態下的圖案 (例如：暫停符號 || )")]
+    public Sprite playSprite;
+    [Tooltip("暫停狀態下的圖案 (例如：播放符號 ▷ )")]
+    public Sprite pauseSprite;
+
+
+    // 隨身聽內部控制變數
+    private int currentSongIndex = 0;
+
+    private Dictionary<Button, UnityEngine.Vector3> buttonOriginalScales = new Dictionary<Button, UnityEngine.Vector3>();
     private Button lastHoveredButton;
     private GameObject lastHoveredOrderObject;
 
@@ -54,13 +78,29 @@ public class WristUIController : MonoBehaviour
 
     void Start()
     {
+        Button[] staticButtons = GetComponentsInChildren<Button>(true);
+        foreach (Button btn in staticButtons)
+        {
+            if (btn != null && !buttonOriginalScales.ContainsKey(btn))
+            {
+                buttonOriginalScales[btn] = btn.transform.localScale;
+            }
+        }
+
         if (uiCanvasGroup != null) SetUIVisibility(StartVisible);
+
+        if (bgmAudioSource != null)
+        {
+            bgmAudioSource.volume = 0.5f;
+        }
         
         // 初始時先清空容器（安全起見）
         ClearUIList();
+    }
 
-        // if (DeliveryGameManager.Instance == null) Debug.LogWarning("無法更新分數顯示：DeliveryGameManager 實例不存在");
-        // else Debug.Log($"初始分數顯示: {DeliveryGameManager.Instance.Score}");
+    public void StartGame()
+    {
+        AutoPlayMusicOnStart();
     }
 
     void Update()
@@ -82,10 +122,9 @@ public class WristUIController : MonoBehaviour
             SetUIVisibility(uiCanvasGroup.alpha < 0.1f);
         }
 
-        // ➔ 【整合新邏輯】：如果 UI 正開啟，且遊戲進行中，動態更新 UI 上的倒數計時文字
+        // ➔ 如果 UI 正開啟，且遊戲進行中，動態更新 UI 上的倒數計時文字
         if (uiCanvasGroup.alpha > 0.9f && DeliveryGameManager.Instance != null && DeliveryGameManager.Instance.GameActive)
         {
-            Debug.Log("Updating UI timers...");
             UpdateUIDowncountTimers();
             UpdateActiveOrderTimer();
             UpdateIndependentScore();
@@ -109,19 +148,17 @@ public class WristUIController : MonoBehaviour
                     customCursor.rotation = Quaternion.LookRotation(-hit.normal, uiCanvasGroup.transform.up);
                 }
 
-                // ➔ 【核心改動 1】：不管是打到按鈕還是卡片本身，先透過 FindOrderEntryRoot 往上抓出 Order_UI_ 根節點
+                // ➔ 不管是打到按鈕還是卡片本身，先透過 FindOrderEntryRoot 往上抓出 Order_UI_ 根節點
                 GameObject hoveredOrderEntry = FindOrderEntryRoot(hit.collider.transform);
                 
                 if (hoveredOrderEntry != null && hoveredOrderEntry.name.StartsWith("Order_UI_"))
                 {
-                    // 只要指著這張卡片範圍（不論是否在按鈕上），都顯示手腕 UI 原本的內建 Preview 物件
                     ShowHoverPreviewForOrder(hoveredOrderEntry);
 
                     // 解析 ID 並觸發外送小地圖預覽
                     string idString = hoveredOrderEntry.name.Replace("Order_UI_", "");
                     if (int.TryParse(idString, out int hoveredOrderId))
                     {
-                        // 🎯 呼叫顯示小地圖預覽
                         if (DeliveryGameManager.Instance != null)
                         {
                             DeliveryGameManager.Instance.ShowOrderLocationPreview(hoveredOrderId);
@@ -130,41 +167,69 @@ public class WristUIController : MonoBehaviour
                 }
                 else
                 {
-                    // 如果射線在 UI 面板上，但沒射中任何訂單卡片，就關閉地圖預覽
+                    // ➔ 修正：當指著隨身聽時，也順手清掉卡片的暫時 Hover 預覽，不擋游標
+                    HideHoverPreviewForOrder(lastHoveredOrderObject);
                     if (DeliveryGameManager.Instance != null)
                     {
                         DeliveryGameManager.Instance.ClearOrderLocationPreview();
                     }
                 }
 
-                // ➔ 【核心改動 2】：單獨處理按鈕的變大縮放與點擊事件（不干涉預覽邏輯）
+                // ➔ 單獨處理按鈕的變大縮放與點擊事件
                 Button targetButton = hit.collider.GetComponent<Button>();
+                Slider targetSlider = hit.collider.GetComponentInParent<Slider>(); // 你的原版變數
 
                 if (targetButton != null && targetButton.interactable)
                 {
-                    currentHoveredButton = targetButton;
+                    string btnName = hit.collider.name;
+                    // bool shouldScale = (btnName == "YesBotton" || btnName == "NoBotton");
+                    bool shouldScale = true;
 
-                    Vector3 targetOriginalScale = GetOriginalScale(targetButton);
-                    targetButton.transform.localScale = Vector3.Lerp(
-                        targetButton.transform.localScale, 
-                        targetOriginalScale * hoveredScale, 
-                        Time.deltaTime * lerpSpeed
-                    );
+                    // 只有特定按鈕在 Hover 的時候才會設定為 currentHoveredButton 並執行變大動畫
+                    if (shouldScale) {
+                        currentHoveredButton = targetButton;
+
+                        Vector3 targetOriginalScale = GetOriginalScale(targetButton);
+                        targetButton.transform.localScale = Vector3.Lerp(
+                            targetButton.transform.localScale, 
+                            targetOriginalScale * hoveredScale, 
+                            Time.deltaTime * lerpSpeed
+                        );
+                    }
 
                     if (OVRInput.GetDown(OVRInput.Button.One))
                     {
-                        if (hit.collider.name == "YesBotton")
+                        if (btnName == "YesBotton")
                         {
                             DeliveryGameManager.Instance.PlaySound(uiClickSound);
                         }
-                        else if (hit.collider.name == "NoBotton")
+                        else if (btnName == "NoBotton")
                         {
                             DeliveryGameManager.Instance.PlaySound(uiCancelSound);
+                        }
+                        else if (btnName == "PlaySong")
+                        {
+                            TogglePlayStatus(); 
+                        }
+                        else if (btnName == "NextSong")
+                        {
+                            ChangeSong(1); 
+                        }
+                        else if (btnName == "PreviousSong")
+                        {
+                            ChangeSong(-1); 
+                        }
+                        else if (btnName == "Louder")
+                        {
+                            VolumeChanged(0.1f);
+                        }
+                        else if (btnName == "Quieter")
+                        {
+                            VolumeChanged(-0.1f);
                         }
                         
                         Debug.Log($"點擊了按鈕: {hit.collider.name}");
                         
-                        // 點擊後要立刻清除地圖預覽，避免殘留
                         if (DeliveryGameManager.Instance != null)
                         {
                             DeliveryGameManager.Instance.ClearOrderLocationPreview();
@@ -176,7 +241,6 @@ public class WristUIController : MonoBehaviour
             }
             else
             {
-                // ➔ 【核心改動 3】：當射線完全離開整個 UI 面板時的清理
                 if (customCursor != null && customCursor.gameObject.activeSelf)
                 {
                     customCursor.gameObject.SetActive(false);
@@ -184,7 +248,6 @@ public class WristUIController : MonoBehaviour
                 
                 HideHoverPreviewForOrder(lastHoveredOrderObject);
 
-                // 🎯 射線移開面板，徹底清除小地圖預覽
                 if (DeliveryGameManager.Instance != null)
                 {
                     DeliveryGameManager.Instance.ClearOrderLocationPreview();
@@ -192,24 +255,47 @@ public class WristUIController : MonoBehaviour
             }
         }
 
-        // 處理按鈕縮放復原邏輯
+        // ➔ 【你的第一段縮放復原】：修正原本乘上 normalScale 的衝突，改回最乾淨的初始絕對值
         if (lastHoveredButton != null && lastHoveredButton != currentHoveredButton)
         {
-            lastHoveredButton.transform.localScale = GetOriginalScale(lastHoveredButton) * normalScale;
+            string btnName = lastHoveredButton.name;
+            // bool shouldScale = (btnName == "YesBotton" || btnName == "NoBotton");
+            bool shouldScale = true;
+
+            if (shouldScale) {
+                // 直接指定字典裡的初始乾淨大小，不另外乘以常數 1
+                lastHoveredButton.transform.localScale = GetOriginalScale(lastHoveredButton);
+            }
+            else {
+                lastHoveredButton = null;
+            }
         }
 
+        // ➔ 【你的第二段平滑 Lerp 縮放復原】
         if (lastHoveredButton != null && lastHoveredButton != currentHoveredButton)
         {
-            Vector3 targetNormalScale = GetOriginalScale(lastHoveredButton) * normalScale;
-            lastHoveredButton.transform.localScale = Vector3.Lerp(
-                lastHoveredButton.transform.localScale, 
-                targetNormalScale, 
-                Time.deltaTime * lerpSpeed
-            );
-            
-            if (Vector3.Distance(lastHoveredButton.transform.localScale, targetNormalScale) < 0.01f)
+            string btnName = lastHoveredButton.name;
+            // bool shouldScale = (btnName == "YesBotton" || btnName == "NoBotton");
+            bool shouldScale = true;
+
+            if (shouldScale)
             {
-                lastHoveredButton.transform.localScale = targetNormalScale;
+                // 終點目標也是直接抓最乾淨的初始大小
+                Vector3 targetNormalScale = GetOriginalScale(lastHoveredButton);
+                lastHoveredButton.transform.localScale = Vector3.Lerp(
+                    lastHoveredButton.transform.localScale, 
+                    targetNormalScale, 
+                    Time.deltaTime * lerpSpeed
+                );
+                
+                if (Vector3.Distance(lastHoveredButton.transform.localScale, targetNormalScale) < 0.01f)
+                {
+                    lastHoveredButton.transform.localScale = targetNormalScale;
+                    lastHoveredButton = null;
+                }
+            }
+            else
+            {
                 lastHoveredButton = null;
             }
         }
@@ -228,7 +314,6 @@ public class WristUIController : MonoBehaviour
 
         if (customCursor != null) customCursor.gameObject.SetActive(visible);
 
-        // 每次打開 UI 時，主動向 GameManager 同步最新訂單狀態
         if (visible)
         {
             RefreshOrderList();
@@ -237,7 +322,6 @@ public class WristUIController : MonoBehaviour
 
     #region 訂單動態生成與更新核心 (與 GameManager 串接)
 
-    // 清空目前畫面上所有的 UI 訂單項目
     public void ClearUIList()
     {
         HideHoverPreviewForOrder(lastHoveredOrderObject);
@@ -254,48 +338,39 @@ public class WristUIController : MonoBehaviour
         ClearActiveOrderDisplay();
     }
 
-    // 由 DeliveryGameManager 主動呼叫，用來完整重新整理待接單列表
     public void RefreshOrderList()
     {
         if (orderOptionPrefab == null || contentContainer == null || DeliveryGameManager.Instance == null) return;
 
-        // 1. 先徹底清理舊 UI 物件
         ClearUIList();
 
-        // 2. 獲取當前 GameManager 中所有正在「等待接受」的訂單
         List<DeliveryOrder> currentOrders = DeliveryGameManager.Instance.AllOrders;
 
         foreach (DeliveryOrder order in currentOrders)
         {
-            // 只有「等待接受」狀態的訂單才需要顯示在手腕 UI 選單上
             if (order.state != OrderState.WaitingAccept) continue;
 
             int currentOrderId = order.orderId;
             string foodName = order.food.foodName;
-
-            // 這裡取得我們剛綁定在食物物件上的金額與時限(N)
             int foodValue = order.food.foodValue;
             float maxDeliveryTime = order.food.maxDeliveryTime;
 
-            // 生成整個 OrderOption 項目
             GameObject newOrderObj = Instantiate(orderOptionPrefab, contentContainer);
+            newOrderObj.transform.localScale = originalPrefabScale;
             newOrderObj.name = $"Order_UI_{currentOrderId}";
             newOrderObj.transform.localPosition = new Vector3(newOrderObj.transform.localPosition.x, newOrderObj.transform.localPosition.y, 0f);
 
-            // 【找字 1】修改標題文字，加上倒數描述、金額與時限顯示
             Transform infoTransform = newOrderObj.transform.Find("OrderInfo");
             if (infoTransform != null)
             {
                 TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
                 if (infoText != null) 
                 {
-                    // 改動這裡：格式化顯示食物名稱、接單倒數、食物金額與送餐時限上限
                     infoText.text = $"{foodName} ({order.waitingTimer:F1}sec)\n" +
                                     $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
                 }
             }
 
-            // 【找字 2】"Yes" 按鈕
             Transform yesTextTransform = newOrderObj.transform.Find("YesBotton/Text (TMP)");
             if (yesTextTransform != null)
             {
@@ -303,7 +378,6 @@ public class WristUIController : MonoBehaviour
                 if (yesText != null) yesText.text = "Yes";
             }
 
-            // 【找字 3】"No" 按鈕
             Transform noTextTransform = newOrderObj.transform.Find("NoBotton/Text (TMP)");
             if (noTextTransform != null)
             {
@@ -311,7 +385,6 @@ public class WristUIController : MonoBehaviour
                 if (noText != null) noText.text = "No";
             }
 
-            // 【事件綁定】Yes 按鈕事件：呼叫 GameManager 接受訂單
             Button yesBtn = newOrderObj.transform.Find("YesBotton")?.GetComponent<Button>();
             if (yesBtn != null)
             {
@@ -320,7 +393,6 @@ public class WristUIController : MonoBehaviour
                 yesBtn.onClick.AddListener(() => OnOrderChoiceClicked(currentOrderId, true));
             }
 
-            // 【事件綁定】No 按鈕事件：呼叫 GameManager 拒絕/丟棄訂單
             Button noBtn = newOrderObj.transform.Find("NoBotton")?.GetComponent<Button>();
             if (noBtn != null)
             {
@@ -329,14 +401,12 @@ public class WristUIController : MonoBehaviour
                 noBtn.onClick.AddListener(() => OnOrderChoiceClicked(currentOrderId, false));
             }
 
-            // 記錄到 Dict 方便追蹤
             activeUIOrderEntries.Add(currentOrderId, newOrderObj);
         }
 
         RefreshAcceptedOrderDisplay();
     }
 
-    // 每幀更新 UI 的倒數計時文字
     void UpdateUIDowncountTimers()
     {
         if (DeliveryGameManager.Instance == null) return;
@@ -348,7 +418,6 @@ public class WristUIController : MonoBehaviour
 
             if (uiObj == null) continue;
 
-            // 尋找資料層對應的訂單資料
             DeliveryOrder dataOrder = DeliveryGameManager.Instance.AllOrders.Find(o => o.orderId == orderId);
             if (dataOrder != null && dataOrder.state == OrderState.WaitingAccept)
             {
@@ -362,10 +431,8 @@ public class WristUIController : MonoBehaviour
                     TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
                     if (infoText != null)
                     {
-                        // 即時同步顯示 15 秒剩餘時間
-                        // infoText.text = $"{dataOrder.food.foodName} ({Mathf.Max(0, dataOrder.waitingTimer):F1}sec)";
                         infoText.text = $"{foodName} ({Mathf.Max(0, dataOrder.waitingTimer):F1}sec)\n" +
-                                    $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
+                                        $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
                     }
                 }
             }
@@ -376,7 +443,6 @@ public class WristUIController : MonoBehaviour
     {
         if (DeliveryGameManager.Instance == null) return;
 
-        // 獲取所有已接受的訂單，並更新它們的 UI
         List<DeliveryOrder> allOrders = DeliveryGameManager.Instance.AllOrders;
         List<int> ordersToRemove = new List<int>();
 
@@ -391,10 +457,8 @@ public class WristUIController : MonoBehaviour
                 continue;
             }
 
-            // 尋找對應的訂單資料
             DeliveryOrder order = allOrders.Find(o => o.orderId == orderId);
             
-            // 如果訂單不在「已接受」狀態，移除它的 UI
             if (order == null || order.state != OrderState.Active)
             {
                 ordersToRemove.Add(orderId);
@@ -402,18 +466,15 @@ public class WristUIController : MonoBehaviour
             }
             else
             {
-                // 更新該訂單的 UI 顯示
                 UpdateAcceptedOrderUIDisplay(orderUIEntry, order);
             }
         }
 
-        // 清理已移除的訂單
         foreach (int orderId in ordersToRemove)
         {
             acceptedOrderUIEntries.Remove(orderId);
         }
 
-        // 如果有新的已接受訂單，添加它們的 UI
         foreach (DeliveryOrder order in allOrders)
         {
             if (order.state == OrderState.Active && !acceptedOrderUIEntries.ContainsKey(order.orderId))
@@ -433,27 +494,23 @@ public class WristUIController : MonoBehaviour
         GameObject prefab = acceptedOrderEntryPrefab != null ? acceptedOrderEntryPrefab : orderOptionPrefab;
         if (prefab == null) return;
 
-        // 遍歷所有訂單，找出已接受狀態的訂單
         List<DeliveryOrder> allOrders = DeliveryGameManager.Instance.AllOrders;
         foreach (DeliveryOrder order in allOrders)
         {
-            // 只有已接受狀態的訂單才需要顯示在已接受容器上
             if (order.state != OrderState.Active) continue;
 
-            // 檢查是否已經生成過此訂單的 UI
             if (!acceptedOrderUIEntries.ContainsKey(order.orderId))
             {
                 GameObject orderUIEntry = Instantiate(prefab, acceptedOrderContainer);
+                orderUIEntry.transform.localScale = originalPrefabScale;
                 orderUIEntry.name = $"AcceptedOrder_UI_{order.orderId}";
                 acceptedOrderUIEntries[order.orderId] = orderUIEntry;
             }
 
-            // 更新訂單 UI 顯示
             UpdateAcceptedOrderUIDisplay(acceptedOrderUIEntries[order.orderId], order);
         }
     }
 
-    // 更新已接受訂單的 UI 顯示
     void UpdateAcceptedOrderUIDisplay(GameObject orderUIEntry, DeliveryOrder order)
     {
         if (orderUIEntry == null) return;
@@ -468,9 +525,8 @@ public class WristUIController : MonoBehaviour
             TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
             if (infoText != null)
             {
-                // infoText.text = $"{order.food.foodName} ({order.activeTimer:F1}sec)";
                 infoText.text = $"{foodName} ({order.activeTimer:F1}sec)\n" +
-                                    $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
+                                $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
             }
         }
 
@@ -540,7 +596,6 @@ public class WristUIController : MonoBehaviour
         return child.gameObject;
     }
 
-    // UI 按鈕真正的 onClick 靈魂
     void OnOrderChoiceClicked(int orderId, bool isAccepted)
     {
         if (DeliveryGameManager.Instance == null) return;
@@ -550,13 +605,11 @@ public class WristUIController : MonoBehaviour
         if (isAccepted)
         {
             Debug.Log($"【UI確認】玩家接受了訂單編號: {orderId}");
-            // 呼叫 GameManager 開始計算外送與在世界上生成物件
             DeliveryGameManager.Instance.AcceptOrder(orderId);
         }
         else
         {
             Debug.Log($"【UI拒絕】玩家拒絕了訂單編號: {orderId}");
-            // 尋找訂單資料並移除
             DeliveryOrder dataOrder = DeliveryGameManager.Instance.AllOrders.Find(o => o.orderId == orderId);
             if (dataOrder != null)
             {
@@ -567,7 +620,7 @@ public class WristUIController : MonoBehaviour
 
     #endregion
 
-    Vector3 GetOriginalScale(Button button)
+    UnityEngine.Vector3 GetOriginalScale(Button button)
     {
         if (buttonOriginalScales.TryGetValue(button, out Vector3 originalScale)) return originalScale;
         return button.transform.localScale;
@@ -587,16 +640,13 @@ public class WristUIController : MonoBehaviour
     {
         if (DeliveryGameManager.Instance == null) return;
 
-        // 從 GameManager 的單例直接拿到目前的總得分
         int currentScore = DeliveryGameManager.Instance.Score;
 
-        // 更新 TextMeshProUGUI 顯示
         if (scoreTextMeshPro != null)
         {
             scoreTextMeshPro.text = $"Score: {currentScore}";
         }
 
-        // 更新舊版 Text 顯示 (預留相容性)
         if (scoreStandardText != null)
         {
             scoreStandardText.text = $"Score: {currentScore}";
@@ -611,7 +661,6 @@ public class WristUIController : MonoBehaviour
         }
     }
 
-    // 當射線離開該訂單 UI 卡片時
     public void OnOrderCardHoverExit()
     {
         if (DeliveryGameManager.Instance != null)
@@ -619,4 +668,103 @@ public class WristUIController : MonoBehaviour
             DeliveryGameManager.Instance.ClearOrderLocationPreview();
         }
     }
+
+    #region 隨身聽音樂播放器核心功能
+
+    private void AutoPlayMusicOnStart()
+    {
+        if (bgmAudioSource == null || playlist.Count == 0) return;
+
+        // 預設載入清單中的第一首歌曲
+        bgmAudioSource.clip = playlist[currentSongIndex];
+        bgmAudioSource.Play();
+        
+        // 將 UI 圖案改為「播放中狀態 (|| 暫停符號)」
+        UpdatePlayButtonIcon(true);
+        UpdateSongNameUIDisplay();
+        Debug.Log($"[隨身聽] 遊戲開始，自動播放第 1 首音樂: {bgmAudioSource.clip.name}");
+    }
+
+    private void TogglePlayStatus()
+    {
+        if (bgmAudioSource == null || playlist.Count == 0) return;
+
+        if (bgmAudioSource.clip == null)
+        {
+            bgmAudioSource.clip = playlist[currentSongIndex];
+        }
+
+        if (bgmAudioSource.isPlaying)
+        {
+            bgmAudioSource.Pause();
+            UpdatePlayButtonIcon(false); 
+            Debug.Log("音樂已暫停");
+        }
+        else
+        {
+            bgmAudioSource.Play();
+            UpdatePlayButtonIcon(true);
+            UpdateSongNameUIDisplay();
+            Debug.Log($"正在播放第 {currentSongIndex + 1} 首音樂: {bgmAudioSource.clip.name}");
+        }
+    }
+
+    private void ChangeSong(int direction)
+    {
+        if (bgmAudioSource == null || playlist.Count == 0) return;
+
+        currentSongIndex += direction;
+        if (currentSongIndex >= playlist.Count) currentSongIndex = 0;
+        if (currentSongIndex < 0) currentSongIndex = playlist.Count - 1;
+
+        bgmAudioSource.clip = playlist[currentSongIndex];
+        bgmAudioSource.Play();
+
+        UpdatePlayButtonIcon(false);
+        UpdateSongNameUIDisplay();
+        Debug.Log($"已切換歌曲，目前播放第 {currentSongIndex + 1} 首: {bgmAudioSource.clip.name}");
+    }
+
+    private void UpdatePlayButtonIcon(bool isPlaying)
+    {
+        if (playButtonImage == null) return;
+
+        if (isPlaying)
+        {
+            if (playSprite != null) playButtonImage.sprite = playSprite;
+        }
+        else
+        {
+            if (pauseSprite != null) playButtonImage.sprite = pauseSprite;
+        }
+    }
+    private void UpdateSongNameUIDisplay()
+    {
+        if (songNameText == null) return;
+
+        if (playlistNames != null && currentSongIndex >= 0 && currentSongIndex < playlistNames.Count && !string.IsNullOrEmpty(playlistNames[currentSongIndex]))
+        {
+            songNameText.text = playlistNames[currentSongIndex];
+        }
+        else if (playlist.Count > 0 && playlist[currentSongIndex] != null)
+        {
+            // 後備方案：檔名
+            songNameText.text = playlist[currentSongIndex].name;
+        }
+        else
+        {
+            songNameText.text = "No Audio Track";
+        }
+    }
+
+    private void VolumeChanged(float VolumeChange)
+    {
+        if (bgmAudioSource == null) return;
+        
+        float newVolume = Mathf.Clamp(bgmAudioSource.volume + VolumeChange, 0f, 1f);
+        bgmAudioSource.volume = newVolume;
+        Debug.Log($"[隨身聽] 音量已調整為: {bgmAudioSource.volume * 100f:F0}%");
+    }
+
+    #endregion
 }

@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>行動點餐與位置選擇系統</title>
+    
+    <!-- <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /> -->
+    <link rel="stylesheet" href="leaflet.css" />
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #11161B; /* 調整為拉拉Move背景的深色都市基調 */
+            color: #E2E8F0; /* 淺色文字提升深色背景的可讀性 */
+        }
+        header {
+            background-color: #0056C6; /* 採用經典動態藍 */
+            color: #FCD116; /* 字體採用醒目的鮮黃色 */
+            text-align: center;
+            padding: 18px;
+            font-size: 1.5rem;
+            font-weight: 900;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0, 86, 198, 0.3);
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #11161B; /* 仿美式漫畫的硬陰影 */
+        }
+        .container {
+            padding: 15px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h3 {
+            margin-top: 10px;
+            border-left: 5px solid #FCD116; /* 亮黃色左邊條 */
+            padding-left: 10px;
+            color: #FCD116; /* 標題全改為亮黃 */
+            font-weight: 800;
+        }
+        /* 分類按鈕 */
+        .category-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            overflow-x: auto;
+            padding-bottom: 5px;
+        }
+        .category-btn {
+            background-color: #1E262F; /* 深灰藍按鈕底色 */
+            border: 2px solid #334155;
+            color: #94A3B8;
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            white-space: nowrap;
+            font-size: 0.9rem;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        .category-btn.active {
+            background-color: #0056C6; /* 激活時變藍底 */
+            color: #FFFFFF;
+            border-color: #FCD116; /* 搭配黃色邊框 */
+            box-shadow: 0 0 10px rgba(0, 86, 198, 0.5);
+        }
+        /* 餐點列表（單選控制） */
+        .menu-list {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+        .menu-item {
+            background: #1E262F; /* 面板改為深色 */
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            border: 2px solid #334155;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .menu-item:hover {
+            background-color: #242E39;
+            border-color: #475569;
+        }
+        .menu-item.selected {
+            border-color: #FCD116; /* 被選中時爆發鮮黃色外框 */
+            background-color: rgba(252, 209, 22, 0.1); /* 帶有微量的黃色透明底 */
+            box-shadow: 0 0 12px rgba(252, 209, 22, 0.2);
+        }
+        .item-info h4 {
+            margin: 0 0 5px 0;
+            font-size: 1.1rem;
+            color: #FFFFFF;
+        }
+        .item-info p {
+            margin: 0;
+            color: #FCD116; /* 價格使用醒目的鮮黃色 */
+            font-weight: 800;
+            font-size: 1.1rem;
+        }
+        .select-status {
+            color: #FCD116;
+            font-weight: 900;
+            font-size: 0.95rem;
+        }
+        /* 地圖與面板區塊 */
+        .section-panel {
+            background: #1E262F;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            border: 1px solid #2D3748;
+        }
+        #map {
+            width: 100%;
+            height: 350px;
+            border-radius: 8px;
+            margin-top: 10px;
+            background-color: #2D3748; /* 修改底色契合暗色模式 */
+            border: 2px solid #334155;
+        }
+        /* Leaflet 彈出視窗稍微調整成適應風格 */
+        .leaflet-popup-content-value b {
+            color: #11161B;
+        }
+        .info-box {
+            background-color: #11161B;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.95rem;
+            border-left: 5px solid #0056C6; /* 改為經典藍邊條 */
+        }
+        .info-box strong {
+            color: #94A3B8;
+        }
+        .info-box span {
+            color: #FFFFFF;
+            font-weight: bold;
+        }
+        #currentMeal {
+            color: #ffffff;
+        }
+        .submit-btn {
+            display: block;
+            width: 100%;
+            background-color: #FCD116; /* 送出按鈕改為視覺焦點大黃色 */
+            color: #11161B; /* 深色字體對比 */
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            font-weight: 900;
+            margin-top: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(252, 209, 22, 0.3);
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+        .submit-btn:hover {
+            background-color: #E2BC14;
+            transform: translateY(-1px);
+        }
+        .submit-btn:active {
+            transform: translateY(1px);
+        }
+    </style>
+</head>
+<body>
+
+    <header>拉拉MOVE</header>
+
+    <div class="container">
+        
+        <h3>第一步：選擇一個餐點</h3>
+        <div class="category-container">
+            <button class="category-btn active" onclick="switchCategory('all')">全部</button>
+            <button class="category-btn" onclick="switchCategory('food')">食物</button>
+            <button class="category-btn" onclick="switchCategory('drink')">飲品</button>
+            <button class="category-btn" onclick="switchCategory('other')">其他</button>
+        </div>
+
+        <div class="menu-list" id="menuList">
+        </div>
+
+        <div class="section-panel">
+            <h3>第二步：在地圖上點選取餐地點</h3>
+            <div id="map"></div>
+        </div>
+
+        <div class="section-panel">
+            <h3>第三步：確認並送出</h3>
+            <div class="info-box">
+                <div><strong>已選餐點：</strong> <span id="currentMeal">未選擇</span></div>
+                <div style="margin-top: 5px;"><strong>取餐地點：</strong> <span id="currentLocation">未選擇</span></div>
+            </div>
+            <button class="submit-btn" onclick="sendDataToUnity()">確認送出</button>
+        </div>
+
+    </div>
+
+    <!-- <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script> -->
+    <script src="leaflet.js"></script>
+
+    <script>
+        // ==================== [ 1. 自訂餐點資料 ] ====================
+        const menuData = [
+            { id: 1, name: "Burger", price: 200, category: "food" },
+            { id: 2, name: "50嵐", price: 200, category: "drink" },
+            { id: 3, name: "QQ地瓜球", price: 100, category: "food" },
+            { id: 4, name: "Meta Quest", price: 1000, category: "other" }
+        ];
+
+        let selectedMeal = null;      // 儲存被選中的餐點物件
+        let selectedLocation = null;  // 儲存被選中的地點名稱
+
+        // ==================== [ 2. 自訂照片地圖設定 ] ====================
+        
+        const customImageUrl = 'Map.png'; 
+        
+        const imageBounds = [[0, 0], [1000, 1000]];
+
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -1,
+            maxZoom: 2,
+            attributionControl: false
+        });
+
+        L.imageOverlay(customImageUrl, imageBounds).addTo(map);
+        map.fitBounds(imageBounds);
+
+        // ==================== [ 3. 設定地圖中的自訂可選地點 ] ====================
+        const locations = [
+            { id: "loc_A", name: "A", coords: [700, 300], index: 0 },
+            { id: "loc_B", name: "B", coords: [400, 750], index: 1 },
+            { id: "loc_C", name: "C", coords: [250, 200], index: 2 }
+        ];
+
+        let selectedLocationObj = null; // 改為紀錄完整地點物件
+
+        function selectPlace(placeId) {
+            const loc = locations.find(l => l.id === placeId);
+            if (loc) {
+                selectedLocationObj = loc;
+                document.getElementById('currentLocation').innerText = loc.name;
+                map.closePopup(); 
+            }
+        }
+
+        // 修改 locations.forEach 裡的綁定，傳入 id 方便查詢
+        // locations.forEach(loc => {
+        //     const marker = L.marker(loc.coords).addTo(map);
+        //     marker.bindPopup(`<b>地點 ${loc.name}</b><br><button onclick="selectPlace('${loc.id}')" style="margin-top:8px; background-color:#0056C6; color:#FFF; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">選擇此地點</button>`);
+        // });
+        // 修改 locations.forEach 裡的綁定
+        locations.forEach(loc => {
+            // ➔ 縮小版的純 HTML/CSS 文字標籤
+            const textIcon = L.divIcon({
+                className: 'custom-text-marker',
+                // 調整了 padding 縮小邊距、font-size 縮小字體
+                html: `<div style="background: #0056C6; color: #FFF; border: 2px solid #FCD116; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">${loc.name}</div>`,
+                // ➔ 同步縮小 icon 的感應框與中心點對齊（寬 50px, 高 22px）
+                iconSize: [50, 22],
+                iconAnchor: [25, 11] // 中心點設為寬高的一半，確保精準對齊 [Y, X] 座標
+            });
+
+            // 使用縮小版的文字 Icon 產生標籤
+            const marker = L.marker(loc.coords, { icon: textIcon }).addTo(map);
+            
+            // 手機按一下地點就直接選定
+            marker.on('click', function() {
+                selectedLocationObj = loc;
+                document.getElementById('currentLocation').innerText = loc.name;
+            });
+        });
+
+        // ==================== [ 4. 單選餐點系統邏輯 ] ====================
+        
+        function renderMenu(categoryFilter = 'all') {
+            const menuList = document.getElementById('menuList');
+            menuList.innerHTML = '';
+
+            const filteredData = categoryFilter === 'all' 
+                ? menuData 
+                : menuData.filter(item => item.category === categoryFilter);
+
+            filteredData.forEach(item => {
+                const isSelected = selectedMeal && selectedMeal.id === item.id;
+                const activeClass = isSelected ? 'selected' : '';
+                const statusText = isSelected ? '✓ 已選取' : '';
+
+                const itemHtml = `
+                    <div class="menu-item ${activeClass}" onclick="selectMeal(${item.id})">
+                        <div class="item-info">
+                            <h4>${item.name}</h4>
+                            <p>$${item.price}</p>
+                        </div>
+                        <div class="select-status" id="status-${item.id}">${statusText}</div>
+                    </div>
+                `;
+                menuList.innerHTML += itemHtml;
+            });
+        }
+
+        function selectMeal(id) {
+            selectedMeal = menuData.find(item => item.id === id);
+            
+            document.getElementById('currentMeal').innerText = `${selectedMeal.name} ($${selectedMeal.price})`;
+            
+            const currentCategory = document.querySelector('.category-btn.active').getAttribute('onclick').match(/'([^']+)'/)[1];
+            renderMenu(currentCategory);
+        }
+
+        function switchCategory(category) {
+            const buttons = document.querySelectorAll('.category-btn');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            renderMenu(category);
+        }
+
+        // ==================== [ 5. 預留傳送至 Unity ] ====================
+        function sendDataToUnity() {
+            if (!selectedMeal) {
+                alert("請先選取一個餐點喔！");
+                return;
+            }
+            if (!selectedLocationObj) {
+                alert("請在地圖上點選一個取餐地點！");
+                return;
+            }
+            
+            // ➔ 建立符合 Unity 'ExternalOrderRequest' 結構的物件
+            const packet = {
+                foodName: selectedMeal.name,               // 例如: "Burger", "50嵐"
+                destinationIndex: selectedLocationObj.index // 例如: 0, 1, 2
+            };
+            
+            // 取得目前手機瀏覽網頁的網址與 IP，自動發送 POST 到 /submitOrder API
+            const serverUrl = window.location.origin + "/submitOrder";
+            
+            fetch(serverUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(packet)
+            })
+            .then(response => {
+                if (response.ok) {
+                    alert(`訂單送出成功！\n餐點：${packet.foodName}\n地點索引：${packet.destinationIndex}`);
+                } else {
+                    alert("訂單被 Unity 拒絕 (可能地點已被佔用或重複點餐)");
+                }
+            })
+            .catch(error => {
+                console.error("Error:", error);
+                alert("無法連線到 Unity 伺服器，請檢查網路連線。");
+            });
+        }
+
+        renderMenu('all');
+    </script>
+</body>
+</html>
