@@ -43,6 +43,8 @@ public class DroneNPC : MonoBehaviour
     public bool ignoreAvoidanceDuringCloseAttack = true;
     public float closeAttackCollisionRadius = 0.6f;
     public float blockedCloseAttackExplodeRange = 3.0f;
+    public float closeAttackLineOfSightCheckInterval = 0.12f;
+    public float blockedCloseAttackRepathInterval = 0.65f;
 
     [Header("3D Grid Path")]
     public DroneWaypointGraph grid;
@@ -61,6 +63,8 @@ public class DroneNPC : MonoBehaviour
     public float patrolRepathInterval = 16f;
     public float chaseRepathInterval = 5.0f;
     public float forcedHuntRepathInterval = 3.5f;
+    public float chaseTargetRepathDistance = 14f;
+    public float chaseTargetRepathInterval = 1.0f;
     public float minPatrolDestinationDistance = 80f;
     public float maxPatrolDestinationDistance = 220f;
 
@@ -115,8 +119,10 @@ public class DroneNPC : MonoBehaviour
     public bool disableChildMeshColliders = true;
     public bool optimizeRendererSettings = true;
     public bool enableFarSimulationLOD = true;
-    public float farSimulationDistance = 240f;
+    public float farSimulationDistance = 160f;
     public float farSimulationInterval = 0.12f;
+    public float hiddenSimulationDistance = 240f;
+    public float hiddenSimulationInterval = 0.35f;
     public float maxFarSimulationDelta = 0.25f;
 
     [Header("爆炸中斷玩家移動能力")]
@@ -171,6 +177,10 @@ public class DroneNPC : MonoBehaviour
 
     private float directChaseLockTimer = 0f;
     private bool isCloseAttacking = false;
+    private float nextCloseAttackLineOfSightCheckTime = 0f;
+    private bool cachedCloseAttackLineOfSight = true;
+    private Vector3 lastRequestedPathTarget;
+    private bool hasRequestedPathTarget = false;
 
     private DroneState state = DroneState.Patrol;
     private DroneGameManager manager;
@@ -264,6 +274,9 @@ public class DroneNPC : MonoBehaviour
         isForcedHunter = false;
         isCloseAttacking = false;
         directChaseLockTimer = 0f;
+        nextCloseAttackLineOfSightCheckTime = 0f;
+        cachedCloseAttackLineOfSight = true;
+        hasRequestedPathTarget = false;
 
         state = DroneState.Patrol;
         hasBeenInitialized = true;
@@ -395,7 +408,10 @@ public class DroneNPC : MonoBehaviour
             return true;
         }
 
-        float interval = Mathf.Max(0.02f, farSimulationInterval);
+        float hiddenDistance = Mathf.Max(farSimulationDistance, hiddenSimulationDistance);
+        float interval = distanceSqr > hiddenDistance * hiddenDistance
+            ? Mathf.Max(0.02f, hiddenSimulationInterval)
+            : Mathf.Max(0.02f, farSimulationInterval);
         nextFarSimulationTime =
             Time.time +
             interval +
@@ -486,6 +502,7 @@ public class DroneNPC : MonoBehaviour
                 if (crowdDirector == null || crowdDirector.TryEnterChase(this))
                 {
                     ClearPath();
+                    hasRequestedPathTarget = false;
                     state = DroneState.Chasing;
                     nextRepathTime = Time.time + Random.Range(0.2f, 1.0f);
                     return;
@@ -594,17 +611,26 @@ public class DroneNPC : MonoBehaviour
             distanceToPlayer <= closeAttackRange ||
             directChaseLockTimer > 0f;
 
+        bool blockedCloseAttack = false;
+
         if (shouldCloseAttack)
         {
             bool closeAllowed = crowdDirector == null || crowdDirector.TryEnterCloseAttack(this);
 
             if (closeAllowed)
             {
-                isCloseAttacking = true;
-                directChaseLockTimer = directChaseLockDuration;
-                ClearPath();
-                MoveTowards(target, GetEffectiveChaseSpeed(), dt, true);
-                return;
+                if (CanUseDirectCloseAttack(target))
+                {
+                    isCloseAttacking = true;
+                    directChaseLockTimer = directChaseLockDuration;
+                    ClearPath();
+                    MoveTowards(target, GetEffectiveChaseSpeed(), dt, true);
+                    return;
+                }
+
+                blockedCloseAttack = true;
+                directChaseLockTimer = 0f;
+                nextRepathTime = 0f;
             }
         }
 
@@ -615,7 +641,7 @@ public class DroneNPC : MonoBehaviour
             crowdDirector.ExitCloseAttack(this);
         }
 
-        bool hasLineOfSight = HasCachedLineOfSight(target);
+        bool hasLineOfSight = !blockedCloseAttack && HasCachedLineOfSight(target);
 
         if (hasLineOfSight)
         {
@@ -625,15 +651,36 @@ public class DroneNPC : MonoBehaviour
         }
 
         float interval = isForcedHunter ? forcedHuntRepathInterval : chaseRepathInterval;
+        bool routeInvalid =
+            currentPath.Count == 0 ||
+            currentPathIndex >= currentPath.Count ||
+            isStuck ||
+            IsCurrentPathSegmentBlocked();
+        bool targetMoved = HasChaseTargetMovedEnough(target);
 
         if (!waitingForPath &&
             Time.time >= nextRepathTime &&
-            (currentPath.Count == 0 ||
-             currentPathIndex >= currentPath.Count ||
-             isStuck ||
-             IsCurrentPathSegmentBlocked()))
+            (routeInvalid || targetMoved))
         {
-            RequestPathTo(target, isForcedHunter, interval);
+            float requestInterval = interval;
+
+            if (blockedCloseAttack)
+            {
+                requestInterval = Mathf.Min(requestInterval, blockedCloseAttackRepathInterval);
+            }
+            else if (targetMoved)
+            {
+                requestInterval = Mathf.Min(requestInterval, chaseTargetRepathInterval);
+            }
+
+            bool keepCurrentPathWhileWaiting = targetMoved && !routeInvalid;
+
+            RequestPathTo(
+                target,
+                isForcedHunter || blockedCloseAttack,
+                requestInterval,
+                keepCurrentPathWhileWaiting
+            );
         }
 
         FollowCurrentPath(GetEffectiveChaseSpeed(), dt, false);
@@ -661,6 +708,7 @@ public class DroneNPC : MonoBehaviour
         ReleaseCrowdSlots();
         outOfRangeTimer = 0f;
         isCloseAttacking = false;
+        hasRequestedPathTarget = false;
         ClearPath();
         state = DroneState.Patrol;
     }
@@ -674,7 +722,41 @@ public class DroneNPC : MonoBehaviour
         }
     }
 
-    void RequestPathTo(Vector3 target, bool highPriority, float interval)
+    bool CanUseDirectCloseAttack(Vector3 target)
+    {
+        if (grid == null)
+        {
+            return true;
+        }
+
+        if (Time.time < nextCloseAttackLineOfSightCheckTime)
+        {
+            return cachedCloseAttackLineOfSight;
+        }
+
+        float interval = Mathf.Max(0.03f, closeAttackLineOfSightCheckInterval);
+        nextCloseAttackLineOfSightCheckTime = Time.time + interval;
+        cachedCloseAttackLineOfSight = grid.HasClearPath(transform.position, target);
+        return cachedCloseAttackLineOfSight;
+    }
+
+    bool HasChaseTargetMovedEnough(Vector3 target)
+    {
+        if (!hasRequestedPathTarget)
+        {
+            return true;
+        }
+
+        float distance = Mathf.Max(1f, chaseTargetRepathDistance);
+        return (target - lastRequestedPathTarget).sqrMagnitude >= distance * distance;
+    }
+
+    void RequestPathTo(
+        Vector3 target,
+        bool highPriority,
+        float interval,
+        bool keepCurrentPathWhileWaiting = false
+    )
     {
         if (grid == null || !grid.IsReady)
         {
@@ -683,7 +765,14 @@ public class DroneNPC : MonoBehaviour
 
         waitingForPath = true;
         pathRequestStartTime = Time.time;
-        ClearPath();
+
+        if (!keepCurrentPathWhileWaiting)
+        {
+            ClearPath();
+        }
+
+        lastRequestedPathTarget = target;
+        hasRequestedPathTarget = true;
 
         int token = ++pathRequestToken;
         int variant = pathVariantSeed++;
@@ -1402,6 +1491,7 @@ public class DroneNPC : MonoBehaviour
                 if (crowdDirector == null || crowdDirector.TryEnterChase(this))
                 {
                     ClearPath();
+                    hasRequestedPathTarget = false;
                     state = DroneState.Chasing;
                     outOfRangeTimer = 0f;
                     nextRepathTime = Time.time + Random.Range(0.2f, 1.2f);
@@ -1467,6 +1557,7 @@ public class DroneNPC : MonoBehaviour
         alertTimer = 999999f;
 
         ClearPath();
+        hasRequestedPathTarget = false;
         outOfRangeTimer = 0f;
         nextRepathTime = Time.time + Random.Range(0.2f, 1.5f);
 
@@ -1580,6 +1671,9 @@ public class DroneNPC : MonoBehaviour
         isForcedHunter = false;
         isCloseAttacking = false;
         directChaseLockTimer = 0f;
+        nextCloseAttackLineOfSightCheckTime = 0f;
+        cachedCloseAttackLineOfSight = true;
+        hasRequestedPathTarget = false;
         currentSpeed = 0f;
         currentBankAngle = 0f;
         blockedStepCount = 0;

@@ -81,8 +81,10 @@ public class DroneNPC2 : MonoBehaviour
     public bool disableChildMeshColliders = true;
     public bool optimizeRendererSettings = true;
     public bool enableFarSimulationLOD = true;
-    public float farSimulationDistance = 240f;
+    public float farSimulationDistance = 160f;
     public float farSimulationInterval = 0.15f;
+    public float hiddenSimulationDistance = 240f;
+    public float hiddenSimulationInterval = 0.35f;
     public float maxFarSimulationDelta = 0.3f;
 
     [Header("受破壞設定")]
@@ -348,7 +350,10 @@ public class DroneNPC2 : MonoBehaviour
             return true;
         }
 
-        float interval = Mathf.Max(0.02f, farSimulationInterval);
+        float hiddenDistance = Mathf.Max(farSimulationDistance, hiddenSimulationDistance);
+        float interval = distanceSqr > hiddenDistance * hiddenDistance
+            ? Mathf.Max(0.02f, hiddenSimulationInterval)
+            : Mathf.Max(0.02f, farSimulationInterval);
         nextFarSimulationTime =
             Time.time +
             interval +
@@ -1157,23 +1162,29 @@ public class DroneNPC2 : MonoBehaviour
         Transform parent = cargoAnchor != null ? cargoAnchor : transform;
         Vector3 prefabScale = prefab.transform.localScale;
 
-        currentCargo = Instantiate(prefab);
-        currentCargo.transform.SetParent(parent, false);
+        currentCargo = Instantiate(prefab, parent, false);
         currentCargo.transform.localPosition = Vector3.zero;
         currentCargo.transform.localRotation = Quaternion.identity;
         currentCargo.transform.localScale = DivideScale(prefabScale, parent.lossyScale);
 
-        Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>();
+        Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>(true);
 
         foreach (Rigidbody cargoRb in rigidbodies)
         {
             cargoRb.isKinematic = true;
             cargoRb.useGravity = false;
+            cargoRb.interpolation = RigidbodyInterpolation.None;
+            cargoRb.collisionDetectionMode = CollisionDetectionMode.Discrete;
             cargoRb.velocity = Vector3.zero;
             cargoRb.angularVelocity = Vector3.zero;
         }
 
-        Collider[] colliders = currentCargo.GetComponentsInChildren<Collider>();
+        // Re-apply the anchor pose after configuring nested rigidbodies so carried
+        // cargo cannot retain a transient world-space physics pose from spawning.
+        currentCargo.transform.localPosition = Vector3.zero;
+        currentCargo.transform.localRotation = Quaternion.identity;
+
+        Collider[] colliders = currentCargo.GetComponentsInChildren<Collider>(true);
 
         foreach (Collider c in colliders)
         {
@@ -1213,13 +1224,15 @@ public class DroneNPC2 : MonoBehaviour
         dropped.transform.SetParent(null, true);
         SetCargoRenderersEnabled(dropped, true);
 
-        Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>();
+        Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>(true);
 
         if (rigidbodies.Length == 0 && addRigidbodyToDroppedCargo)
         {
             Rigidbody newRb = dropped.AddComponent<Rigidbody>();
             newRb.isKinematic = false;
             newRb.useGravity = true;
+            newRb.interpolation = RigidbodyInterpolation.Interpolate;
+            newRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             newRb.velocity = Vector3.down * cargoDropDownVelocity;
         }
         else
@@ -1228,11 +1241,13 @@ public class DroneNPC2 : MonoBehaviour
             {
                 cargoRb.isKinematic = false;
                 cargoRb.useGravity = true;
+                cargoRb.interpolation = RigidbodyInterpolation.Interpolate;
+                cargoRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
                 cargoRb.velocity = Vector3.down * cargoDropDownVelocity;
             }
         }
 
-        Collider[] colliders = dropped.GetComponentsInChildren<Collider>();
+        Collider[] colliders = dropped.GetComponentsInChildren<Collider>(true);
 
         foreach (Collider c in colliders)
         {
