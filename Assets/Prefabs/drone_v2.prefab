@@ -87,6 +87,8 @@ MonoBehaviour:
   ignoreAvoidanceDuringCloseAttack: 1
   closeAttackCollisionRadius: 0.6
   blockedCloseAttackExplodeRange: 3
+  closeAttackLineOfSightCheckInterval: 0.12
+  blockedCloseAttackRepathInterval: 0.65
   grid: {fileID: 0}
   pathNodeReachDistance: 6
   lookAheadDistance: 26
@@ -95,6 +97,8 @@ MonoBehaviour:
   patrolRepathInterval: 15.9
   chaseRepathInterval: 5
   forcedHuntRepathInterval: 3.5
+  chaseTargetRepathDistance: 14
+  chaseTargetRepathInterval: 1
   minPatrolDestinationDistance: 80
   maxPatrolDestinationDistance: 220
   obstacleLayer:
@@ -130,6 +134,18 @@ MonoBehaviour:
   blockedStepTolerance: 4
   hardStopDuringPathFollow: 0
   enableDynamicAvoidanceWhilePatrolling: 0
+  enableVisualLOD: 1
+  visualCullDistance: 240
+  visualLODCheckInterval: 0.35
+  disableFarAnimators: 1
+  disableChildMeshColliders: 1
+  optimizeRendererSettings: 1
+  enableFarSimulationLOD: 1
+  farSimulationDistance: 160
+  farSimulationInterval: 0.12
+  hiddenSimulationDistance: 240
+  hiddenSimulationInterval: 0.35
+  maxFarSimulationDelta: 0.25
   interruptPlayerMobilityOnExplode: 1
   mobilityInterruptRadius: 3
   mobilityInterruptLayer:

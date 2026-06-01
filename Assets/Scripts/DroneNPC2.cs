@@ -81,8 +81,10 @@ public class DroneNPC2 : MonoBehaviour
     public bool disableChildMeshColliders = true;
     public bool optimizeRendererSettings = true;
     public bool enableFarSimulationLOD = true;
-    public float farSimulationDistance = 240f;
+    public float farSimulationDistance = 160f;
     public float farSimulationInterval = 0.15f;
+    public float hiddenSimulationDistance = 240f;
+    public float hiddenSimulationInterval = 0.35f;
     public float maxFarSimulationDelta = 0.3f;
 
     [Header("受破壞設定")]
@@ -348,7 +350,10 @@ public class DroneNPC2 : MonoBehaviour
             return true;
         }
 
-        float interval = Mathf.Max(0.02f, farSimulationInterval);
+        float hiddenDistance = Mathf.Max(farSimulationDistance, hiddenSimulationDistance);
+        float interval = distanceSqr > hiddenDistance * hiddenDistance
+            ? Mathf.Max(0.02f, hiddenSimulationInterval)
+            : Mathf.Max(0.02f, farSimulationInterval);
         nextFarSimulationTime =
             Time.time +
             interval +
