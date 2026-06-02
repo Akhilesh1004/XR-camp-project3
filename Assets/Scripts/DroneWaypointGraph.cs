@@ -1,9 +1,13 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 [ExecuteAlways]
 public class DroneWaypointGraph : MonoBehaviour
 {
+    private const string LegacyGeneratedBlockerName = "__DroneSolidBuildingBlocker";
+    private const string GeneratedBlockerNamePrefix = "__DroneSolidBox_";
+
     [Header("3D Grid Volume")]
     public Vector3 gridCenter = new Vector3(0f, 80f, 0f);
     public Vector3 gridSize = new Vector3(1200f, 160f, 900f);
@@ -26,6 +30,22 @@ public class DroneWaypointGraph : MonoBehaviour
     public bool buildOnStart = true;
     public bool autoRebuildInEditMode = false;
     public int nearestWalkableSearchRadius = 10;
+
+    [Header("Large World Runtime Grid")]
+    [Tooltip("Play Mode 只建立玩家附近的局部 Grid，避免大場景一次建立數百萬個 cells。")]
+    public bool enableRuntimeLocalGrid = false;
+
+    public string runtimeFollowTargetTag = "Player";
+    public Vector3 runtimeLocalGridSize = new Vector3(1200f, 160f, 1200f);
+
+    [Tooltip("玩家離目前 Grid 中心多遠後開始建立下一區。應小於 Grid 半徑減去 Drone 回收距離。")]
+    public float runtimeRecenterDistance = 240f;
+
+    [Tooltip("局部 Grid 每幀最多檢查幾個 cells。降低可減少 frame spike，但新區完成時間會增加。")]
+    public int runtimeBuildCellsPerFrame = 4000;
+
+    [Tooltip("局部 Grid 每幀最多使用多少毫秒。避免玩家移動跨區時因重建 Grid 產生明顯卡頓。")]
+    public float runtimeBuildMillisecondsPerFrame = 0.8f;
 
     [Header("A* Settings")]
     [Tooltip("效能與穩定優先，預設 false。true 會比較順，但需要防切角。")]
@@ -63,9 +83,15 @@ public class DroneWaypointGraph : MonoBehaviour
     [SerializeField] private int totalCellCount = 0;
     [SerializeField] private int walkableCellCount = 0;
     [SerializeField] private string lastBuildMessage = "Not built yet";
+    [SerializeField] private bool runtimeBuildInProgress = false;
 
     private Vector3 gridMin;
+    private Vector3 activeGridSize;
     private bool[] walkableCells;
+    private Transform runtimeFollowTarget;
+    private Coroutine runtimeBuildCoroutine;
+    private float nextRuntimeTargetSearchTime = 0f;
+    private int graphVersion = 0;
 
     private readonly List<int> walkableCellIndices = new List<int>();
     private readonly List<int> reusablePathIndices = new List<int>();
@@ -73,6 +99,7 @@ public class DroneWaypointGraph : MonoBehaviour
     private readonly List<Vector3> reusableSmoothedPath = new List<Vector3>();
     private readonly List<Vector3Int> neighborOffsets = new List<Vector3Int>();
     private readonly List<float> neighborMoveCosts = new List<float>();
+    private readonly List<BoxCollider> activeGeneratedGridBlockers = new List<BoxCollider>();
 
     // A* reusable buffers: avoid per-path large allocations / GC spikes.
     private float[] gScore;
@@ -86,13 +113,48 @@ public class DroneWaypointGraph : MonoBehaviour
     public int WalkableCellCount => walkableCellCount;
     public string LastBuildMessage => lastBuildMessage;
     public bool IsReady => walkableCells != null && walkableCells.Length > 0 && !gridDirty;
+    public int GraphVersion => graphVersion;
 
     void Start()
     {
         // Guarded to prevent double-build when a Manager calls grid APIs before this Start().
         if (Application.isPlaying && buildOnStart && !IsReady)
         {
-            BuildGraph();
+            if (enableRuntimeLocalGrid)
+            {
+                TryStartRuntimeLocalGridBuild();
+            }
+            else
+            {
+                BuildGraph();
+            }
+        }
+    }
+
+    void Update()
+    {
+        if (!Application.isPlaying || !enableRuntimeLocalGrid || !buildOnStart)
+        {
+            return;
+        }
+
+        if (!TryFindRuntimeFollowTarget())
+        {
+            return;
+        }
+
+        if (!IsReady)
+        {
+            TryStartRuntimeLocalGridBuild();
+            return;
+        }
+
+        Vector3 offset = runtimeFollowTarget.position - gridCenter;
+        offset.y = 0f;
+
+        if (offset.sqrMagnitude >= runtimeRecenterDistance * runtimeRecenterDistance)
+        {
+            TryStartRuntimeLocalGridBuild();
         }
     }
 
@@ -104,6 +166,12 @@ public class DroneWaypointGraph : MonoBehaviour
         nearestWalkableSearchRadius = Mathf.Max(1, nearestWalkableSearchRadius);
         maxSearchNodes = Mathf.Max(100, maxSearchNodes);
         randomFilteredPointMaxAttempts = Mathf.Max(1, randomFilteredPointMaxAttempts);
+        runtimeLocalGridSize.x = Mathf.Max(cellSize, runtimeLocalGridSize.x);
+        runtimeLocalGridSize.y = Mathf.Max(cellSize, runtimeLocalGridSize.y);
+        runtimeLocalGridSize.z = Mathf.Max(cellSize, runtimeLocalGridSize.z);
+        runtimeRecenterDistance = Mathf.Max(cellSize, runtimeRecenterDistance);
+        runtimeBuildCellsPerFrame = Mathf.Max(100, runtimeBuildCellsPerFrame);
+        runtimeBuildMillisecondsPerFrame = Mathf.Max(0.1f, runtimeBuildMillisecondsPerFrame);
         drawCellStep = Mathf.Max(1, drawCellStep);
 
         gridDirty = true;
@@ -123,6 +191,8 @@ public class DroneWaypointGraph : MonoBehaviour
     [ContextMenu("Clear 3D Grid")]
     public void ClearGraphFromInspector()
     {
+        StopRuntimeGridBuild();
+
         walkableCells = null;
         walkableCellIndices.Clear();
 
@@ -140,20 +210,33 @@ public class DroneWaypointGraph : MonoBehaviour
 
         lastBuildMessage = "Grid cleared";
         gridDirty = true;
+        graphVersion++;
     }
 
     public void BuildGraph()
     {
-        gridCountX = Mathf.Max(1, Mathf.CeilToInt(gridSize.x / cellSize));
-        gridCountY = Mathf.Max(1, Mathf.CeilToInt(gridSize.y / cellSize));
-        gridCountZ = Mathf.Max(1, Mathf.CeilToInt(gridSize.z / cellSize));
+        StopRuntimeGridBuild();
+        EnableGeneratedGridBlockersForBuild();
+
+        if (Application.isPlaying &&
+            enableRuntimeLocalGrid &&
+            TryFindRuntimeFollowTarget())
+        {
+            gridCenter = GetRuntimeGridCenter();
+        }
+
+        activeGridSize = GetRequestedBuildSize();
+
+        gridCountX = Mathf.Max(1, Mathf.CeilToInt(activeGridSize.x / cellSize));
+        gridCountY = Mathf.Max(1, Mathf.CeilToInt(activeGridSize.y / cellSize));
+        gridCountZ = Mathf.Max(1, Mathf.CeilToInt(activeGridSize.z / cellSize));
 
         totalCellCount = gridCountX * gridCountY * gridCountZ;
 
         walkableCells = new bool[totalCellCount];
         walkableCellIndices.Clear();
 
-        gridMin = gridCenter - gridSize * 0.5f;
+        gridMin = gridCenter - activeGridSize * 0.5f;
         walkableCellCount = 0;
 
         for (int x = 0; x < gridCountX; x++)
@@ -185,8 +268,10 @@ public class DroneWaypointGraph : MonoBehaviour
 
         BuildNeighborOffsets();
         AllocateSearchBuffers();
+        DisableGeneratedGridBlockers();
 
         gridDirty = false;
+        graphVersion++;
 
         lastBuildMessage =
             "Built 3D Grid: " +
@@ -198,14 +283,273 @@ public class DroneWaypointGraph : MonoBehaviour
             walkableCellCount;
     }
 
+    void TryStartRuntimeLocalGridBuild()
+    {
+        if (!Application.isPlaying ||
+            !enableRuntimeLocalGrid ||
+            runtimeBuildInProgress ||
+            !TryFindRuntimeFollowTarget())
+        {
+            return;
+        }
+
+        Vector3 center = GetRuntimeGridCenter();
+        runtimeBuildCoroutine = StartCoroutine(BuildGraphIncremental(center));
+    }
+
+    IEnumerator BuildGraphIncremental(Vector3 center)
+    {
+        runtimeBuildInProgress = true;
+        EnableGeneratedGridBlockersForBuild();
+
+        Vector3 buildSize = GetRequestedBuildSize();
+        int buildCountX = Mathf.Max(1, Mathf.CeilToInt(buildSize.x / cellSize));
+        int buildCountY = Mathf.Max(1, Mathf.CeilToInt(buildSize.y / cellSize));
+        int buildCountZ = Mathf.Max(1, Mathf.CeilToInt(buildSize.z / cellSize));
+        int buildTotalCellCount = buildCountX * buildCountY * buildCountZ;
+        Vector3 buildMin = center - buildSize * 0.5f;
+
+        bool[] buildingWalkableCells = new bool[buildTotalCellCount];
+        List<int> buildingWalkableIndices = new List<int>();
+        int buildingWalkableCount = 0;
+        int processedThisFrame = 0;
+        int processedTotal = 0;
+        float frameBuildStartTime = Time.realtimeSinceStartup;
+
+        lastBuildMessage =
+            "Building runtime local Grid: " +
+            buildCountX + " x " +
+            buildCountY + " x " +
+            buildCountZ;
+
+        for (int x = 0; x < buildCountX; x++)
+        {
+            for (int y = 0; y < buildCountY; y++)
+            {
+                for (int z = 0; z < buildCountZ; z++)
+                {
+                    int index = x + buildCountX * (y + buildCountY * z);
+                    Vector3 world = buildMin + new Vector3(
+                        (x + 0.5f) * cellSize,
+                        (y + 0.5f) * cellSize,
+                        (z + 0.5f) * cellSize
+                    );
+
+                    bool blocked = Physics.CheckSphere(
+                        world,
+                        agentRadius,
+                        obstacleLayer,
+                        QueryTriggerInteraction.Ignore
+                    );
+
+                    buildingWalkableCells[index] = !blocked;
+
+                    if (!blocked)
+                    {
+                        buildingWalkableCount++;
+                        buildingWalkableIndices.Add(index);
+                    }
+
+                    processedThisFrame++;
+                    processedTotal++;
+
+                    bool reachedCellBudget =
+                        processedThisFrame >= runtimeBuildCellsPerFrame;
+                    bool reachedTimeBudget =
+                        (processedThisFrame & 63) == 0 &&
+                        (Time.realtimeSinceStartup - frameBuildStartTime) * 1000f >=
+                        runtimeBuildMillisecondsPerFrame;
+
+                    if (reachedCellBudget || reachedTimeBudget)
+                    {
+                        processedThisFrame = 0;
+                        lastBuildMessage =
+                            "Building runtime local Grid: " +
+                            processedTotal + " / " +
+                            buildTotalCellCount;
+                        yield return null;
+                        frameBuildStartTime = Time.realtimeSinceStartup;
+                    }
+                }
+            }
+        }
+
+        gridCenter = center;
+        activeGridSize = buildSize;
+        gridMin = buildMin;
+        gridCountX = buildCountX;
+        gridCountY = buildCountY;
+        gridCountZ = buildCountZ;
+        totalCellCount = buildTotalCellCount;
+        walkableCells = buildingWalkableCells;
+
+        walkableCellIndices.Clear();
+        walkableCellIndices.AddRange(buildingWalkableIndices);
+        walkableCellCount = buildingWalkableCount;
+
+        BuildNeighborOffsets();
+        AllocateSearchBuffers();
+        DisableGeneratedGridBlockers();
+
+        gridDirty = false;
+        graphVersion++;
+        runtimeBuildInProgress = false;
+        runtimeBuildCoroutine = null;
+
+        lastBuildMessage =
+            "Built runtime local Grid: " +
+            gridCountX + " x " +
+            gridCountY + " x " +
+            gridCountZ + " = " +
+            totalCellCount +
+            " cells, walkable = " +
+            walkableCellCount;
+    }
+
+    bool TryFindRuntimeFollowTarget()
+    {
+        if (runtimeFollowTarget != null)
+        {
+            return true;
+        }
+
+        if (Time.realtimeSinceStartup < nextRuntimeTargetSearchTime)
+        {
+            return false;
+        }
+
+        nextRuntimeTargetSearchTime = Time.realtimeSinceStartup + 0.5f;
+
+        if (string.IsNullOrEmpty(runtimeFollowTargetTag))
+        {
+            return false;
+        }
+
+        GameObject target = GameObject.FindGameObjectWithTag(runtimeFollowTargetTag);
+
+        if (target == null)
+        {
+            return false;
+        }
+
+        runtimeFollowTarget = target.transform;
+        return true;
+    }
+
+    Vector3 GetRuntimeGridCenter()
+    {
+        Vector3 center = gridCenter;
+        center.x = Mathf.Round(runtimeFollowTarget.position.x / cellSize) * cellSize;
+        center.z = Mathf.Round(runtimeFollowTarget.position.z / cellSize) * cellSize;
+        return center;
+    }
+
+    Vector3 GetRequestedBuildSize()
+    {
+        return Application.isPlaying && enableRuntimeLocalGrid
+            ? runtimeLocalGridSize
+            : gridSize;
+    }
+
+    void StopRuntimeGridBuild()
+    {
+        if (runtimeBuildCoroutine != null)
+        {
+            StopCoroutine(runtimeBuildCoroutine);
+            runtimeBuildCoroutine = null;
+        }
+
+        runtimeBuildInProgress = false;
+        DisableGeneratedGridBlockers();
+    }
+
+    void OnDisable()
+    {
+        StopRuntimeGridBuild();
+    }
+
+    void EnableGeneratedGridBlockersForBuild()
+    {
+        DisableGeneratedGridBlockers();
+
+        BoxCollider[] boxColliders = FindObjectsOfType<BoxCollider>(true);
+
+        for (int i = 0; i < boxColliders.Length; i++)
+        {
+            BoxCollider boxCollider = boxColliders[i];
+
+            if (boxCollider == null || !IsGeneratedGridBlocker(boxCollider.transform))
+            {
+                continue;
+            }
+
+            activeGeneratedGridBlockers.Add(boxCollider);
+            boxCollider.enabled = true;
+        }
+
+        if (activeGeneratedGridBlockers.Count > 0)
+        {
+            Physics.SyncTransforms();
+        }
+    }
+
+    void DisableGeneratedGridBlockers()
+    {
+        if (activeGeneratedGridBlockers.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < activeGeneratedGridBlockers.Count; i++)
+        {
+            BoxCollider boxCollider = activeGeneratedGridBlockers[i];
+
+            if (boxCollider != null)
+            {
+                boxCollider.enabled = false;
+            }
+        }
+
+        activeGeneratedGridBlockers.Clear();
+        Physics.SyncTransforms();
+    }
+
+    bool IsGeneratedGridBlocker(Transform candidate)
+    {
+        return candidate != null &&
+               (candidate.name == LegacyGeneratedBlockerName ||
+                candidate.name.StartsWith(GeneratedBlockerNamePrefix));
+    }
+
     void AllocateSearchBuffers()
     {
-        gScore = new float[totalCellCount];
-        cameFrom = new int[totalCellCount];
-        openedStamp = new int[totalCellCount];
-        closedStamp = new int[totalCellCount];
-        openHeap = new MinHeap(Mathf.Min(totalCellCount, 8192));
-        searchId = 0;
+        bool needsNewBuffers =
+            gScore == null ||
+            gScore.Length != totalCellCount ||
+            cameFrom == null ||
+            cameFrom.Length != totalCellCount ||
+            openedStamp == null ||
+            openedStamp.Length != totalCellCount ||
+            closedStamp == null ||
+            closedStamp.Length != totalCellCount;
+
+        if (needsNewBuffers)
+        {
+            gScore = new float[totalCellCount];
+            cameFrom = new int[totalCellCount];
+            openedStamp = new int[totalCellCount];
+            closedStamp = new int[totalCellCount];
+            searchId = 0;
+        }
+
+        if (openHeap == null)
+        {
+            openHeap = new MinHeap(Mathf.Min(totalCellCount, 8192));
+        }
+        else
+        {
+            openHeap.Clear();
+        }
     }
 
     void BuildNeighborOffsets()
@@ -250,15 +594,27 @@ public class DroneWaypointGraph : MonoBehaviour
         );
     }
 
-    void EnsureGridReady()
+    bool EnsureGridReady()
     {
         if (walkableCells == null ||
             walkableCells.Length == 0 ||
             gScore == null ||
             gridDirty)
         {
+            if (Application.isPlaying && enableRuntimeLocalGrid)
+            {
+                if (buildOnStart)
+                {
+                    TryStartRuntimeLocalGridBuild();
+                }
+
+                return false;
+            }
+
             BuildGraph();
         }
+
+        return IsReady;
     }
 
     public bool HasClearPath(Vector3 from, Vector3 to)
@@ -295,13 +651,20 @@ public class DroneWaypointGraph : MonoBehaviour
 
     public bool IsWorldPositionWalkable(Vector3 worldPosition)
     {
-        EnsureGridReady();
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
+
         return IsWorldPositionWalkableNoBuild(worldPosition);
     }
 
     public bool HasWalkableGridLine(Vector3 from, Vector3 to, float sampleStep = 0f)
     {
-        EnsureGridReady();
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
 
         Vector3 delta = to - from;
         float distance = delta.magnitude;
@@ -364,7 +727,10 @@ public class DroneWaypointGraph : MonoBehaviour
 
         pathPositions.Clear();
 
-        EnsureGridReady();
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
 
         if (HasClearPath(from, to))
         {
@@ -679,9 +1045,12 @@ public class DroneWaypointGraph : MonoBehaviour
 
     public bool TryGetRandomWalkablePoint(out Vector3 point)
     {
-        EnsureGridReady();
-
         point = Vector3.zero;
+
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
 
         if (walkableCellIndices.Count == 0)
         {
@@ -699,9 +1068,12 @@ public class DroneWaypointGraph : MonoBehaviour
         out Vector3 point
     )
     {
-        EnsureGridReady();
-
         point = Vector3.zero;
+
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
 
         if (walkableCellIndices.Count == 0)
         {
@@ -738,7 +1110,7 @@ public class DroneWaypointGraph : MonoBehaviour
             }
         }
 
-        if (bestIndex >= 0)
+        if (bestIndex >= 0 && bestDistance >= minSqr)
         {
             point = IndexToWorld(bestIndex);
             return true;
@@ -754,9 +1126,12 @@ public class DroneWaypointGraph : MonoBehaviour
         out Vector3 point
     )
     {
-        EnsureGridReady();
-
         point = Vector3.zero;
+
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
 
         if (walkableCellIndices.Count == 0)
         {
@@ -781,7 +1156,7 @@ public class DroneWaypointGraph : MonoBehaviour
             }
         }
 
-        return TryGetRandomWalkablePointFarFrom(origin, minDistance, out point);
+        return TryGetRandomWalkablePointFiltered(origin, minSqr, maxSqr, out point);
     }
 
     public bool TryGetRandomWalkablePointNear(
@@ -790,9 +1165,12 @@ public class DroneWaypointGraph : MonoBehaviour
         out Vector3 point
     )
     {
-        EnsureGridReady();
-
         point = Vector3.zero;
+
+        if (!EnsureGridReady())
+        {
+            return false;
+        }
 
         if (walkableCellIndices.Count == 0)
         {
@@ -814,7 +1192,47 @@ public class DroneWaypointGraph : MonoBehaviour
             }
         }
 
-        return TryGetRandomWalkablePoint(out point);
+        return TryGetRandomWalkablePointFiltered(origin, 0f, maxSqr, out point);
+    }
+
+    bool TryGetRandomWalkablePointFiltered(
+        Vector3 origin,
+        float minSqrDistance,
+        float maxSqrDistance,
+        out Vector3 point
+    )
+    {
+        point = Vector3.zero;
+
+        int selectedIndex = -1;
+        int matchingCount = 0;
+
+        for (int i = 0; i < walkableCellIndices.Count; i++)
+        {
+            int index = walkableCellIndices[i];
+            Vector3 candidate = IndexToWorld(index);
+            float sqr = (candidate - origin).sqrMagnitude;
+
+            if (sqr < minSqrDistance || sqr > maxSqrDistance)
+            {
+                continue;
+            }
+
+            matchingCount++;
+
+            if (Random.Range(0, matchingCount) == 0)
+            {
+                selectedIndex = index;
+            }
+        }
+
+        if (selectedIndex < 0)
+        {
+            return false;
+        }
+
+        point = IndexToWorld(selectedIndex);
+        return true;
     }
 
     int FindNearestWalkableCellIndex(Vector3 worldPosition)
@@ -981,7 +1399,10 @@ public class DroneWaypointGraph : MonoBehaviour
         if (drawGridBounds)
         {
             Gizmos.color = boundsColor;
-            Gizmos.DrawWireCube(gridCenter, gridSize);
+            Vector3 boundsSize = Application.isPlaying && enableRuntimeLocalGrid
+                ? (IsReady ? activeGridSize : runtimeLocalGridSize)
+                : gridSize;
+            Gizmos.DrawWireCube(gridCenter, boundsSize);
         }
 
         if (!drawGridCells ||

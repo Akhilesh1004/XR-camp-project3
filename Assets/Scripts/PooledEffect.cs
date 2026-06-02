@@ -18,6 +18,9 @@ public class PooledEffect : MonoBehaviour
 
     private bool isPlayingFromPool = false;
     private bool isInsidePool = true;
+    private Transform[] cachedTransforms;
+    private ParticleSystem[] cachedParticleSystems;
+    private AudioSource[] cachedAudioSources;
 
     public bool IsPlayingFromPool
     {
@@ -27,6 +30,11 @@ public class PooledEffect : MonoBehaviour
     public bool IsInsidePool
     {
         get { return isInsidePool; }
+    }
+
+    void Awake()
+    {
+        CacheComponents();
     }
 
     public void PlayFromPool(
@@ -54,10 +62,9 @@ public class PooledEffect : MonoBehaviour
             ReactivateParticleChildren();
         }
 
-        ParticleSystem[] particleSystems =
-            GetComponentsInChildren<ParticleSystem>(true);
+        CacheComponents();
 
-        foreach (ParticleSystem ps in particleSystems)
+        foreach (ParticleSystem ps in cachedParticleSystems)
         {
             if (!ps.gameObject.activeSelf)
             {
@@ -68,10 +75,7 @@ public class PooledEffect : MonoBehaviour
             ps.Play(true);
         }
 
-        AudioSource[] audioSources =
-            GetComponentsInChildren<AudioSource>(true);
-
-        foreach (AudioSource audio in audioSources)
+        foreach (AudioSource audio in cachedAudioSources)
         {
             if (!audio.gameObject.activeSelf)
             {
@@ -87,9 +91,9 @@ public class PooledEffect : MonoBehaviour
 
     void ReactivateParticleChildren()
     {
-        Transform[] children = GetComponentsInChildren<Transform>(true);
+        CacheComponents();
 
-        foreach (Transform child in children)
+        foreach (Transform child in cachedTransforms)
         {
             if (child == transform)
             {
@@ -101,6 +105,20 @@ public class PooledEffect : MonoBehaviour
                 child.gameObject.SetActive(true);
             }
         }
+    }
+
+    void CacheComponents()
+    {
+        if (cachedTransforms != null &&
+            cachedParticleSystems != null &&
+            cachedAudioSources != null)
+        {
+            return;
+        }
+
+        cachedTransforms = GetComponentsInChildren<Transform>(true);
+        cachedParticleSystems = GetComponentsInChildren<ParticleSystem>(true);
+        cachedAudioSources = GetComponentsInChildren<AudioSource>(true);
     }
 
     void Update()

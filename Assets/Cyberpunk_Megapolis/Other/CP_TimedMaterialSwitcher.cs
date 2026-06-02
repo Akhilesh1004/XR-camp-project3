@@ -4,20 +4,20 @@ public class SimpleMaterialCycler : MonoBehaviour
 {
     [Header("Target")]
     public Renderer target;
-    [Tooltip("-1 = заменить во всех слотах, иначе индекс слота")]
+    [Tooltip("-1")]
     public int slotIndex = -1;
 
     [Header("Cycle")]
     public Material[] materials;     // >= 2
-    public float interval = 1.0f;    // сек
+    public float interval = 1.0f;    // пїЅпїЅпїЅ
     public bool changeOnStart = false;
 
     [Header("Advanced")]
-    public bool useShared = false;   // TRUE = правим sharedMaterials, FALSE = инстансим (без влияния на другие объекты)
+    public bool useShared = false;   // TRUE = пїЅпїЅпїЅпїЅпїЅпїЅ sharedMaterials, FALSE = пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
 
     int i;
     float t;
-    Material[] runtimeMats;          // локальная копия/инстансы для безопасной замены
+    Material[] runtimeMats;          // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     bool ready;
 
     void Reset() => target = GetComponent<Renderer>();
@@ -32,17 +32,17 @@ public class SimpleMaterialCycler : MonoBehaviour
         ready = (target && materials != null && materials.Length > 1);
         if (!ready) return;
 
-        // 1) подготовим массив материалов РОВНО один раз
-        var src = useShared ? target.sharedMaterials : target.materials; // .materials создает инстансы
+        // 1) пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ
+        var src = useShared ? target.sharedMaterials : target.materials; // .materials пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         if (src == null || src.Length == 0) { ready = false; return; }
 
-        runtimeMats = src; // копия/инстансы уже в src
+        runtimeMats = src; // пїЅпїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅ src
 
-        // 2) начальный материал
+        // 2) пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         i = 0;
         if (changeOnStart) Apply(materials[i]);
 
-        // 3) таймер
+        // 3) пїЅпїЅпїЅпїЅпїЅпїЅ
         t = 0f;
     }
 
@@ -58,7 +58,7 @@ public class SimpleMaterialCycler : MonoBehaviour
 
         t += Time.deltaTime;
         if (t < Mathf.Max(0.01f, interval)) return;
-        t = 0f; // шаг строго раз в interval
+        t = 0f; // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅ interval
 
         i = (i + 1) % materials.Length;
         Apply(materials[i]);
@@ -79,8 +79,8 @@ public class SimpleMaterialCycler : MonoBehaviour
         }
 
         if (useShared)
-            target.sharedMaterials = runtimeMats;  // правим shared (общие), может влиять на другие объекты
+            target.sharedMaterials = runtimeMats;  // пїЅпїЅпїЅпїЅпїЅпїЅ shared (пїЅпїЅпїЅпїЅпїЅ), пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         else
-            target.materials = runtimeMats;        // правим инстансы (без влияния на других)
+            target.materials = runtimeMats;        // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ)
     }
 }

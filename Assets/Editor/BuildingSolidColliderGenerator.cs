@@ -85,6 +85,7 @@ public static class BuildingSolidColliderGenerator
         EditorUtility.DisplayDialog(
             settings.label + " Building BoxColliders",
             "完成依照子 MeshRenderer 產生 " + settings.label + " Building BoxCollider\n\n" +
+            "Collider 僅供 Drone Grid 建圖使用，平時保持停用以降低 Physics 負擔。\n\n" +
             "Building Targets: " + targets.Count + "\n" +
             "Created BoxColliders: " + created + "\n" +
             "Skipped Targets: " + skipped,
@@ -135,6 +136,7 @@ public static class BuildingSolidColliderGenerator
         EditorUtility.DisplayDialog(
             "Selected " + settings.label + " BoxColliders",
             "完成處理選取範圍，模式: " + settings.label + "\n\n" +
+            "Collider 僅供 Drone Grid 建圖使用，平時保持停用以降低 Physics 負擔。\n\n" +
             "Selected Roots: " + Selection.gameObjects.Length + "\n" +
             "Building Targets: " + targets.Count + "\n" +
             "Created BoxColliders: " + created + "\n" +
@@ -624,7 +626,7 @@ public static class BuildingSolidColliderGenerator
         boxCollider.center = center;
         boxCollider.size = size;
         boxCollider.isTrigger = false;
-        boxCollider.enabled = true;
+        boxCollider.enabled = false;
 
         EditorUtility.SetDirty(blocker);
         EditorUtility.SetDirty(boxCollider);

@@ -49,6 +49,7 @@ public class DronePathRequestManager : MonoBehaviour
     private struct PathCacheKey : IEquatable<PathCacheKey>
     {
         private readonly int gridId;
+        private readonly int graphVersion;
         private readonly int ax;
         private readonly int ay;
         private readonly int az;
@@ -59,12 +60,14 @@ public class DronePathRequestManager : MonoBehaviour
 
         public PathCacheKey(
             int gridId,
+            int graphVersion,
             Vector3Int from,
             Vector3Int to,
             int variantBucket
         )
         {
             this.gridId = gridId;
+            this.graphVersion = graphVersion;
             ax = from.x;
             ay = from.y;
             az = from.z;
@@ -77,6 +80,7 @@ public class DronePathRequestManager : MonoBehaviour
         public bool Equals(PathCacheKey other)
         {
             return gridId == other.gridId &&
+                   graphVersion == other.graphVersion &&
                    ax == other.ax &&
                    ay == other.ay &&
                    az == other.az &&
@@ -96,6 +100,7 @@ public class DronePathRequestManager : MonoBehaviour
             unchecked
             {
                 int hash = gridId;
+                hash = hash * 397 ^ graphVersion;
                 hash = hash * 397 ^ ax;
                 hash = hash * 397 ^ ay;
                 hash = hash * 397 ^ az;
@@ -406,6 +411,7 @@ public class DronePathRequestManager : MonoBehaviour
     PathCacheKey MakeCacheKey(PathRequest request)
     {
         int gridId = request.grid != null ? request.grid.GetInstanceID() : 0;
+        int graphVersion = request.grid != null ? request.grid.GraphVersion : 0;
 
         Vector3Int a = Quantize(request.from);
         Vector3Int b = Quantize(request.to);
@@ -413,7 +419,7 @@ public class DronePathRequestManager : MonoBehaviour
         // Ignore exact variant to improve cache hit rate for large crowds.
         int variantBucket = request.variant & 1;
 
-        return new PathCacheKey(gridId, a, b, variantBucket);
+        return new PathCacheKey(gridId, graphVersion, a, b, variantBucket);
     }
 
     Vector3Int Quantize(Vector3 p)

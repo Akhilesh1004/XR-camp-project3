@@ -146818,8 +146818,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d1c1af1a496e43f28f5cc9921ff6709, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gridCenter: {x: 0, y: 80, z: 300}
-  gridSize: {x: 1200, y: 160, z: 900}
+  gridCenter: {x: 450, y: 80, z: 450}
+  gridSize: {x: 5500, y: 160, z: 5000}
   cellSize: 8
   agentRadius: 2
   lineCheckRadius: 2

@@ -94,25 +94,37 @@ public static class DroneAlertSystem
             return;
         }
 
-        candidateDrones.Sort((a, b) =>
-        {
-            float da = a.GetForcedHuntSelectionDistance(
-                alertPosition,
-                chooseClosestHuntersToPlayer
-            );
-
-            float db = b.GetForcedHuntSelectionDistance(
-                alertPosition,
-                chooseClosestHuntersToPlayer
-            );
-
-            return da.CompareTo(db);
-        });
-
         int count = Mathf.Min(forcedHunterCount, candidateDrones.Count);
 
         for (int i = 0; i < count; i++)
         {
+            int bestIndex = i;
+            float bestDistance = candidateDrones[i].GetForcedHuntSelectionDistance(
+                alertPosition,
+                chooseClosestHuntersToPlayer
+            );
+
+            for (int j = i + 1; j < candidateDrones.Count; j++)
+            {
+                float candidateDistance = candidateDrones[j].GetForcedHuntSelectionDistance(
+                    alertPosition,
+                    chooseClosestHuntersToPlayer
+                );
+
+                if (candidateDistance < bestDistance)
+                {
+                    bestIndex = j;
+                    bestDistance = candidateDistance;
+                }
+            }
+
+            if (bestIndex != i)
+            {
+                DroneNPC swap = candidateDrones[i];
+                candidateDrones[i] = candidateDrones[bestIndex];
+                candidateDrones[bestIndex] = swap;
+            }
+
             candidateDrones[i].BeginForcedHunt();
         }
     }

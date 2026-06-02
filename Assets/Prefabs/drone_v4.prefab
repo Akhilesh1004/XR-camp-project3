@@ -2219,16 +2219,18 @@ MonoBehaviour:
   hardStopDuringPathFollow: 0
   enableVisualLOD: 1
   lodTargetTag: Player
-  visualCullDistance: 240
-  visualLODCheckInterval: 0.35
+  visualCullDistance: 260
+  visualCullHysteresis: 30
+  visualPrewarmViewportPadding: 0.15
+  visualLODCheckInterval: 0.45
   disableFarAnimators: 1
   disableChildMeshColliders: 1
   optimizeRendererSettings: 1
   enableFarSimulationLOD: 1
-  farSimulationDistance: 160
-  farSimulationInterval: 0.15
-  hiddenSimulationDistance: 240
-  hiddenSimulationInterval: 0.35
+  farSimulationDistance: 120
+  farSimulationInterval: 0.2
+  hiddenSimulationDistance: 200
+  hiddenSimulationInterval: 0.5
   maxFarSimulationDelta: 0.3
   damageLayer:
     serializedVersion: 2

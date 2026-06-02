@@ -14,8 +14,12 @@ public class DroneEffectPool : MonoBehaviour
     [Tooltip("Pool 不夠時是否允許擴充。正式遊戲如果想完全避免 runtime Instantiate，可以關掉")]
     public bool allowExpansion = true;
 
+    [Tooltip("同時播放的爆炸特效上限。超過時略過額外特效，避免粒子疊加造成 VR 掉幀。0 代表不限制。")]
+    public int maxConcurrentEffects = 3;
+
     private readonly Queue<PooledEffect> pool = new Queue<PooledEffect>();
     private readonly HashSet<PooledEffect> pooledSet = new HashSet<PooledEffect>();
+    private readonly HashSet<PooledEffect> playingSet = new HashSet<PooledEffect>();
 
     // Effects requested to return this frame.
     // We process them in LateUpdate, not inside OnDisable.
@@ -74,6 +78,11 @@ public class DroneEffectPool : MonoBehaviour
             return null;
         }
 
+        if (maxConcurrentEffects > 0 && playingSet.Count >= maxConcurrentEffects)
+        {
+            return null;
+        }
+
         PooledEffect effect = GetEffect();
 
         if (effect == null)
@@ -82,6 +91,7 @@ public class DroneEffectPool : MonoBehaviour
         }
 
         effect.MarkAsPlaying();
+        playingSet.Add(effect);
         effect.PlayFromPool(this, position, rotation);
 
         return effect;
@@ -178,6 +188,7 @@ public class DroneEffectPool : MonoBehaviour
         }
 
         effect.MarkAsInsidePool();
+        playingSet.Remove(effect);
 
         // Now we are outside OnDisable, so SetActive / SetParent is safe.
         if (effect.gameObject.activeSelf)

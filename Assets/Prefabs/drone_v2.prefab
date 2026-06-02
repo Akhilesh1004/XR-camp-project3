@@ -89,6 +89,9 @@ MonoBehaviour:
   blockedCloseAttackExplodeRange: 3
   closeAttackLineOfSightCheckInterval: 0.12
   blockedCloseAttackRepathInterval: 0.65
+  closeApproachSpeedMultiplier: 0.82
+  closeApproachMinSpeed: 3.2
+  closeApproachSlowDistance: 10
   grid: {fileID: 0}
   pathNodeReachDistance: 6
   lookAheadDistance: 26
@@ -131,20 +134,25 @@ MonoBehaviour:
   pathNodeTimeout: 2.8
   movementClearCheckInterval: 0.9
   lineOfSightCheckInterval: 1
+  pathSegmentBlockedCheckInterval: 0.35
+  gridCornerCheckInterval: 0.12
+  closeAttackMovementCheckInterval: 0.06
   blockedStepTolerance: 4
   hardStopDuringPathFollow: 0
   enableDynamicAvoidanceWhilePatrolling: 0
   enableVisualLOD: 1
-  visualCullDistance: 240
-  visualLODCheckInterval: 0.35
+  visualCullDistance: 260
+  visualCullHysteresis: 30
+  visualPrewarmViewportPadding: 0.15
+  visualLODCheckInterval: 0.45
   disableFarAnimators: 1
   disableChildMeshColliders: 1
   optimizeRendererSettings: 1
   enableFarSimulationLOD: 1
-  farSimulationDistance: 160
-  farSimulationInterval: 0.12
-  hiddenSimulationDistance: 240
-  hiddenSimulationInterval: 0.35
+  farSimulationDistance: 120
+  farSimulationInterval: 0.16
+  hiddenSimulationDistance: 200
+  hiddenSimulationInterval: 0.45
   maxFarSimulationDelta: 0.25
   interruptPlayerMobilityOnExplode: 1
   mobilityInterruptRadius: 3

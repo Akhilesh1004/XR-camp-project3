@@ -6,8 +6,11 @@ public class DroneVisualOptimizer
     private Renderer[] renderers;
     private Animator[] animators;
     private MeshCollider[] meshColliders;
+    private GameObject initializedOwner;
     private bool initialized;
     private bool visible = true;
+
+    public bool IsVisible => visible;
 
     public void Initialize(
         GameObject owner,
@@ -16,6 +19,11 @@ public class DroneVisualOptimizer
     )
     {
         if (owner == null)
+        {
+            return;
+        }
+
+        if (initialized && initializedOwner == owner)
         {
             return;
         }
@@ -69,6 +77,7 @@ public class DroneVisualOptimizer
             }
         }
 
+        initializedOwner = owner;
         initialized = true;
     }
 

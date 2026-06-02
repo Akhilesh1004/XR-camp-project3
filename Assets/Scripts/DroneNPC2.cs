@@ -75,7 +75,9 @@ public class DroneNPC2 : MonoBehaviour
     [Header("Visual / Far LOD")]
     public bool enableVisualLOD = true;
     public string lodTargetTag = "Player";
-    public float visualCullDistance = 240f;
+    public float visualCullDistance = 360f;
+    public float visualCullHysteresis = 40f;
+    public float visualPrewarmViewportPadding = 0.15f;
     public float visualLODCheckInterval = 0.35f;
     public bool disableFarAnimators = true;
     public bool disableChildMeshColliders = true;
@@ -140,9 +142,16 @@ public class DroneNPC2 : MonoBehaviour
     private bool isFinishing = false;
     private readonly DroneVisualOptimizer visualOptimizer = new DroneVisualOptimizer();
     private Transform lodTarget;
+    private Camera visualCamera;
     private float nextVisualLODCheckTime = 0f;
     private float nextFarSimulationTime = 0f;
     private float accumulatedFarSimulationDt = 0f;
+
+    public bool CanRecycleForLocalPopulation =>
+        hasBeenInitialized &&
+        gameObject.activeInHierarchy &&
+        state == Drone2State.MovingToDestination &&
+        !isFinishing;
 
     void Awake()
     {
@@ -312,12 +321,38 @@ public class DroneNPC2 : MonoBehaviour
         if (TryGetLODTargetPosition(out Vector3 targetPosition))
         {
             float cullDistance = Mathf.Max(1f, visualCullDistance);
+            float visibleDistance = visualOptimizer.IsVisible
+                ? cullDistance + Mathf.Max(0f, visualCullHysteresis)
+                : cullDistance;
             shouldBeVisible =
                 (transform.position - targetPosition).sqrMagnitude <=
-                cullDistance * cullDistance;
+                visibleDistance * visibleDistance ||
+                IsInsideVisualPrewarmViewport(transform.position);
         }
 
         visualOptimizer.SetVisible(shouldBeVisible, disableFarAnimators);
+    }
+
+    bool IsInsideVisualPrewarmViewport(Vector3 position)
+    {
+        if (visualCamera == null)
+        {
+            visualCamera = Camera.main;
+        }
+
+        if (visualCamera == null)
+        {
+            return false;
+        }
+
+        Vector3 viewport = visualCamera.WorldToViewportPoint(position);
+        float padding = Mathf.Max(0f, visualPrewarmViewportPadding);
+
+        return viewport.z > 0f &&
+               viewport.x >= -padding &&
+               viewport.x <= 1f + padding &&
+               viewport.y >= -padding &&
+               viewport.y <= 1f + padding;
     }
 
     bool ShouldThrottleFarSimulation(ref float dt)
@@ -411,7 +446,21 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
-        if (grid.TryGetRandomWalkablePointFarFrom(originPosition, minDestinationDistanceFromSpawn, out Vector3 point))
+        Vector3 point;
+
+        bool gotPoint = manager != null
+            ? manager.TryGetDeliveryDestination(
+                originPosition,
+                minDestinationDistanceFromSpawn,
+                out point
+            )
+            : grid.TryGetRandomWalkablePointFarFrom(
+                originPosition,
+                minDestinationDistanceFromSpawn,
+                out point
+            );
+
+        if (gotPoint)
         {
             destinationPosition = point;
             hasDestination = true;
@@ -1296,6 +1345,5 @@ public class DroneNPC2 : MonoBehaviour
         nextMovementClearCheckTime = 0f;
         nextVisualLODCheckTime = 0f;
         accumulatedFarSimulationDt = 0f;
-        visualOptimizer.ForceVisible(disableFarAnimators);
     }
 }

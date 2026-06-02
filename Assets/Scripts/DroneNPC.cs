@@ -46,6 +46,12 @@ public class DroneNPC : MonoBehaviour
     public float closeAttackLineOfSightCheckInterval = 0.12f;
     public float blockedCloseAttackRepathInterval = 0.65f;
 
+    [Tooltip("近距離直線接近時稍微降速，縮小轉彎半徑，避免高速繞著玩家打轉。")]
+    [Range(0.4f, 1f)]
+    public float closeApproachSpeedMultiplier = 0.82f;
+    public float closeApproachMinSpeed = 3.2f;
+    public float closeApproachSlowDistance = 10f;
+
     [Header("3D Grid Path")]
     public DroneWaypointGraph grid;
     public float pathNodeReachDistance = 6f;
@@ -103,6 +109,9 @@ public class DroneNPC : MonoBehaviour
     [Header("Performance Throttle")]
     public float movementClearCheckInterval = 0.9f;
     public float lineOfSightCheckInterval = 1.0f;
+    public float pathSegmentBlockedCheckInterval = 0.35f;
+    public float gridCornerCheckInterval = 0.12f;
+    public float closeAttackMovementCheckInterval = 0.06f;
     public int blockedStepTolerance = 4;
 
     [Tooltip("大量 Drone 時建議 false。一般 path 已由 3D Grid 保證安全，不要每台每段移動都 SphereCast。")]
@@ -113,7 +122,9 @@ public class DroneNPC : MonoBehaviour
 
     [Header("Visual / Far LOD")]
     public bool enableVisualLOD = true;
-    public float visualCullDistance = 240f;
+    public float visualCullDistance = 360f;
+    public float visualCullHysteresis = 40f;
+    public float visualPrewarmViewportPadding = 0.15f;
     public float visualLODCheckInterval = 0.35f;
     public bool disableFarAnimators = true;
     public bool disableChildMeshColliders = true;
@@ -169,6 +180,11 @@ public class DroneNPC : MonoBehaviour
     private int blockedStepCount = 0;
     private float nextLineOfSightCheckTime = 0f;
     private bool cachedLineOfSight = false;
+    private float nextPathSegmentBlockedCheckTime = 0f;
+    private bool cachedPathSegmentBlocked = false;
+    private float nextGridCornerCheckTime = 0f;
+    private Vector3 cachedWalkableLookTarget;
+    private bool hasCachedWalkableLookTarget = false;
 
     private bool isAlerted = false;
     private float alertTimer = 0f;
@@ -179,6 +195,8 @@ public class DroneNPC : MonoBehaviour
     private bool isCloseAttacking = false;
     private float nextCloseAttackLineOfSightCheckTime = 0f;
     private bool cachedCloseAttackLineOfSight = true;
+    private float nextCloseAttackMovementCheckTime = 0f;
+    private bool cachedCloseAttackMovementBlocked = false;
     private Vector3 lastRequestedPathTarget;
     private bool hasRequestedPathTarget = false;
 
@@ -194,6 +212,7 @@ public class DroneNPC : MonoBehaviour
     private bool hasBeenInitialized = false;
     private float nextChaseAttemptTime = 0f;
     private readonly DroneVisualOptimizer visualOptimizer = new DroneVisualOptimizer();
+    private Camera visualCamera;
     private float nextVisualLODCheckTime = 0f;
     private float nextFarSimulationTime = 0f;
     private float accumulatedFarSimulationDt = 0f;
@@ -208,6 +227,13 @@ public class DroneNPC : MonoBehaviour
                    !isForcedHunter;
         }
     }
+
+    public bool CanRecycleForLocalPopulation =>
+        hasBeenInitialized &&
+        gameObject.activeInHierarchy &&
+        state == DroneState.Patrol &&
+        !isAlerted &&
+        !isForcedHunter;
 
     void Awake()
     {
@@ -266,6 +292,8 @@ public class DroneNPC : MonoBehaviour
         blockedStepCount = 0;
         nextLineOfSightCheckTime = 0f;
         cachedLineOfSight = false;
+        nextCloseAttackMovementCheckTime = 0f;
+        cachedCloseAttackMovementBlocked = false;
 
         outOfRangeTimer = 0f;
         isAlerted = false;
@@ -369,22 +397,47 @@ public class DroneNPC : MonoBehaviour
 
         bool shouldBeVisible = true;
 
-        if (state != DroneState.Chasing && player != null)
+        if (player != null)
         {
             float cullDistance = Mathf.Max(1f, visualCullDistance);
+            float visibleDistance = visualOptimizer.IsVisible
+                ? cullDistance + Mathf.Max(0f, visualCullHysteresis)
+                : cullDistance;
             shouldBeVisible =
                 (transform.position - player.position).sqrMagnitude <=
-                cullDistance * cullDistance;
+                visibleDistance * visibleDistance ||
+                IsInsideVisualPrewarmViewport(transform.position);
         }
 
         visualOptimizer.SetVisible(shouldBeVisible, disableFarAnimators);
+    }
+
+    bool IsInsideVisualPrewarmViewport(Vector3 position)
+    {
+        if (visualCamera == null)
+        {
+            visualCamera = Camera.main;
+        }
+
+        if (visualCamera == null)
+        {
+            return false;
+        }
+
+        Vector3 viewport = visualCamera.WorldToViewportPoint(position);
+        float padding = Mathf.Max(0f, visualPrewarmViewportPadding);
+
+        return viewport.z > 0f &&
+               viewport.x >= -padding &&
+               viewport.x <= 1f + padding &&
+               viewport.y >= -padding &&
+               viewport.y <= 1f + padding;
     }
 
     bool ShouldThrottleFarSimulation(ref float dt)
     {
         if (!enableFarSimulationLOD ||
             state != DroneState.Patrol ||
-            isAlerted ||
             isForcedHunter ||
             player == null)
         {
@@ -571,6 +624,7 @@ public class DroneNPC : MonoBehaviour
         }
 
         Vector3 target = GetPlayerTarget();
+        distanceToPlayer = Vector3.Distance(transform.position, target);
 
         if (distanceToPlayer <= explodeRange)
         {
@@ -612,6 +666,7 @@ public class DroneNPC : MonoBehaviour
             directChaseLockTimer > 0f;
 
         bool blockedCloseAttack = false;
+        bool hasCloseAttackSlot = false;
 
         if (shouldCloseAttack)
         {
@@ -619,13 +674,26 @@ public class DroneNPC : MonoBehaviour
 
             if (closeAllowed)
             {
+                hasCloseAttackSlot = true;
+
                 if (CanUseDirectCloseAttack(target))
                 {
                     isCloseAttacking = true;
                     directChaseLockTimer = directChaseLockDuration;
                     ClearPath();
-                    MoveTowards(target, GetEffectiveChaseSpeed(), dt, true);
-                    return;
+
+                    if (MoveTowards(
+                        target,
+                        GetCloseApproachSpeed(distanceToPlayer),
+                        dt,
+                        true,
+                        true))
+                    {
+                        return;
+                    }
+
+                    cachedCloseAttackLineOfSight = false;
+                    nextCloseAttackLineOfSightCheckTime = 0f;
                 }
 
                 blockedCloseAttack = true;
@@ -646,8 +714,27 @@ public class DroneNPC : MonoBehaviour
         if (hasLineOfSight)
         {
             directChaseLockTimer = Mathf.Max(directChaseLockTimer, 0.25f);
-            MoveTowards(target, GetEffectiveChaseSpeed(), dt, false);
-            return;
+
+            bool useAgileApproach = distanceToPlayer <= closeAttackRange;
+            bool useCloseCollisionSafety = useAgileApproach && hasCloseAttackSlot;
+            float speed = useAgileApproach
+                ? GetCloseApproachSpeed(distanceToPlayer)
+                : GetEffectiveChaseSpeed();
+
+            if (MoveTowards(
+                target,
+                speed,
+                dt,
+                useCloseCollisionSafety,
+                useAgileApproach))
+            {
+                return;
+            }
+
+            cachedLineOfSight = false;
+            nextLineOfSightCheckTime = 0f;
+            nextRepathTime = 0f;
+            blockedCloseAttack = true;
         }
 
         float interval = isForcedHunter ? forcedHuntRepathInterval : chaseRepathInterval;
@@ -655,12 +742,12 @@ public class DroneNPC : MonoBehaviour
             currentPath.Count == 0 ||
             currentPathIndex >= currentPath.Count ||
             isStuck ||
-            IsCurrentPathSegmentBlocked();
+            IsCurrentPathSegmentBlockedThrottled();
         bool targetMoved = HasChaseTargetMovedEnough(target);
 
         if (!waitingForPath &&
             Time.time >= nextRepathTime &&
-            (routeInvalid || targetMoved))
+            (routeInvalid || targetMoved || blockedCloseAttack))
         {
             float requestInterval = interval;
 
@@ -673,7 +760,10 @@ public class DroneNPC : MonoBehaviour
                 requestInterval = Mathf.Min(requestInterval, chaseTargetRepathInterval);
             }
 
-            bool keepCurrentPathWhileWaiting = targetMoved && !routeInvalid;
+            bool keepCurrentPathWhileWaiting =
+                targetMoved &&
+                !routeInvalid &&
+                !blockedCloseAttack;
 
             RequestPathTo(
                 target,
@@ -701,6 +791,21 @@ public class DroneNPC : MonoBehaviour
         }
 
         return speed;
+    }
+
+    float GetCloseApproachSpeed(float distanceToTarget)
+    {
+        float fullSpeed =
+            GetEffectiveChaseSpeed() *
+            Mathf.Clamp(closeApproachSpeedMultiplier, 0.4f, 1f);
+        float slowDistance = Mathf.Max(explodeRange + 0.1f, closeApproachSlowDistance);
+        float blend = Mathf.InverseLerp(explodeRange, slowDistance, distanceToTarget);
+
+        return Mathf.Lerp(
+            Mathf.Min(fullSpeed, Mathf.Max(0.1f, closeApproachMinSpeed)),
+            fullSpeed,
+            blend
+        );
     }
 
     void ExitChaseToPatrol()
@@ -736,8 +841,29 @@ public class DroneNPC : MonoBehaviour
 
         float interval = Mathf.Max(0.03f, closeAttackLineOfSightCheckInterval);
         nextCloseAttackLineOfSightCheckTime = Time.time + interval;
-        cachedCloseAttackLineOfSight = grid.HasClearPath(transform.position, target);
+        cachedCloseAttackLineOfSight = HasClearCloseAttackPath(target);
         return cachedCloseAttackLineOfSight;
+    }
+
+    bool HasClearCloseAttackPath(Vector3 target)
+    {
+        Vector3 direction = target - transform.position;
+        float distance = direction.magnitude;
+
+        if (distance <= 0.01f || obstacleLayer.value == 0)
+        {
+            return true;
+        }
+
+        return !Physics.SphereCast(
+            transform.position,
+            closeAttackCollisionRadius,
+            direction / distance,
+            out RaycastHit hit,
+            distance,
+            obstacleLayer,
+            QueryTriggerInteraction.Ignore
+        );
     }
 
     bool HasChaseTargetMovedEnough(Vector3 target)
@@ -856,23 +982,41 @@ public class DroneNPC : MonoBehaviour
             return desiredTarget;
         }
 
+        if (hasCachedWalkableLookTarget && Time.time < nextGridCornerCheckTime)
+        {
+            return cachedWalkableLookTarget;
+        }
+
+        float interval = Mathf.Max(0.02f, gridCornerCheckInterval);
+        nextGridCornerCheckTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.35f);
+
         float step = GetGridCornerCheckStep();
 
         if (grid.HasWalkableGridLine(transform.position, desiredTarget, step))
         {
-            return desiredTarget;
+            return CacheWalkableLookTarget(desiredTarget);
         }
 
         Vector3 currentNode = currentPath[Mathf.Clamp(currentPathIndex, 0, currentPath.Count - 1)];
 
         if (grid.HasWalkableGridLine(transform.position, currentNode, step))
         {
-            return currentNode;
+            return CacheWalkableLookTarget(currentNode);
         }
 
         isStuck = true;
         nextRepathTime = 0f;
-        return transform.position;
+        return CacheWalkableLookTarget(transform.position);
+    }
+
+    Vector3 CacheWalkableLookTarget(Vector3 target)
+    {
+        cachedWalkableLookTarget = target;
+        hasCachedWalkableLookTarget = true;
+        return target;
     }
 
     Vector3 GetLookAheadTarget()
@@ -991,21 +1135,47 @@ public class DroneNPC : MonoBehaviour
         return !grid.HasClearPath(transform.position, currentPath[currentPathIndex]);
     }
 
+    bool IsCurrentPathSegmentBlockedThrottled()
+    {
+        if (Time.time < nextPathSegmentBlockedCheckTime)
+        {
+            return cachedPathSegmentBlocked;
+        }
+
+        float interval = Mathf.Max(0.05f, pathSegmentBlockedCheckInterval);
+        nextPathSegmentBlockedCheckTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.35f);
+        cachedPathSegmentBlocked = IsCurrentPathSegmentBlocked();
+        return cachedPathSegmentBlocked;
+    }
+
     void ClearPath()
     {
         currentPath.Clear();
         currentPathIndex = 0;
         currentNodeStartTime = Time.time;
+        nextPathSegmentBlockedCheckTime = 0f;
+        cachedPathSegmentBlocked = false;
+        nextGridCornerCheckTime = 0f;
+        hasCachedWalkableLookTarget = false;
     }
 
-    void MoveTowards(Vector3 targetPosition, float targetSpeed, float dt, bool closeAttack)
+    bool MoveTowards(
+        Vector3 targetPosition,
+        float targetSpeed,
+        float dt,
+        bool useCloseCollisionSafety,
+        bool useAgileSteering = false
+    )
     {
         Vector3 toTarget = targetPosition - transform.position;
 
         if (toTarget.sqrMagnitude < 0.001f)
         {
             ApplySpeed(0f, dt);
-            return;
+            return false;
         }
 
         Vector3 desiredDirection = toTarget.normalized;
@@ -1013,7 +1183,7 @@ public class DroneNPC : MonoBehaviour
 
         bool allowDynamicAvoidance =
             enableDynamicObstacleAvoidance &&
-            (!(closeAttack && ignoreAvoidanceDuringCloseAttack)) &&
+            (!(useAgileSteering && ignoreAvoidanceDuringCloseAttack)) &&
             (state == DroneState.Chasing || enableDynamicAvoidanceWhilePatrolling);
 
         if (allowDynamicAvoidance)
@@ -1030,7 +1200,7 @@ public class DroneNPC : MonoBehaviour
             cachedDynamicAvoidance = Vector3.zero;
         }
 
-        float steer = closeAttack ? closeAttackSteeringSmooth : steeringSmooth;
+        float steer = useAgileSteering ? closeAttackSteeringSmooth : steeringSmooth;
 
         currentMoveDirection = Vector3.Slerp(
             currentMoveDirection.sqrMagnitude < 0.001f ? finalDirection : currentMoveDirection,
@@ -1040,32 +1210,43 @@ public class DroneNPC : MonoBehaviour
 
         ApplySpeed(targetSpeed, dt);
 
-        Vector3 nextPosition = transform.position + currentMoveDirection * currentSpeed * dt;
+        float movementDistance = currentSpeed * dt;
 
-        if (!closeAttack && IsGridMovementBlocked(nextPosition))
+        if (useAgileSteering)
         {
-            blockedStepCount++;
-            currentSpeed = Mathf.Lerp(currentSpeed, 0f, dt * deceleration);
-
-            if (blockedStepCount >= blockedStepTolerance)
-            {
-                isStuck = true;
-                ClearPath();
-                nextRepathTime = 0f;
-                blockedStepCount = 0;
-            }
-
-            return;
+            float stopDistance = Mathf.Max(0.05f, explodeRange * 0.85f);
+            movementDistance = Mathf.Min(
+                movementDistance,
+                Mathf.Max(0f, toTarget.magnitude - stopDistance)
+            );
         }
 
-        if (GetCachedMovementStepBlocked(nextPosition, targetPosition, closeAttack))
+        Vector3 nextPosition = transform.position + currentMoveDirection * movementDistance;
+
+        if (!useCloseCollisionSafety && IsGridMovementBlocked(nextPosition))
         {
             blockedStepCount++;
             currentSpeed = Mathf.Lerp(currentSpeed, 0f, dt * deceleration);
 
-            if (closeAttack)
+            if (blockedStepCount >= blockedStepTolerance)
             {
-                return;
+                isStuck = true;
+                ClearPath();
+                nextRepathTime = 0f;
+                blockedStepCount = 0;
+            }
+
+            return false;
+        }
+
+        if (GetCachedMovementStepBlocked(nextPosition, targetPosition, useCloseCollisionSafety))
+        {
+            blockedStepCount++;
+            currentSpeed = Mathf.Lerp(currentSpeed, 0f, dt * deceleration);
+
+            if (useCloseCollisionSafety)
+            {
+                return false;
             }
 
             if (blockedStepCount >= blockedStepTolerance)
@@ -1076,7 +1257,7 @@ public class DroneNPC : MonoBehaviour
                 blockedStepCount = 0;
             }
 
-            return;
+            return false;
         }
 
         blockedStepCount = 0;
@@ -1084,10 +1265,11 @@ public class DroneNPC : MonoBehaviour
 
         if (currentSpeed > 0.15f)
         {
-            RotateTowards(currentMoveDirection, dt);
+            RotateTowards(currentMoveDirection, dt, useAgileSteering);
         }
 
         isStuck = false;
+        return true;
     }
 
     void ApplySpeed(float targetSpeed, float dt)
@@ -1121,7 +1303,7 @@ public class DroneNPC : MonoBehaviour
     {
         if (closeAttack)
         {
-            return IsMovementStepBlocked(nextPosition, attackTarget, true);
+            return GetCachedCloseAttackMovementStepBlocked(nextPosition, attackTarget);
         }
 
         // 一般巡邏 / 遠距追逐：不要每步硬停，否則會原地轉圈且大量 SphereCast。
@@ -1144,6 +1326,32 @@ public class DroneNPC : MonoBehaviour
 
         cachedMovementStepBlocked = IsMovementStepBlocked(nextPosition, attackTarget, false);
         return cachedMovementStepBlocked;
+    }
+
+    bool GetCachedCloseAttackMovementStepBlocked(Vector3 nextPosition, Vector3 attackTarget)
+    {
+        if (Time.time < nextCloseAttackMovementCheckTime)
+        {
+            return cachedCloseAttackMovementBlocked;
+        }
+
+        float interval = Mathf.Max(0.02f, closeAttackMovementCheckInterval);
+        nextCloseAttackMovementCheckTime = Time.time + interval;
+
+        Vector3 movement = nextPosition - transform.position;
+        float distance = movement.magnitude;
+
+        if (distance > 0.001f)
+        {
+            float predictionDistance = Mathf.Max(distance, currentSpeed * interval);
+            nextPosition =
+                transform.position +
+                movement / distance * predictionDistance;
+        }
+
+        cachedCloseAttackMovementBlocked =
+            IsMovementStepBlocked(nextPosition, attackTarget, true);
+        return cachedCloseAttackMovementBlocked;
     }
 
     bool IsGridMovementBlocked(Vector3 nextPosition)
@@ -1402,7 +1610,7 @@ public class DroneNPC : MonoBehaviour
         }
     }
 
-    void RotateTowards(Vector3 direction, float dt)
+    void RotateTowards(Vector3 direction, float dt, bool useAgileSteering)
     {
         if (direction.sqrMagnitude < 0.001f)
         {
@@ -1428,7 +1636,8 @@ public class DroneNPC : MonoBehaviour
         Quaternion bankRotation = Quaternion.Euler(0f, 0f, currentBankAngle);
         Quaternion targetRotation = lookRotation * bankRotation;
 
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, dt * steeringSmooth);
+        float steer = useAgileSteering ? closeAttackSteeringSmooth : steeringSmooth;
+        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, dt * steer);
     }
 
     void CheckStuck()
@@ -1673,6 +1882,8 @@ public class DroneNPC : MonoBehaviour
         directChaseLockTimer = 0f;
         nextCloseAttackLineOfSightCheckTime = 0f;
         cachedCloseAttackLineOfSight = true;
+        nextCloseAttackMovementCheckTime = 0f;
+        cachedCloseAttackMovementBlocked = false;
         hasRequestedPathTarget = false;
         currentSpeed = 0f;
         currentBankAngle = 0f;
@@ -1683,6 +1894,5 @@ public class DroneNPC : MonoBehaviour
         nextLineOfSightCheckTime = 0f;
         nextVisualLODCheckTime = 0f;
         accumulatedFarSimulationDt = 0f;
-        visualOptimizer.ForceVisible(disableFarAnimators);
     }
 }
