@@ -1198,6 +1198,19 @@ public class DroneNPC2 : MonoBehaviour
             DestroyByDamage();
         }
     }
+    void OnParticleCollision(GameObject other)
+    {
+        if (IsInLayerMask(other.gameObject.layer, damageLayer))
+        {
+            TakeDamage(1);
+            return;
+        }
+
+        if (IsInLayerMask(other.gameObject.layer, destroyOnCollisionLayer))
+        {
+            DestroyByDamage();
+        }
+    }
 
     bool IsInLayerMask(int layer, LayerMask mask)
     {

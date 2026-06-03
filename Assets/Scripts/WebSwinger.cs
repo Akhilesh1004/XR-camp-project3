@@ -10,7 +10,8 @@ public class WebSwinger : MonoBehaviour
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
     public Transform handTransform;
-    public LineRenderer lineRenderer;
+    public LineRenderer[] lineRenderers; // <-- 保留：支援一隻手多個 LineRenderer
+    public GameObject webEffectPrefab;  // <-- 保留：手上的特效物件
     private GameObject currentHitObject;
 
     [Header("擺盪參數設定")]
@@ -52,10 +53,9 @@ public class WebSwinger : MonoBehaviour
     public float minScale = 0.05f;
     public float scaleFactor = 0.01f;
 
-    [Header("射擊設定")]
-    public GameObject bulletPrefab;
+    [Header("射擊/粒子特效設定")]
+    public GameObject bulletPrefab; // <-- 放入發射時要生成的粒子特效 Prefab
     public Transform firePoint;
-    public float bulletSpeed = 50f;
     public float shootCooldown = 0.2f;
     private float lastShootTime;
     private bool canShoot = false;
@@ -76,7 +76,7 @@ public class WebSwinger : MonoBehaviour
     private bool isWristUIOpen = false;
     
     private static List<WebSwinger> activeSwingerScripts = new List<WebSwinger>();
-    void OnEnableR() { activeSwingerScripts.Add(this); }
+    void OnEnableR() { if (!activeSwingerScripts.Contains(this)) activeSwingerScripts.Add(this); }
     void OnDisableR() { activeSwingerScripts.Remove(this); }
 
     public static bool IsSwinging
@@ -89,19 +89,30 @@ public class WebSwinger : MonoBehaviour
     {
         activeSwingCount = 0;
         pendingSwingCount = 0;
+        activeSwingerScripts.Clear();
     }
 
     void Start()
     {
-        if (lineRenderer != null)
+        // 初始清空所有 LineRenderer
+        if (lineRenderers != null)
         {
-            lineRenderer.positionCount = 0;
+            foreach (var lr in lineRenderers)
+            {
+                if (lr != null) lr.positionCount = 0;
+            }
         }
+
+        if (webEffectPrefab != null)
+        {
+            webEffectPrefab.SetActive(false);
+        }
+
         normalFixedDeltaTime = Time.fixedDeltaTime;
         if (reticlePrefab != null)
         {
             spawnedReticle = Instantiate(reticlePrefab);
-            spawnedReticle.SetActive(false); // 初始隱藏
+            spawnedReticle.SetActive(false); 
         }
         if (globalVolume != null && globalVolume.profile.TryGet(out colorAdjustments))
         {
@@ -156,7 +167,6 @@ public class WebSwinger : MonoBehaviour
             StopVibration();
         }
 
-        // 抓牆時預掛蛛絲，放開牆後才真正啟動 SpringJoint
         if (hasPendingSwing && !WallGrabber.IsGrabbing)
         {
             ActivatePendingSwing();
@@ -167,7 +177,6 @@ public class WebSwinger : MonoBehaviour
             HandleAutoReeling();
         }
 
-        // slow motion for better aiming when按著 B 鍵
         if (OVRInput.GetDown(OVRInput.Button.Two) && controller == OVRInput.Controller.RTouch) 
         {
             StartSlowMotion();
@@ -200,26 +209,57 @@ public class WebSwinger : MonoBehaviour
             ThisHandGrabbing = false;
         }
 
-        // 預瞄指示
         UpdateReticle();
     }
 
     void LateUpdate()
     {
-        if (lineRenderer == null)
+        bool isSwingingNow = joint != null;
+        bool isPendingNow = hasPendingSwing;
+
+        // 1. 更新所有 LineRenderer 的位置
+        if (lineRenderers != null && lineRenderers.Length > 0)
         {
-            return;
+            foreach (var lr in lineRenderers)
+            {
+                if (lr == null) continue;
+
+                if (isSwingingNow)
+                {
+                    lr.SetPosition(0, handTransform.position);
+                    lr.SetPosition(1, swingPoint);
+                }
+                else if (isPendingNow)
+                {
+                    lr.SetPosition(0, handTransform.position);
+                    lr.SetPosition(1, pendingSwingPoint);
+                }
+            }
         }
 
-        if (joint != null)
+        // 2. 讓特效物件緊跟 LineRenderer 的方向與位置
+        if (webEffectPrefab != null && webEffectPrefab.activeSelf)
         {
-            lineRenderer.SetPosition(0, handTransform.position);
-            lineRenderer.SetPosition(1, swingPoint);
+            if (isSwingingNow)
+            {
+                UpdateEffectTransform(swingPoint);
+            }
+            else if (isPendingNow)
+            {
+                UpdateEffectTransform(pendingSwingPoint);
+            }
         }
-        else if (hasPendingSwing)
+    }
+
+    // 計算並將特效物件對齊蛛絲方向
+    void UpdateEffectTransform(Vector3 targetPoint)
+    {
+        webEffectPrefab.transform.position = handTransform.position;
+        Vector3 direction = targetPoint - handTransform.position;
+
+        if (direction.sqrMagnitude > 0.001f)
         {
-            lineRenderer.SetPosition(0, handTransform.position);
-            lineRenderer.SetPosition(1, pendingSwingPoint);
+            webEffectPrefab.transform.rotation = Quaternion.LookRotation(direction.normalized);
         }
     }
 
@@ -230,6 +270,7 @@ public class WebSwinger : MonoBehaviour
             ApplyContinuousForwardForce();
         }
     }
+
     void StartSwing()
     {
         if (joint != null || hasPendingSwing)
@@ -264,9 +305,17 @@ public class WebSwinger : MonoBehaviour
             hasPendingSwing = true;
             pendingSwingCount++;
 
-            if (lineRenderer != null)
+            if (lineRenderers != null)
             {
-                lineRenderer.positionCount = 2;
+                foreach (var lr in lineRenderers)
+                {
+                    if (lr != null) lr.positionCount = 2;
+                }
+            }
+
+            if (webEffectPrefab != null)
+            {
+                webEffectPrefab.SetActive(true);
             }
 
             Debug.Log("Pending swing created: " + gameObject.name);
@@ -276,7 +325,6 @@ public class WebSwinger : MonoBehaviour
     void StartSlowMotion()
     {
         Time.timeScale = slowTimeScale;
-        // 必須縮小 fixedDeltaTime，物理才不會卡頓
         Time.fixedDeltaTime = normalFixedDeltaTime * Time.timeScale;
         if (colorAdjustments != null)
         {
@@ -306,8 +354,6 @@ public class WebSwinger : MonoBehaviour
         hasPendingSwing = false;
         pendingSwingCount = Mathf.Max(0, pendingSwingCount - 1);
 
-        // 放開牆後才正式建立 SpringJoint
-        // 這裡不給 upBoost，避免跟 WallGrabber 的甩出速度疊太強
         CreateSwingJoint(point, false);
 
         Debug.Log("Pending swing activated: " + gameObject.name);
@@ -323,9 +369,17 @@ public class WebSwinger : MonoBehaviour
         hasPendingSwing = false;
         pendingSwingCount = Mathf.Max(0, pendingSwingCount - 1);
 
-        if (joint == null && lineRenderer != null)
+        if (joint == null && lineRenderers != null)
         {
-            lineRenderer.positionCount = 0;
+            foreach (var lr in lineRenderers)
+            {
+                if (lr != null) lr.positionCount = 0;
+            }
+            
+            if (webEffectPrefab != null)
+            {
+                webEffectPrefab.SetActive(false);
+            }
         }
 
         Debug.Log("Pending swing cancelled: " + gameObject.name);
@@ -359,7 +413,7 @@ public class WebSwinger : MonoBehaviour
 
         if (applyStartBoost)
         {
-            float powerMultiplier = 5f; // 預設單手推力
+            float powerMultiplier = 5f; 
             bool isSlingshot = false;
 
             if (activeSwingCount >= 2)
@@ -405,9 +459,17 @@ public class WebSwinger : MonoBehaviour
             }
         }
 
-        if (lineRenderer != null)
+        if (lineRenderers != null)
         {
-            lineRenderer.positionCount = 2;
+            foreach (var lr in lineRenderers)
+            {
+                if (lr != null) lr.positionCount = 2;
+            }
+        }
+
+        if (webEffectPrefab != null)
+        {
+            webEffectPrefab.SetActive(true);
         }
 
         Debug.Log("Swing joint created: " + gameObject.name);
@@ -435,9 +497,17 @@ public class WebSwinger : MonoBehaviour
 
         activeSwingCount = Mathf.Max(0, activeSwingCount - 1);
 
-        if (lineRenderer != null)
+        if (lineRenderers != null)
         {
-            lineRenderer.positionCount = 0;
+            foreach (var lr in lineRenderers)
+            {
+                if (lr != null) lr.positionCount = 0;
+            }
+        }
+
+        if (webEffectPrefab != null)
+        {
+            webEffectPrefab.SetActive(false);
         }
 
         if (applyBoost && playerRigidbody.velocity.sqrMagnitude > 0.01f)
@@ -455,9 +525,6 @@ public class WebSwinger : MonoBehaviour
         Debug.Log("Swing stopped: " + gameObject.name);
     }
 
-    // 給 WallGrabber 呼叫：
-    // 正在擺盪時抓牆，先停掉 SpringJoint；
-    // 如果蛛絲按鍵還按著，就把原本蛛絲點轉成 pending swing。
     public void SuspendActiveSwingForWallGrab()
     {
         if (joint == null)
@@ -484,18 +551,34 @@ public class WebSwinger : MonoBehaviour
                 pendingSwingCount++;
             }
 
-            if (lineRenderer != null)
+            if (lineRenderers != null)
             {
-                lineRenderer.positionCount = 2;
+                foreach (var lr in lineRenderers)
+                {
+                    if (lr != null) lr.positionCount = 2;
+                }
+            }
+
+            if (webEffectPrefab != null)
+            {
+                webEffectPrefab.SetActive(true);
             }
 
             Debug.Log("Active swing suspended and converted to pending: " + gameObject.name);
         }
         else
         {
-            if (!hasPendingSwing && lineRenderer != null)
+            if (!hasPendingSwing && lineRenderers != null)
             {
-                lineRenderer.positionCount = 0;
+                foreach (var lr in lineRenderers)
+                {
+                    if (lr != null) lr.positionCount = 0;
+                }
+            }
+
+            if (webEffectPrefab != null)
+            {
+                webEffectPrefab.SetActive(false);
             }
 
             Debug.Log("Active swing stopped by wall grab: " + gameObject.name);
@@ -571,7 +654,6 @@ public class WebSwinger : MonoBehaviour
         }
 
         Vector3 toPointDir = toPoint.normalized;
-
         Vector3 velocity = playerRigidbody.velocity;
 
         if (velocity.sqrMagnitude < 0.01f)
@@ -610,13 +692,11 @@ public class WebSwinger : MonoBehaviour
 
     float GetAngleBetweenWebs()
     {
-        // 找到兩個正在擺盪的點
         List<Vector3> activePoints = new List<Vector3>();
         foreach (var script in activeSwingerScripts)
         {
             if (script.joint != null)
             {
-                // 計算從玩家指向掛鉤點的向量
                 Vector3 dirToPoint = (script.swingPoint - playerRigidbody.position).normalized;
                 activePoints.Add(dirToPoint);
             }
@@ -624,7 +704,6 @@ public class WebSwinger : MonoBehaviour
 
         if (activePoints.Count >= 2)
         {
-            // 使用 Vector3.Angle 計算兩個向量之間的夾角 (0~180度)
             return Vector3.Angle(activePoints[0], activePoints[1]);
         }
 
@@ -636,6 +715,7 @@ public class WebSwinger : MonoBehaviour
         StopVibration();
         StopSlowMotion();
         ForceStopSwing(false);
+        OnDisableR();
     }
 
     void UpdateReticle()
@@ -651,7 +731,6 @@ public class WebSwinger : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(handTransform.position, handTransform.forward, out hit, maxSwingDistance, swingableLayer))
         {
-
             float distance = Vector3.Distance(handTransform.position, hit.point);
             float minShowDistance = 3f;
             if (distance < minShowDistance)
@@ -661,13 +740,11 @@ public class WebSwinger : MonoBehaviour
             }
             spawnedReticle.SetActive(true);
         
-            // spawnedReticle.transform.position = hit.point + (hit.normal * 0.05f);
             Vector3 targetPos = hit.point + (hit.normal * 0.05f);
             spawnedReticle.transform.position = Vector3.Lerp(spawnedReticle.transform.position, targetPos, 0.5f);
             spawnedReticle.transform.rotation = Quaternion.LookRotation(-hit.normal);
             
             float currentScale = minScale + (distance * scaleFactor);
-            
             spawnedReticle.transform.localScale = new Vector3(currentScale, currentScale, currentScale);
         }
         else
@@ -692,19 +769,14 @@ public class WebSwinger : MonoBehaviour
         return false;
     }
 
+    // 單純在發射點生成粒子物件，不帶速度
     void Shoot()
     {
         if (bulletPrefab == null || firePoint == null) return;
 
-        GameObject bullet = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
+        GameObject particleEffect = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
         
-        Rigidbody rb = bullet.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.velocity = firePoint.forward * bulletSpeed;
-        }
-
-        //Destroy(bullet, 3f);
+        Destroy(particleEffect, 3f); // 3 秒後自動銷毀物件
 
         OVRInput.SetControllerVibration(0.7f, 0.5f, controller);
         Invoke("StopVibration", 0.1f);
