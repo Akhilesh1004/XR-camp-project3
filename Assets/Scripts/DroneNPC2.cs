@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 public class DroneNPC2 : MonoBehaviour
@@ -89,6 +90,15 @@ public class DroneNPC2 : MonoBehaviour
     public float hiddenSimulationInterval = 0.35f;
     public float maxFarSimulationDelta = 0.3f;
 
+    [Header("Cargo Name Label")]
+    public bool showCargoNameLabel = true;
+    public Vector3 cargoLabelLocalOffset = new Vector3(0f, 3.2f, 0f);
+    public Vector2 cargoLabelSize = new Vector2(260f, 72f);
+    public float cargoLabelWorldScale = 0.01f;
+    public float cargoLabelFontSize = 32f;
+    public Color cargoLabelTextColor = Color.white;
+    public float cargoLabelBillboardInterval = 0.1f;
+
     [Header("受破壞設定")]
     public LayerMask damageLayer;
     public LayerMask destroyOnCollisionLayer;
@@ -146,6 +156,12 @@ public class DroneNPC2 : MonoBehaviour
     private float nextVisualLODCheckTime = 0f;
     private float nextFarSimulationTime = 0f;
     private float accumulatedFarSimulationDt = 0f;
+    private Canvas cargoLabelCanvas;
+    private RectTransform cargoLabelRect;
+    private TextMeshProUGUI cargoLabelText;
+    private Camera cargoLabelCamera;
+    private float nextCargoLabelBillboardTime = 0f;
+    private string currentCargoDisplayName = "";
 
     public bool CanRecycleForLocalPopulation =>
         hasBeenInitialized &&
@@ -253,6 +269,7 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         UpdateVisualLOD(false);
+        UpdateCargoNameLabel(false);
 
         if (ShouldThrottleFarSimulation(ref dt))
         {
@@ -1215,6 +1232,8 @@ public class DroneNPC2 : MonoBehaviour
         currentCargo.transform.localPosition = Vector3.zero;
         currentCargo.transform.localRotation = Quaternion.identity;
         currentCargo.transform.localScale = DivideScale(prefabScale, parent.lossyScale);
+        currentCargoDisplayName = GetCargoDisplayName(currentCargo);
+        UpdateCargoNameLabel(true);
 
         Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>(true);
 
@@ -1254,22 +1273,30 @@ public class DroneNPC2 : MonoBehaviour
     {
         if (currentCargo == null)
         {
+            currentCargoDisplayName = "";
+            UpdateCargoNameLabel(true);
             return;
         }
 
         Destroy(currentCargo);
         currentCargo = null;
+        currentCargoDisplayName = "";
+        UpdateCargoNameLabel(true);
     }
 
     void DropCargo()
     {
         if (currentCargo == null)
         {
+            currentCargoDisplayName = "";
+            UpdateCargoNameLabel(true);
             return;
         }
 
         GameObject dropped = currentCargo;
         currentCargo = null;
+        currentCargoDisplayName = "";
+        UpdateCargoNameLabel(true);
         dropped.transform.SetParent(null, true);
         SetCargoRenderersEnabled(dropped, true);
 
@@ -1322,6 +1349,131 @@ public class DroneNPC2 : MonoBehaviour
                 cargoRenderer.enabled = enabled;
             }
         }
+    }
+
+    void EnsureCargoNameLabel()
+    {
+        if (cargoLabelCanvas != null)
+        {
+            return;
+        }
+
+        GameObject canvasObject = new GameObject("CargoNameCanvas");
+        canvasObject.transform.SetParent(transform, false);
+        canvasObject.transform.localPosition = cargoLabelLocalOffset;
+        canvasObject.transform.localRotation = Quaternion.identity;
+        canvasObject.transform.localScale = Vector3.one * Mathf.Max(0.001f, cargoLabelWorldScale);
+
+        cargoLabelCanvas = canvasObject.AddComponent<Canvas>();
+        cargoLabelCanvas.renderMode = RenderMode.WorldSpace;
+        cargoLabelCanvas.sortingOrder = 50;
+        cargoLabelCanvas.enabled = false;
+
+        cargoLabelRect = canvasObject.GetComponent<RectTransform>();
+        cargoLabelRect.sizeDelta = cargoLabelSize;
+
+        GameObject textObject = new GameObject("CargoNameText");
+        textObject.transform.SetParent(canvasObject.transform, false);
+
+        RectTransform textRect = textObject.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        cargoLabelText = textObject.AddComponent<TextMeshProUGUI>();
+        cargoLabelText.alignment = TextAlignmentOptions.Center;
+        cargoLabelText.enableWordWrapping = false;
+        cargoLabelText.overflowMode = TextOverflowModes.Ellipsis;
+        cargoLabelText.raycastTarget = false;
+        cargoLabelText.text = "";
+    }
+
+    void UpdateCargoNameLabel(bool force)
+    {
+        if (!showCargoNameLabel || currentCargo == null || string.IsNullOrEmpty(currentCargoDisplayName))
+        {
+            SetCargoNameLabelVisible(false);
+            return;
+        }
+
+        EnsureCargoNameLabel();
+
+        cargoLabelCanvas.transform.localPosition = cargoLabelLocalOffset;
+        cargoLabelCanvas.transform.localScale = Vector3.one * Mathf.Max(0.001f, cargoLabelWorldScale);
+
+        if (cargoLabelRect != null)
+        {
+            cargoLabelRect.sizeDelta = cargoLabelSize;
+        }
+
+        if (cargoLabelText != null)
+        {
+            cargoLabelText.text = currentCargoDisplayName;
+            cargoLabelText.fontSize = Mathf.Max(1f, cargoLabelFontSize);
+            cargoLabelText.color = cargoLabelTextColor;
+        }
+
+        bool visible = !enableVisualLOD || visualOptimizer.IsVisible;
+        SetCargoNameLabelVisible(visible);
+
+        if (!visible)
+        {
+            return;
+        }
+
+        if (force || Time.time >= nextCargoLabelBillboardTime)
+        {
+            FaceCargoNameLabelToCamera();
+            nextCargoLabelBillboardTime =
+                Time.time +
+                Mathf.Max(0.02f, cargoLabelBillboardInterval);
+        }
+    }
+
+    void SetCargoNameLabelVisible(bool visible)
+    {
+        if (cargoLabelCanvas != null)
+        {
+            cargoLabelCanvas.enabled = visible;
+        }
+    }
+
+    void FaceCargoNameLabelToCamera()
+    {
+        if (cargoLabelCanvas == null)
+        {
+            return;
+        }
+
+        if (cargoLabelCamera == null)
+        {
+            cargoLabelCamera = Camera.main;
+        }
+
+        if (cargoLabelCamera == null)
+        {
+            return;
+        }
+
+        cargoLabelCanvas.transform.rotation = cargoLabelCamera.transform.rotation;
+    }
+
+    string GetCargoDisplayName(GameObject cargo)
+    {
+        if (cargo == null)
+        {
+            return "";
+        }
+
+        DeliveryCargo deliveryCargo = cargo.GetComponentInChildren<DeliveryCargo>(true);
+
+        if (deliveryCargo != null && !string.IsNullOrWhiteSpace(deliveryCargo.FoodName))
+        {
+            return deliveryCargo.FoodName;
+        }
+
+        return cargo.name.Replace("(Clone)", "").Trim();
     }
 
     public void PrepareForPool()
