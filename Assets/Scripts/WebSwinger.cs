@@ -10,8 +10,8 @@ public class WebSwinger : MonoBehaviour
     [Header("綁定物件")]
     public Rigidbody playerRigidbody;
     public Transform handTransform;
-    public LineRenderer[] lineRenderers; // <-- 保留：支援一隻手多個 LineRenderer
-    public GameObject webEffectPrefab;  // <-- 保留：手上的特效物件
+    public LineRenderer[] lineRenderers; 
+    public GameObject webEffectPrefab;  
     private GameObject currentHitObject;
 
     [Header("擺盪參數設定")]
@@ -53,9 +53,11 @@ public class WebSwinger : MonoBehaviour
     public float minScale = 0.05f;
     public float scaleFactor = 0.01f;
 
-    [Header("射擊/粒子特效設定")]
-    public GameObject bulletPrefab; // <-- 放入發射時要生成的粒子特效 Prefab
+    [Header("射擊/子彈類型設定")]
+    public bool useParticleBullet = true; // 🌟 新增開關：true = 純粒子特效 / false = 一般實體物理子彈
+    public GameObject bulletPrefab;      // 放入對應的子彈或粒子 Prefab
     public Transform firePoint;
+    public float bulletSpeed = 50f;      // 🌟 加回：一般子彈飛行的速度
     public float shootCooldown = 0.2f;
     private float lastShootTime;
     private bool canShoot = false;
@@ -94,7 +96,6 @@ public class WebSwinger : MonoBehaviour
 
     void Start()
     {
-        // 初始清空所有 LineRenderer
         if (lineRenderers != null)
         {
             foreach (var lr in lineRenderers)
@@ -217,7 +218,6 @@ public class WebSwinger : MonoBehaviour
         bool isSwingingNow = joint != null;
         bool isPendingNow = hasPendingSwing;
 
-        // 1. 更新所有 LineRenderer 的位置
         if (lineRenderers != null && lineRenderers.Length > 0)
         {
             foreach (var lr in lineRenderers)
@@ -237,7 +237,6 @@ public class WebSwinger : MonoBehaviour
             }
         }
 
-        // 2. 讓特效物件緊跟 LineRenderer 的方向與位置
         if (webEffectPrefab != null && webEffectPrefab.activeSelf)
         {
             if (isSwingingNow)
@@ -251,7 +250,6 @@ public class WebSwinger : MonoBehaviour
         }
     }
 
-    // 計算並將特效物件對齊蛛絲方向
     void UpdateEffectTransform(Vector3 targetPoint)
     {
         webEffectPrefab.transform.position = handTransform.position;
@@ -769,15 +767,33 @@ public class WebSwinger : MonoBehaviour
         return false;
     }
 
-    // 單純在發射點生成粒子物件，不帶速度
+    // 🌟 已更新：根據 bool 選項自動切換「粒子模式」或「物理子彈模式」
     void Shoot()
     {
         if (bulletPrefab == null || firePoint == null) return;
 
-        GameObject particleEffect = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
-        
-        Destroy(particleEffect, 3f); // 3 秒後自動銷毀物件
+        // 生成物件複製品
+        GameObject spawnedBullet = Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
 
+        if (useParticleBullet)
+        {
+            // A. 純粒子模式：物件不給速度，原地停留 3 秒後自動消亡（走 OnParticleTrigger 判定）
+            Destroy(spawnedBullet, 3f);
+        }
+        else
+        {
+            // B. 加回原本的邏輯：給予物理速度飛出去（走原本的 OnTriggerEnter 判定）
+            Rigidbody rb = spawnedBullet.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.velocity = firePoint.forward * bulletSpeed;
+            }
+            
+            // 原本被註解掉的物理子彈自動銷毀（可自由調整時間）
+            // Destroy(spawnedBullet, 3f); 
+        }
+
+        // 震動回饋
         OVRInput.SetControllerVibration(0.7f, 0.5f, controller);
         Invoke("StopVibration", 0.1f);
     }

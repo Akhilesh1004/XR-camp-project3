@@ -1796,7 +1796,7 @@ public class DroneNPC : MonoBehaviour
         return (mask.value & (1 << layer)) != 0;
     }
 
-    void Explode()
+    public void Explode()
     {
         if (state == DroneState.Exploding)
         {
