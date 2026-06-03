@@ -46,11 +46,11 @@ Material:
     - _NoiseAmount: 0.1
     - _QueueControl: 0
     - _QueueOffset: 0
-    - _dissolveAmount: 0.2
+    - _dissolveAmount: 1
     - _noisepower: 2
     m_Colors:
     - _Color: {r: 8.474189, g: 8.474189, b: 8.474189, a: 1}
-    - _mainSpeed: {r: -0.5, g: 0, b: 0, a: 0}
+    - _mainSpeed: {r: 1, g: 0, b: 0, a: 0}
     - _noiseSpeed: {r: -1, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
 --- !u!114 &496628561768972785
