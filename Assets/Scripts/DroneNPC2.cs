@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.TextCore.LowLevel;
 
 public class DroneNPC2 : MonoBehaviour
 {
@@ -97,6 +98,17 @@ public class DroneNPC2 : MonoBehaviour
     public float cargoLabelWorldScale = 0.01f;
     public float cargoLabelFontSize = 32f;
     public Color cargoLabelTextColor = Color.white;
+    public TMP_FontAsset cargoLabelFont;
+    public bool cargoLabelUseSystemFontFallback = false;
+    public string[] cargoLabelSystemFontNames =
+    {
+        "PingFang TC",
+        "Noto Sans CJK TC",
+        "Noto Sans TC",
+        "Microsoft JhengHei",
+        "Arial Unicode MS",
+        "Arial"
+    };
     public float cargoLabelBillboardInterval = 0.1f;
 
     [Header("受破壞設定")]
@@ -162,6 +174,7 @@ public class DroneNPC2 : MonoBehaviour
     private Camera cargoLabelCamera;
     private float nextCargoLabelBillboardTime = 0f;
     private string currentCargoDisplayName = "";
+    private static TMP_FontAsset cachedSystemCargoLabelFont;
 
     public bool CanRecycleForLocalPopulation =>
         hasBeenInitialized &&
@@ -1360,9 +1373,7 @@ public class DroneNPC2 : MonoBehaviour
 
         GameObject canvasObject = new GameObject("CargoNameCanvas");
         canvasObject.transform.SetParent(transform, false);
-        canvasObject.transform.localPosition = cargoLabelLocalOffset;
         canvasObject.transform.localRotation = Quaternion.identity;
-        canvasObject.transform.localScale = Vector3.one * Mathf.Max(0.001f, cargoLabelWorldScale);
 
         cargoLabelCanvas = canvasObject.AddComponent<Canvas>();
         cargoLabelCanvas.renderMode = RenderMode.WorldSpace;
@@ -1386,7 +1397,11 @@ public class DroneNPC2 : MonoBehaviour
         cargoLabelText.enableWordWrapping = false;
         cargoLabelText.overflowMode = TextOverflowModes.Ellipsis;
         cargoLabelText.raycastTarget = false;
+        cargoLabelText.richText = false;
+        cargoLabelText.parseCtrlCharacters = false;
         cargoLabelText.text = "";
+        ApplyCargoLabelFont();
+        ApplyCargoLabelTransform();
     }
 
     void UpdateCargoNameLabel(bool force)
@@ -1399,8 +1414,7 @@ public class DroneNPC2 : MonoBehaviour
 
         EnsureCargoNameLabel();
 
-        cargoLabelCanvas.transform.localPosition = cargoLabelLocalOffset;
-        cargoLabelCanvas.transform.localScale = Vector3.one * Mathf.Max(0.001f, cargoLabelWorldScale);
+        ApplyCargoLabelTransform();
 
         if (cargoLabelRect != null)
         {
@@ -1409,9 +1423,11 @@ public class DroneNPC2 : MonoBehaviour
 
         if (cargoLabelText != null)
         {
+            ApplyCargoLabelFont();
             cargoLabelText.text = currentCargoDisplayName;
             cargoLabelText.fontSize = Mathf.Max(1f, cargoLabelFontSize);
             cargoLabelText.color = cargoLabelTextColor;
+            cargoLabelText.ForceMeshUpdate(false, false);
         }
 
         bool visible = !enableVisualLOD || visualOptimizer.IsVisible;
@@ -1456,7 +1472,125 @@ public class DroneNPC2 : MonoBehaviour
             return;
         }
 
-        cargoLabelCanvas.transform.rotation = cargoLabelCamera.transform.rotation;
+        Vector3 fromCameraToLabel =
+            cargoLabelCanvas.transform.position -
+            cargoLabelCamera.transform.position;
+
+        if (fromCameraToLabel.sqrMagnitude < 0.0001f)
+        {
+            cargoLabelCanvas.transform.rotation = cargoLabelCamera.transform.rotation;
+            return;
+        }
+
+        cargoLabelCanvas.transform.rotation = Quaternion.LookRotation(
+            fromCameraToLabel.normalized,
+            cargoLabelCamera.transform.up
+        );
+    }
+
+    void ApplyCargoLabelTransform()
+    {
+        if (cargoLabelCanvas == null)
+        {
+            return;
+        }
+
+        Transform labelTransform = cargoLabelCanvas.transform;
+        labelTransform.position = transform.TransformPoint(cargoLabelLocalOffset);
+
+        float targetScale = Mathf.Max(0.001f, cargoLabelWorldScale);
+        Vector3 parentScale = transform.lossyScale;
+
+        labelTransform.localScale = new Vector3(
+            Mathf.Abs(parentScale.x) > 0.0001f ? targetScale / parentScale.x : targetScale,
+            Mathf.Abs(parentScale.y) > 0.0001f ? targetScale / parentScale.y : targetScale,
+            Mathf.Abs(parentScale.z) > 0.0001f ? targetScale / parentScale.z : targetScale
+        );
+    }
+
+    void ApplyCargoLabelFont()
+    {
+        if (cargoLabelText == null)
+        {
+            return;
+        }
+
+        TMP_FontAsset fontAsset = GetCargoLabelFont();
+
+        if (fontAsset != null)
+        {
+            cargoLabelText.font = fontAsset;
+        }
+    }
+
+    TMP_FontAsset GetCargoLabelFont()
+    {
+        if (cargoLabelFont != null)
+        {
+            return cargoLabelFont;
+        }
+
+        TMP_FontAsset liberationSans =
+            Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+
+        if (liberationSans != null)
+        {
+            return liberationSans;
+        }
+
+        if (TMP_Settings.defaultFontAsset != null)
+        {
+            return TMP_Settings.defaultFontAsset;
+        }
+
+        if (cargoLabelUseSystemFontFallback)
+        {
+            TMP_FontAsset systemFont = GetOrCreateSystemCargoLabelFont();
+
+            if (systemFont != null)
+            {
+                return systemFont;
+            }
+        }
+
+        return null;
+    }
+
+    TMP_FontAsset GetOrCreateSystemCargoLabelFont()
+    {
+        if (cachedSystemCargoLabelFont != null)
+        {
+            return cachedSystemCargoLabelFont;
+        }
+
+        if (cargoLabelSystemFontNames == null ||
+            cargoLabelSystemFontNames.Length == 0)
+        {
+            return null;
+        }
+
+        Font systemFont = Font.CreateDynamicFontFromOSFont(
+            cargoLabelSystemFontNames,
+            Mathf.RoundToInt(Mathf.Max(16f, cargoLabelFontSize))
+        );
+
+        if (systemFont == null)
+        {
+            return null;
+        }
+
+        cachedSystemCargoLabelFont = TMP_FontAsset.CreateFontAsset(
+            systemFont,
+            Mathf.RoundToInt(Mathf.Max(32f, cargoLabelFontSize * 2f)),
+            9,
+            GlyphRenderMode.SDFAA,
+            1024,
+            1024,
+            AtlasPopulationMode.Dynamic
+        );
+
+        cachedSystemCargoLabelFont.name = "Runtime Cargo Label Font";
+        return cachedSystemCargoLabelFont;
     }
 
     string GetCargoDisplayName(GameObject cargo)
