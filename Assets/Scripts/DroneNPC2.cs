@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.TextCore.LowLevel;
 
 public class DroneNPC2 : MonoBehaviour
 {
@@ -93,23 +92,10 @@ public class DroneNPC2 : MonoBehaviour
 
     [Header("Cargo Name Label")]
     public bool showCargoNameLabel = true;
-    public Vector3 cargoLabelLocalOffset = new Vector3(0f, 3.2f, 0f);
-    public Vector2 cargoLabelSize = new Vector2(260f, 72f);
-    public float cargoLabelWorldScale = 0.01f;
-    public float cargoLabelFontSize = 32f;
-    public Color cargoLabelTextColor = Color.white;
-    public TMP_FontAsset cargoLabelFont;
-    public bool cargoLabelUseSystemFontFallback = false;
-    public string[] cargoLabelSystemFontNames =
-    {
-        "PingFang TC",
-        "Noto Sans CJK TC",
-        "Noto Sans TC",
-        "Microsoft JhengHei",
-        "Arial Unicode MS",
-        "Arial"
-    };
-    public float cargoLabelBillboardInterval = 0.1f;
+    public Canvas cargoNameCanvas;
+    public TextMeshProUGUI cargoNameText;
+    public bool autoFindCargoNameText = true;
+    public bool hideCargoNameWhenEmpty = true;
 
     [Header("受破壞設定")]
     public LayerMask damageLayer;
@@ -168,13 +154,7 @@ public class DroneNPC2 : MonoBehaviour
     private float nextVisualLODCheckTime = 0f;
     private float nextFarSimulationTime = 0f;
     private float accumulatedFarSimulationDt = 0f;
-    private Canvas cargoLabelCanvas;
-    private RectTransform cargoLabelRect;
-    private TextMeshProUGUI cargoLabelText;
-    private Camera cargoLabelCamera;
-    private float nextCargoLabelBillboardTime = 0f;
     private string currentCargoDisplayName = "";
-    private static TMP_FontAsset cachedSystemCargoLabelFont;
 
     public bool CanRecycleForLocalPopulation =>
         hasBeenInitialized &&
@@ -1364,233 +1344,54 @@ public class DroneNPC2 : MonoBehaviour
         }
     }
 
-    void EnsureCargoNameLabel()
-    {
-        if (cargoLabelCanvas != null)
-        {
-            return;
-        }
-
-        GameObject canvasObject = new GameObject("CargoNameCanvas");
-        canvasObject.transform.SetParent(transform, false);
-        canvasObject.transform.localRotation = Quaternion.identity;
-
-        cargoLabelCanvas = canvasObject.AddComponent<Canvas>();
-        cargoLabelCanvas.renderMode = RenderMode.WorldSpace;
-        cargoLabelCanvas.sortingOrder = 50;
-        cargoLabelCanvas.enabled = false;
-
-        cargoLabelRect = canvasObject.GetComponent<RectTransform>();
-        cargoLabelRect.sizeDelta = cargoLabelSize;
-
-        GameObject textObject = new GameObject("CargoNameText");
-        textObject.transform.SetParent(canvasObject.transform, false);
-
-        RectTransform textRect = textObject.AddComponent<RectTransform>();
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-
-        cargoLabelText = textObject.AddComponent<TextMeshProUGUI>();
-        cargoLabelText.alignment = TextAlignmentOptions.Center;
-        cargoLabelText.enableWordWrapping = false;
-        cargoLabelText.overflowMode = TextOverflowModes.Ellipsis;
-        cargoLabelText.raycastTarget = false;
-        cargoLabelText.richText = false;
-        cargoLabelText.parseCtrlCharacters = false;
-        cargoLabelText.text = "";
-        ApplyCargoLabelFont();
-        ApplyCargoLabelTransform();
-    }
-
     void UpdateCargoNameLabel(bool force)
     {
-        if (!showCargoNameLabel || currentCargo == null || string.IsNullOrEmpty(currentCargoDisplayName))
+        ResolveCargoNameLabelReferences();
+
+        bool hasDisplayName =
+            currentCargo != null &&
+            !string.IsNullOrEmpty(currentCargoDisplayName);
+        bool visible =
+            showCargoNameLabel &&
+            hasDisplayName &&
+            (!enableVisualLOD || visualOptimizer.IsVisible);
+
+        if (cargoNameText != null && (force || hasDisplayName || hideCargoNameWhenEmpty))
         {
-            SetCargoNameLabelVisible(false);
-            return;
+            cargoNameText.text = visible ? currentCargoDisplayName : "";
         }
 
-        EnsureCargoNameLabel();
-
-        ApplyCargoLabelTransform();
-
-        if (cargoLabelRect != null)
+        if (hideCargoNameWhenEmpty || hasDisplayName)
         {
-            cargoLabelRect.sizeDelta = cargoLabelSize;
-        }
-
-        if (cargoLabelText != null)
-        {
-            ApplyCargoLabelFont();
-            cargoLabelText.text = currentCargoDisplayName;
-            cargoLabelText.fontSize = Mathf.Max(1f, cargoLabelFontSize);
-            cargoLabelText.color = cargoLabelTextColor;
-            cargoLabelText.ForceMeshUpdate(false, false);
-        }
-
-        bool visible = !enableVisualLOD || visualOptimizer.IsVisible;
-        SetCargoNameLabelVisible(visible);
-
-        if (!visible)
-        {
-            return;
-        }
-
-        if (force || Time.time >= nextCargoLabelBillboardTime)
-        {
-            FaceCargoNameLabelToCamera();
-            nextCargoLabelBillboardTime =
-                Time.time +
-                Mathf.Max(0.02f, cargoLabelBillboardInterval);
+            SetCargoNameLabelVisible(visible);
         }
     }
 
     void SetCargoNameLabelVisible(bool visible)
     {
-        if (cargoLabelCanvas != null)
+        if (cargoNameCanvas != null)
         {
-            cargoLabelCanvas.enabled = visible;
-        }
-    }
-
-    void FaceCargoNameLabelToCamera()
-    {
-        if (cargoLabelCanvas == null)
-        {
+            cargoNameCanvas.enabled = visible;
             return;
         }
 
-        if (cargoLabelCamera == null)
+        if (cargoNameText != null)
         {
-            cargoLabelCamera = Camera.main;
-        }
-
-        if (cargoLabelCamera == null)
-        {
-            return;
-        }
-
-        Vector3 fromCameraToLabel =
-            cargoLabelCanvas.transform.position -
-            cargoLabelCamera.transform.position;
-
-        if (fromCameraToLabel.sqrMagnitude < 0.0001f)
-        {
-            cargoLabelCanvas.transform.rotation = cargoLabelCamera.transform.rotation;
-            return;
-        }
-
-        cargoLabelCanvas.transform.rotation = Quaternion.LookRotation(
-            fromCameraToLabel.normalized,
-            cargoLabelCamera.transform.up
-        );
-    }
-
-    void ApplyCargoLabelTransform()
-    {
-        if (cargoLabelCanvas == null)
-        {
-            return;
-        }
-
-        Transform labelTransform = cargoLabelCanvas.transform;
-        labelTransform.position = transform.TransformPoint(cargoLabelLocalOffset);
-
-        float targetScale = Mathf.Max(0.001f, cargoLabelWorldScale);
-        Vector3 parentScale = transform.lossyScale;
-
-        labelTransform.localScale = new Vector3(
-            Mathf.Abs(parentScale.x) > 0.0001f ? targetScale / parentScale.x : targetScale,
-            Mathf.Abs(parentScale.y) > 0.0001f ? targetScale / parentScale.y : targetScale,
-            Mathf.Abs(parentScale.z) > 0.0001f ? targetScale / parentScale.z : targetScale
-        );
-    }
-
-    void ApplyCargoLabelFont()
-    {
-        if (cargoLabelText == null)
-        {
-            return;
-        }
-
-        TMP_FontAsset fontAsset = GetCargoLabelFont();
-
-        if (fontAsset != null)
-        {
-            cargoLabelText.font = fontAsset;
+            cargoNameText.enabled = visible;
         }
     }
 
-    TMP_FontAsset GetCargoLabelFont()
+    void ResolveCargoNameLabelReferences()
     {
-        if (cargoLabelFont != null)
+        if (cargoNameText == null && autoFindCargoNameText)
         {
-            return cargoLabelFont;
+            cargoNameText = GetComponentInChildren<TextMeshProUGUI>(true);
         }
 
-        TMP_FontAsset liberationSans =
-            Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
-
-        if (liberationSans != null)
+        if (cargoNameCanvas == null && cargoNameText != null)
         {
-            return liberationSans;
+            cargoNameCanvas = cargoNameText.GetComponentInParent<Canvas>(true);
         }
-
-        if (TMP_Settings.defaultFontAsset != null)
-        {
-            return TMP_Settings.defaultFontAsset;
-        }
-
-        if (cargoLabelUseSystemFontFallback)
-        {
-            TMP_FontAsset systemFont = GetOrCreateSystemCargoLabelFont();
-
-            if (systemFont != null)
-            {
-                return systemFont;
-            }
-        }
-
-        return null;
-    }
-
-    TMP_FontAsset GetOrCreateSystemCargoLabelFont()
-    {
-        if (cachedSystemCargoLabelFont != null)
-        {
-            return cachedSystemCargoLabelFont;
-        }
-
-        if (cargoLabelSystemFontNames == null ||
-            cargoLabelSystemFontNames.Length == 0)
-        {
-            return null;
-        }
-
-        Font systemFont = Font.CreateDynamicFontFromOSFont(
-            cargoLabelSystemFontNames,
-            Mathf.RoundToInt(Mathf.Max(16f, cargoLabelFontSize))
-        );
-
-        if (systemFont == null)
-        {
-            return null;
-        }
-
-        cachedSystemCargoLabelFont = TMP_FontAsset.CreateFontAsset(
-            systemFont,
-            Mathf.RoundToInt(Mathf.Max(32f, cargoLabelFontSize * 2f)),
-            9,
-            GlyphRenderMode.SDFAA,
-            1024,
-            1024,
-            AtlasPopulationMode.Dynamic
-        );
-
-        cachedSystemCargoLabelFont.name = "Runtime Cargo Label Font";
-        return cachedSystemCargoLabelFont;
     }
 
     string GetCargoDisplayName(GameObject cargo)
