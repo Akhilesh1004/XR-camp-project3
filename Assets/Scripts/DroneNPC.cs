@@ -36,6 +36,16 @@ public class DroneNPC : MonoBehaviour
     public LayerMask explodeOnCollisionLayer;
     public DroneEffectPool explosionPool;
 
+    [Header("飛行 / 追擊音效")]
+    public AudioSource flightLoopAudioSource;
+    public AudioClip patrolFlightLoopClip;
+    public AudioClip chaseFlightLoopClip;
+    [Range(0f, 1f)]
+    public float patrolFlightLoopVolume = 1f;
+    [Range(0f, 1f)]
+    public float chaseFlightLoopVolume = 0.85f;
+    public bool playFlightLoopOnInitialize = true;
+
     [Header("Close Attack")]
     public float closeAttackRange = 22f;
     public float forceDirectAttackRange = 10f;
@@ -216,6 +226,7 @@ public class DroneNPC : MonoBehaviour
     private float nextVisualLODCheckTime = 0f;
     private float nextFarSimulationTime = 0f;
     private float accumulatedFarSimulationDt = 0f;
+    private bool isUsingChaseFlightLoop = false;
 
     public bool CanBecomeForcedHunter
     {
@@ -244,6 +255,11 @@ public class DroneNPC : MonoBehaviour
     {
         DroneAlertSystem.RegisterDrone(this);
         DroneAlertSystem.OnDroneNPC2Destroyed += HandleDroneNPC2DestroyedAlert;
+
+        if (hasBeenInitialized)
+        {
+            UpdateFlightLoopForCurrentState(true);
+        }
     }
 
     void OnDisable()
@@ -330,6 +346,7 @@ public class DroneNPC : MonoBehaviour
             : Mathf.Infinity;
         nextPlayerCheckTime = Time.time + Random.Range(0f, patrolPlayerCheckInterval);
         nextChaseAttemptTime = Time.time + Random.Range(0f, chaseSlotRetryInterval);
+        SetFlightLoop(false, true);
     }
 
     void Update()
@@ -556,7 +573,7 @@ public class DroneNPC : MonoBehaviour
                 {
                     ClearPath();
                     hasRequestedPathTarget = false;
-                    state = DroneState.Chasing;
+                    EnterChaseState();
                     nextRepathTime = Time.time + Random.Range(0.2f, 1.0f);
                     return;
                 }
@@ -816,6 +833,7 @@ public class DroneNPC : MonoBehaviour
         hasRequestedPathTarget = false;
         ClearPath();
         state = DroneState.Patrol;
+        SetFlightLoop(false, false);
     }
 
     void ReleaseCrowdSlots()
@@ -1701,7 +1719,7 @@ public class DroneNPC : MonoBehaviour
                 {
                     ClearPath();
                     hasRequestedPathTarget = false;
-                    state = DroneState.Chasing;
+                    EnterChaseState();
                     outOfRangeTimer = 0f;
                     nextRepathTime = Time.time + Random.Range(0.2f, 1.2f);
                 }
@@ -1770,7 +1788,91 @@ public class DroneNPC : MonoBehaviour
         outOfRangeTimer = 0f;
         nextRepathTime = Time.time + Random.Range(0.2f, 1.5f);
 
+        EnterChaseState();
+    }
+
+    void EnterChaseState()
+    {
+        if (state != DroneState.Chasing)
+        {
+            state = DroneState.Chasing;
+            SetFlightLoop(true, false);
+            return;
+        }
+
         state = DroneState.Chasing;
+        SetFlightLoop(true, false);
+    }
+
+    void UpdateFlightLoopForCurrentState(bool force)
+    {
+        SetFlightLoop(state == DroneState.Chasing, force);
+    }
+
+    void SetFlightLoop(bool useChaseLoop, bool force)
+    {
+        AudioSource source = flightLoopAudioSource;
+
+        if (source == null)
+        {
+            source = GetComponent<AudioSource>();
+        }
+
+        if (source == null)
+        {
+            return;
+        }
+
+        AudioClip targetClip = useChaseLoop
+            ? chaseFlightLoopClip
+            : patrolFlightLoopClip;
+
+        if (targetClip == null)
+        {
+            targetClip = source.clip;
+        }
+
+        if (targetClip == null)
+        {
+            source.Stop();
+            isUsingChaseFlightLoop = useChaseLoop;
+            return;
+        }
+
+        float targetVolume = useChaseLoop
+            ? chaseFlightLoopVolume
+            : patrolFlightLoopVolume;
+        bool shouldRestart =
+            force ||
+            source.clip != targetClip ||
+            isUsingChaseFlightLoop != useChaseLoop;
+
+        source.loop = true;
+        source.volume = targetVolume;
+        source.clip = targetClip;
+        isUsingChaseFlightLoop = useChaseLoop;
+
+        if (playFlightLoopOnInitialize && (shouldRestart || !source.isPlaying))
+        {
+            source.Play();
+        }
+    }
+
+    void StopFlightLoop()
+    {
+        AudioSource source = flightLoopAudioSource;
+
+        if (source == null)
+        {
+            source = GetComponent<AudioSource>();
+        }
+
+        if (source != null)
+        {
+            source.Stop();
+        }
+
+        isUsingChaseFlightLoop = false;
     }
 
     void OnTriggerEnter(Collider other)
@@ -1804,6 +1906,7 @@ public class DroneNPC : MonoBehaviour
         }
 
         state = DroneState.Exploding;
+        StopFlightLoop();
         ReleaseCrowdSlots();
         InterruptPlayerMobility();
 
@@ -1870,6 +1973,7 @@ public class DroneNPC : MonoBehaviour
         ReleaseCrowdSlots();
 
         state = DroneState.Exploding;
+        StopFlightLoop();
         ClearPath();
 
         outOfRangeTimer = 0f;

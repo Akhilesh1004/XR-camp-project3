@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 39636257312797319}
   - component: {fileID: 1324584677570740490}
   - component: {fileID: -6696707304959212025}
+  - component: {fileID: 7864230651225024062}
   m_Layer: 9
   m_Name: drone_v2
   m_TagString: Untagged
@@ -71,6 +72,7 @@ MonoBehaviour:
   playerTargetOffset: {x: 0, y: 1.1, z: 0}
   patrolPlayerCheckInterval: 0.6
   chasePlayerCheckInterval: 0.16
+  chaseSlotRetryInterval: 0.35
   detectRange: 55
   giveUpRange: 220
   giveUpDelay: 4
@@ -81,6 +83,12 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 328
   explosionPool: {fileID: 0}
+  flightLoopAudioSource: {fileID: 7864230651225024062}
+  patrolFlightLoopClip: {fileID: 8300000, guid: cb14fb5011efe4e1a8ef2ad84ebca652, type: 3}
+  chaseFlightLoopClip: {fileID: 8300000, guid: 37cc0cbf153a942389f624013a33da2a, type: 3}
+  patrolFlightLoopVolume: 1
+  chaseFlightLoopVolume: 0.85
+  playFlightLoopOnInitialize: 1
   closeAttackRange: 22
   forceDirectAttackRange: 10
   directChaseLockDuration: 1
@@ -95,6 +103,8 @@ MonoBehaviour:
   grid: {fileID: 0}
   pathNodeReachDistance: 6
   lookAheadDistance: 26
+  preventGridCornerCutting: 1
+  gridCornerCheckStepMultiplier: 0.5
   pathAdvanceDistance: 2.5
   behindTargetDotThreshold: -0.15
   patrolRepathInterval: 15.9
@@ -164,6 +174,102 @@ MonoBehaviour:
   alertChaseSpeedMultiplier: 1.15
   alertGiveUpExtraRange: 80
   forcedHunterSpeedMultiplier: 1.25
+--- !u!82 &7864230651225024062
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6408481135060080913}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 8300000, guid: cb14fb5011efe4e1a8ef2ad84ebca652, type: 3}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 1
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
 --- !u!1001 &8164948442230097146
 PrefabInstance:
   m_ObjectHideFlags: 0

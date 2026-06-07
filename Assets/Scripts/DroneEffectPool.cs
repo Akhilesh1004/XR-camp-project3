@@ -17,9 +17,13 @@ public class DroneEffectPool : MonoBehaviour
     [Tooltip("同時播放的爆炸特效上限。超過時略過額外特效，避免粒子疊加造成 VR 掉幀。0 代表不限制。")]
     public int maxConcurrentEffects = 3;
 
+    [Tooltip("達到同時播放上限時，重用最舊的播放中特效來顯示最新爆炸。避免射中 Drone 卻完全沒有特效。")]
+    public bool reuseOldestWhenMaxConcurrentReached = true;
+
     private readonly Queue<PooledEffect> pool = new Queue<PooledEffect>();
     private readonly HashSet<PooledEffect> pooledSet = new HashSet<PooledEffect>();
     private readonly HashSet<PooledEffect> playingSet = new HashSet<PooledEffect>();
+    private readonly List<PooledEffect> playingList = new List<PooledEffect>();
 
     // Effects requested to return this frame.
     // We process them in LateUpdate, not inside OnDisable.
@@ -78,12 +82,27 @@ public class DroneEffectPool : MonoBehaviour
             return null;
         }
 
+        PooledEffect effect = null;
+
         if (maxConcurrentEffects > 0 && playingSet.Count >= maxConcurrentEffects)
         {
-            return null;
+            if (!reuseOldestWhenMaxConcurrentReached)
+            {
+                return null;
+            }
+
+            effect = ReclaimOldestPlayingEffect();
+
+            if (effect == null)
+            {
+                return null;
+            }
         }
 
-        PooledEffect effect = GetEffect();
+        if (effect == null)
+        {
+            effect = GetEffect();
+        }
 
         if (effect == null)
         {
@@ -91,10 +110,49 @@ public class DroneEffectPool : MonoBehaviour
         }
 
         effect.MarkAsPlaying();
-        playingSet.Add(effect);
+        TrackEffectAsPlaying(effect);
         effect.PlayFromPool(this, position, rotation);
 
         return effect;
+    }
+
+    void TrackEffectAsPlaying(PooledEffect effect)
+    {
+        if (effect == null)
+        {
+            return;
+        }
+
+        if (playingSet.Contains(effect))
+        {
+            playingList.Remove(effect);
+        }
+
+        playingSet.Add(effect);
+        playingList.Add(effect);
+    }
+
+    PooledEffect ReclaimOldestPlayingEffect()
+    {
+        for (int i = 0; i < playingList.Count; i++)
+        {
+            PooledEffect effect = playingList[i];
+            playingList.RemoveAt(i);
+            i--;
+
+            if (effect == null)
+            {
+                continue;
+            }
+
+            playingSet.Remove(effect);
+            pendingReturnSet.Remove(effect);
+            pendingReturnList.Remove(effect);
+            return effect;
+        }
+
+        playingSet.Clear();
+        return null;
     }
 
     PooledEffect GetEffect()
@@ -111,6 +169,8 @@ public class DroneEffectPool : MonoBehaviour
             pooledSet.Remove(effect);
             pendingReturnSet.Remove(effect);
             pendingReturnList.Remove(effect);
+            playingSet.Remove(effect);
+            playingList.Remove(effect);
 
             return effect;
         }
@@ -189,6 +249,7 @@ public class DroneEffectPool : MonoBehaviour
 
         effect.MarkAsInsidePool();
         playingSet.Remove(effect);
+        playingList.Remove(effect);
 
         // Now we are outside OnDisable, so SetActive / SetParent is safe.
         if (effect.gameObject.activeSelf)
