@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class DroneGameManager : MonoBehaviour
 {
@@ -46,8 +47,55 @@ public class DroneGameManager : MonoBehaviour
     public float localPopulationRefreshInterval = 0.5f;
     public int maxLocalRecyclesPerRefresh = 4;
 
+    [Header("Fast Player Coverage")]
+    [Tooltip("每次補 Drone 最多啟用幾台。提高可讓快速移動後前方較快補滿，但會增加該幀初始化成本。")]
+    public int maxSpawnsPerFrame = 1;
+
+    [Tooltip("玩家快速移動時，優先在玩家前方補 Drone，而不是完全隨機補在周圍。")]
+    public bool biasLocalSpawnAheadOfPlayer = true;
+    public float frontSpawnSpeedThreshold = 6f;
+    public float frontSpawnDistance = 210f;
+    public float frontSpawnRadius = 150f;
+    public int frontSpawnAttempts = 10;
+    public bool allowFastForwardSpawnInsideView = true;
+    public float fastForwardVisibleSpawnMinDistance = 220f;
+
+    [Tooltip("玩家快速移動時，回收後方較遠的 patrol Drone，讓 pool 名額可補到前方。")]
+    public bool recycleBehindFastPlayer = true;
+    public float behindRecycleDistance = 150f;
+    public float behindRecycleDotThreshold = -0.15f;
+    public float fastLocalPopulationRefreshInterval = 0.2f;
+    public float playerVelocitySampleInterval = 0.12f;
+
+    [Header("Visual Ring")]
+    [Tooltip("外圈只顯示低成本 Drone，不啟用 DroneNPC AI / A* / 攻擊。用來讓遠方看起來仍有 Drone 流量。")]
+    public bool enableVisualRing = false;
+    public GameObject visualDronePrefab;
+    public int visualDroneCount = 48;
+    public float visualRingMinDistance = 300f;
+    public float visualRingMaxDistance = 520f;
+    public float visualRingRecycleDistance = 620f;
+    public float visualRingSpawnInterval = 0.04f;
+    public int visualRingMaxSpawnsPerFrame = 2;
+    public int visualRingSpawnAttempts = 16;
+    public bool visualRingBiasAheadOfFastPlayer = true;
+    public float visualRingFrontDistance = 380f;
+    public float visualRingFrontRadius = 180f;
+    public float visualRingMoveSpeedMin = 3.5f;
+    public float visualRingMoveSpeedMax = 7f;
+    public float visualRingDestinationRadius = 140f;
+    public float visualRingDestinationRefreshInterval = 8f;
+    public float visualRingRelocateCheckInterval = 0.45f;
+    public float visualRingBehindRecycleDistance = 320f;
+    public float visualRingBehindRecycleDotThreshold = -0.2f;
+    public bool visualRingDisableAnimators = true;
+    public bool visualRingDisableColliders = true;
+    public bool visualRingDisableAudio = true;
+
     private readonly List<DroneNPC> activeDrones = new List<DroneNPC>();
     private readonly Queue<DroneNPC> pooledDrones = new Queue<DroneNPC>();
+    private readonly List<VisualDroneInstance> activeVisualDrones = new List<VisualDroneInstance>();
+    private readonly Queue<VisualDroneInstance> pooledVisualDrones = new Queue<VisualDroneInstance>();
 
     private int pendingRespawnCount = 0;
     private Transform player;
@@ -55,11 +103,33 @@ public class DroneGameManager : MonoBehaviour
     private float nextSpawnTime = 0f;
     private float nextActiveListCleanupTime = 0f;
     private float nextLocalPopulationRefreshTime = 0f;
+    private float nextVisualRingSpawnTime = 0f;
+    private float nextVisualRingRelocateCheckTime = 0f;
+    private Vector3 lastPlayerPosition;
+    private Vector3 sampledPlayerVelocity = Vector3.zero;
+    private float lastPlayerVelocitySampleTime = 0f;
+    private float nextPlayerVelocitySampleTime = 0f;
+    private bool hasPlayerVelocitySample = false;
+
+    private class VisualDroneInstance
+    {
+        public GameObject gameObject;
+        public Transform transform;
+        public Renderer[] renderers;
+        public Animator[] animators;
+        public AudioSource[] audioSources;
+        public Collider[] colliders;
+        public Rigidbody[] rigidbodies;
+        public Vector3 destination;
+        public float speed;
+        public float nextDestinationTime;
+    }
 
     void Awake()
     {
         FindPlayer();
         PrewarmPool();
+        PrewarmVisualRingPool();
     }
 
     void Start()
@@ -70,6 +140,7 @@ public class DroneGameManager : MonoBehaviour
     void Update()
     {
         CleanupInactiveDronesThrottled();
+        UpdatePlayerVelocitySample();
         RecycleDistantPatrolDronesThrottled();
 
         if (!spawnOnStart)
@@ -82,6 +153,7 @@ public class DroneGameManager : MonoBehaviour
             return;
         }
 
+        UpdateVisualRing();
         TrySpawnOneIfNeeded();
     }
 
@@ -95,7 +167,7 @@ public class DroneGameManager : MonoBehaviour
 
         nextLocalPopulationRefreshTime =
             Time.time +
-            Mathf.Max(0.1f, localPopulationRefreshInterval);
+            GetLocalPopulationRefreshInterval();
 
         if (player == null)
         {
@@ -116,9 +188,17 @@ public class DroneGameManager : MonoBehaviour
         {
             DroneNPC drone = activeDrones[i];
 
-            if (drone == null ||
-                !drone.CanRecycleForLocalPopulation ||
-                (drone.transform.position - player.position).sqrMagnitude <= recycleDistanceSqr)
+            if (drone == null || !drone.CanRecycleForLocalPopulation)
+            {
+                continue;
+            }
+
+            Vector3 toDrone = drone.transform.position - player.position;
+            bool shouldRecycle =
+                toDrone.sqrMagnitude > recycleDistanceSqr ||
+                ShouldRecycleBehindFastPlayer(toDrone);
+
+            if (!shouldRecycle)
             {
                 continue;
             }
@@ -132,6 +212,16 @@ public class DroneGameManager : MonoBehaviour
                 break;
             }
         }
+    }
+
+    float GetLocalPopulationRefreshInterval()
+    {
+        if (IsPlayerMovingFast())
+        {
+            return Mathf.Max(0.05f, fastLocalPopulationRefreshInterval);
+        }
+
+        return Mathf.Max(0.1f, localPopulationRefreshInterval);
     }
 
     void CleanupInactiveDronesThrottled()
@@ -168,14 +258,24 @@ public class DroneGameManager : MonoBehaviour
             return;
         }
 
-        bool spawned = SpawnOneDrone();
+        int spawnedCount = 0;
+        int maxSpawns = Mathf.Max(1, maxSpawnsPerFrame);
 
-        nextSpawnTime = Time.time + spawnInterval;
-
-        if (!spawned)
+        while (expectedCount < targetDroneCount && spawnedCount < maxSpawns)
         {
-            nextSpawnTime = Time.time + Mathf.Max(0.5f, spawnInterval);
+            bool spawned = SpawnOneDrone();
+
+            if (!spawned)
+            {
+                nextSpawnTime = Time.time + Mathf.Max(0.5f, spawnInterval);
+                return;
+            }
+
+            spawnedCount++;
+            expectedCount++;
         }
+
+        nextSpawnTime = Time.time + Mathf.Max(0.01f, spawnInterval);
     }
 
     void FindPlayer()
@@ -203,6 +303,152 @@ public class DroneGameManager : MonoBehaviour
             DroneNPC drone = Instantiate(dronePrefab, transform);
             drone.gameObject.SetActive(false);
             pooledDrones.Enqueue(drone);
+        }
+    }
+
+    void PrewarmVisualRingPool()
+    {
+        if (!enableVisualRing)
+        {
+            return;
+        }
+
+        int count = Mathf.Max(0, visualDroneCount);
+
+        for (int i = 0; i < count; i++)
+        {
+            VisualDroneInstance visualDrone = CreateVisualDroneInstance();
+
+            if (visualDrone != null)
+            {
+                pooledVisualDrones.Enqueue(visualDrone);
+            }
+        }
+    }
+
+    VisualDroneInstance CreateVisualDroneInstance()
+    {
+        GameObject prefab = visualDronePrefab != null
+            ? visualDronePrefab
+            : (dronePrefab != null ? dronePrefab.gameObject : null);
+
+        if (prefab == null)
+        {
+            return null;
+        }
+
+        GameObject obj = Instantiate(prefab, transform);
+        obj.name = prefab.name + "_VisualRing";
+
+        DroneNPC[] droneScripts = obj.GetComponentsInChildren<DroneNPC>(true);
+
+        for (int i = 0; i < droneScripts.Length; i++)
+        {
+            if (droneScripts[i] != null)
+            {
+                droneScripts[i].enabled = false;
+            }
+        }
+
+        VisualDroneInstance visualDrone = new VisualDroneInstance
+        {
+            gameObject = obj,
+            transform = obj.transform,
+            renderers = obj.GetComponentsInChildren<Renderer>(true),
+            animators = obj.GetComponentsInChildren<Animator>(true),
+            audioSources = obj.GetComponentsInChildren<AudioSource>(true),
+            colliders = obj.GetComponentsInChildren<Collider>(true),
+            rigidbodies = obj.GetComponentsInChildren<Rigidbody>(true)
+        };
+
+        ConfigureVisualDroneInstance(visualDrone);
+        obj.SetActive(false);
+        return visualDrone;
+    }
+
+    void ConfigureVisualDroneInstance(VisualDroneInstance visualDrone)
+    {
+        if (visualDrone == null)
+        {
+            return;
+        }
+
+        if (visualDrone.renderers != null)
+        {
+            for (int i = 0; i < visualDrone.renderers.Length; i++)
+            {
+                Renderer renderer = visualDrone.renderers[i];
+
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                renderer.enabled = true;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+                renderer.lightProbeUsage = LightProbeUsage.Off;
+                renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            }
+        }
+
+        if (visualRingDisableAnimators && visualDrone.animators != null)
+        {
+            for (int i = 0; i < visualDrone.animators.Length; i++)
+            {
+                Animator animator = visualDrone.animators[i];
+
+                if (animator != null)
+                {
+                    animator.enabled = false;
+                }
+            }
+        }
+
+        if (visualRingDisableAudio && visualDrone.audioSources != null)
+        {
+            for (int i = 0; i < visualDrone.audioSources.Length; i++)
+            {
+                AudioSource audioSource = visualDrone.audioSources[i];
+
+                if (audioSource == null)
+                {
+                    continue;
+                }
+
+                audioSource.Stop();
+                audioSource.enabled = false;
+            }
+        }
+
+        if (visualRingDisableColliders && visualDrone.colliders != null)
+        {
+            for (int i = 0; i < visualDrone.colliders.Length; i++)
+            {
+                Collider collider = visualDrone.colliders[i];
+
+                if (collider != null)
+                {
+                    collider.enabled = false;
+                }
+            }
+        }
+
+        if (visualDrone.rigidbodies != null)
+        {
+            for (int i = 0; i < visualDrone.rigidbodies.Length; i++)
+            {
+                Rigidbody rigidbody = visualDrone.rigidbodies[i];
+
+                if (rigidbody == null)
+                {
+                    continue;
+                }
+
+                rigidbody.isKinematic = true;
+                rigidbody.detectCollisions = false;
+            }
         }
     }
 
@@ -257,7 +503,9 @@ public class DroneGameManager : MonoBehaviour
                 return false;
             }
 
-            if (!avoidVisibleSpawn || !IsLikelyVisibleSpawnPosition(spawnPosition))
+            if (!avoidVisibleSpawn ||
+                !IsLikelyVisibleSpawnPosition(spawnPosition) ||
+                ShouldAllowFastForwardVisibleSpawn(spawnPosition))
             {
                 return true;
             }
@@ -278,12 +526,21 @@ public class DroneGameManager : MonoBehaviour
                 FindPlayer();
             }
 
-            if (player == null ||
-                !grid.TryGetRandomWalkablePointInRange(
-                    player.position,
-                    localSpawnMinDistance,
-                    localSpawnMaxDistance,
-                    out spawnPosition))
+            if (player == null)
+            {
+                return false;
+            }
+
+            if (TryGetForwardBiasedLocalSpawnPosition(out spawnPosition))
+            {
+                return true;
+            }
+
+            if (!grid.TryGetRandomWalkablePointInRange(
+                player.position,
+                localSpawnMinDistance,
+                localSpawnMaxDistance,
+                out spawnPosition))
             {
                 return false;
             }
@@ -322,6 +579,615 @@ public class DroneGameManager : MonoBehaviour
         }
 
         return true;
+    }
+
+    bool TryGetForwardBiasedLocalSpawnPosition(out Vector3 spawnPosition)
+    {
+        spawnPosition = Vector3.zero;
+
+        if (!biasLocalSpawnAheadOfPlayer ||
+            !IsPlayerMovingFast() ||
+            player == null ||
+            grid == null)
+        {
+            return false;
+        }
+
+        Vector3 forward = GetPlayerMovementForward();
+
+        if (forward.sqrMagnitude < 0.001f)
+        {
+            return false;
+        }
+
+        forward.Normalize();
+
+        Vector3 sampleCenter =
+            player.position +
+            forward * Mathf.Max(localSpawnMinDistance, frontSpawnDistance);
+        float sampleRadius = Mathf.Max(1f, frontSpawnRadius);
+        float minDistanceSqr = localSpawnMinDistance * localSpawnMinDistance;
+        float maxDistanceSqr = localSpawnMaxDistance * localSpawnMaxDistance;
+        int attempts = Mathf.Max(1, frontSpawnAttempts);
+
+        for (int i = 0; i < attempts; i++)
+        {
+            if (!grid.TryGetRandomWalkablePointNear(
+                sampleCenter,
+                sampleRadius,
+                out Vector3 candidate))
+            {
+                return false;
+            }
+
+            Vector3 toCandidate = candidate - player.position;
+            float sqr = toCandidate.sqrMagnitude;
+
+            if (sqr < minDistanceSqr || sqr > maxDistanceSqr)
+            {
+                continue;
+            }
+
+            Vector3 flatToCandidate = Vector3.ProjectOnPlane(toCandidate, Vector3.up);
+
+            if (flatToCandidate.sqrMagnitude < 0.001f)
+            {
+                continue;
+            }
+
+            float dot = Vector3.Dot(forward, flatToCandidate.normalized);
+
+            if (dot < 0f)
+            {
+                continue;
+            }
+
+            spawnPosition = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool ShouldRecycleBehindFastPlayer(Vector3 toDrone)
+    {
+        if (!recycleBehindFastPlayer || !IsPlayerMovingFast())
+        {
+            return false;
+        }
+
+        Vector3 forward = GetPlayerMovementForward();
+        Vector3 flatToDrone = Vector3.ProjectOnPlane(toDrone, Vector3.up);
+
+        if (forward.sqrMagnitude < 0.001f ||
+            flatToDrone.sqrMagnitude <
+            behindRecycleDistance * behindRecycleDistance)
+        {
+            return false;
+        }
+
+        float dot = Vector3.Dot(forward.normalized, flatToDrone.normalized);
+        return dot <= behindRecycleDotThreshold;
+    }
+
+    bool ShouldAllowFastForwardVisibleSpawn(Vector3 spawnPosition)
+    {
+        if (!allowFastForwardSpawnInsideView ||
+            !restrictPopulationToPlayerArea ||
+            !IsPlayerMovingFast() ||
+            player == null)
+        {
+            return false;
+        }
+
+        Vector3 forward = GetPlayerMovementForward();
+        Vector3 toSpawn = spawnPosition - player.position;
+        Vector3 flatToSpawn = Vector3.ProjectOnPlane(toSpawn, Vector3.up);
+
+        if (forward.sqrMagnitude < 0.001f ||
+            flatToSpawn.sqrMagnitude <
+            fastForwardVisibleSpawnMinDistance * fastForwardVisibleSpawnMinDistance)
+        {
+            return false;
+        }
+
+        return Vector3.Dot(forward.normalized, flatToSpawn.normalized) >= 0.45f;
+    }
+
+    bool IsPlayerMovingFast()
+    {
+        float threshold = Mathf.Max(0.1f, frontSpawnSpeedThreshold);
+        return sampledPlayerVelocity.sqrMagnitude >= threshold * threshold;
+    }
+
+    Vector3 GetPlayerMovementForward()
+    {
+        Vector3 velocityForward = Vector3.ProjectOnPlane(sampledPlayerVelocity, Vector3.up);
+
+        if (velocityForward.sqrMagnitude >= 0.001f)
+        {
+            return velocityForward.normalized;
+        }
+
+        if (spawnVisibilityCamera == null)
+        {
+            spawnVisibilityCamera = Camera.main;
+        }
+
+        if (spawnVisibilityCamera != null)
+        {
+            Vector3 cameraForward =
+                Vector3.ProjectOnPlane(spawnVisibilityCamera.transform.forward, Vector3.up);
+
+            if (cameraForward.sqrMagnitude >= 0.001f)
+            {
+                return cameraForward.normalized;
+            }
+        }
+
+        if (player == null)
+        {
+            return Vector3.forward;
+        }
+
+        Vector3 playerForward = Vector3.ProjectOnPlane(player.forward, Vector3.up);
+        return playerForward.sqrMagnitude >= 0.001f
+            ? playerForward.normalized
+            : Vector3.forward;
+    }
+
+    void UpdatePlayerVelocitySample()
+    {
+        if (!restrictPopulationToPlayerArea)
+        {
+            return;
+        }
+
+        if (player == null)
+        {
+            FindPlayer();
+        }
+
+        if (player == null)
+        {
+            hasPlayerVelocitySample = false;
+            sampledPlayerVelocity = Vector3.zero;
+            return;
+        }
+
+        float now = Time.time;
+
+        if (!hasPlayerVelocitySample)
+        {
+            lastPlayerPosition = player.position;
+            lastPlayerVelocitySampleTime = now;
+            nextPlayerVelocitySampleTime =
+                now + Mathf.Max(0.02f, playerVelocitySampleInterval);
+            hasPlayerVelocitySample = true;
+            sampledPlayerVelocity = Vector3.zero;
+            return;
+        }
+
+        if (now < nextPlayerVelocitySampleTime)
+        {
+            return;
+        }
+
+        float dt = Mathf.Max(0.001f, now - lastPlayerVelocitySampleTime);
+        Vector3 currentPosition = player.position;
+        Vector3 velocity = (currentPosition - lastPlayerPosition) / dt;
+        sampledPlayerVelocity = Vector3.Lerp(sampledPlayerVelocity, velocity, 0.45f);
+        lastPlayerPosition = currentPosition;
+        lastPlayerVelocitySampleTime = now;
+        nextPlayerVelocitySampleTime =
+            now + Mathf.Max(0.02f, playerVelocitySampleInterval);
+    }
+
+    void UpdateVisualRing()
+    {
+        if (!enableVisualRing || !spawnOnStart)
+        {
+            DisableAllVisualDrones();
+            return;
+        }
+
+        if (player == null)
+        {
+            FindPlayer();
+        }
+
+        if (player == null)
+        {
+            return;
+        }
+
+        MoveVisualRingDrones(Time.deltaTime);
+        RecycleVisualRingDronesThrottled();
+        SpawnVisualRingDronesThrottled();
+    }
+
+    void MoveVisualRingDrones(float dt)
+    {
+        if (dt <= 0f)
+        {
+            return;
+        }
+
+        for (int i = activeVisualDrones.Count - 1; i >= 0; i--)
+        {
+            VisualDroneInstance visualDrone = activeVisualDrones[i];
+
+            if (!IsValidActiveVisualDrone(visualDrone))
+            {
+                activeVisualDrones.RemoveAt(i);
+                continue;
+            }
+
+            Vector3 position = visualDrone.transform.position;
+            Vector3 toDestination = visualDrone.destination - position;
+
+            if (toDestination.sqrMagnitude <= 16f ||
+                Time.time >= visualDrone.nextDestinationTime)
+            {
+                AssignVisualRingDestination(visualDrone);
+                toDestination = visualDrone.destination - position;
+            }
+
+            if (toDestination.sqrMagnitude <= 0.01f)
+            {
+                continue;
+            }
+
+            Vector3 direction = toDestination.normalized;
+            float speed = Mathf.Max(0f, visualDrone.speed);
+            visualDrone.transform.position =
+                Vector3.MoveTowards(position, visualDrone.destination, speed * dt);
+
+            if (direction.sqrMagnitude > 0.001f)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(direction, Vector3.up);
+                visualDrone.transform.rotation = Quaternion.Slerp(
+                    visualDrone.transform.rotation,
+                    targetRotation,
+                    dt * 2.5f
+                );
+            }
+        }
+    }
+
+    void RecycleVisualRingDronesThrottled()
+    {
+        if (Time.time < nextVisualRingRelocateCheckTime)
+        {
+            return;
+        }
+
+        float interval = Mathf.Max(0.05f, visualRingRelocateCheckInterval);
+        nextVisualRingRelocateCheckTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.25f);
+
+        int targetCount = Mathf.Max(0, visualDroneCount);
+
+        for (int i = activeVisualDrones.Count - 1; i >= 0; i--)
+        {
+            VisualDroneInstance visualDrone = activeVisualDrones[i];
+
+            if (!IsValidActiveVisualDrone(visualDrone))
+            {
+                activeVisualDrones.RemoveAt(i);
+                continue;
+            }
+
+            if (activeVisualDrones.Count > targetCount ||
+                ShouldRecycleVisualDrone(visualDrone))
+            {
+                activeVisualDrones.RemoveAt(i);
+                ReturnVisualDroneToPool(visualDrone);
+            }
+        }
+    }
+
+    void SpawnVisualRingDronesThrottled()
+    {
+        int targetCount = Mathf.Max(0, visualDroneCount);
+
+        if (activeVisualDrones.Count >= targetCount ||
+            Time.time < nextVisualRingSpawnTime)
+        {
+            return;
+        }
+
+        int maxSpawns = Mathf.Max(1, visualRingMaxSpawnsPerFrame);
+        int spawned = 0;
+
+        while (activeVisualDrones.Count < targetCount && spawned < maxSpawns)
+        {
+            if (!TryGetVisualRingPosition(out Vector3 spawnPosition))
+            {
+                break;
+            }
+
+            VisualDroneInstance visualDrone = GetVisualDroneFromPool();
+
+            if (visualDrone == null)
+            {
+                break;
+            }
+
+            ActivateVisualDrone(visualDrone, spawnPosition);
+            spawned++;
+        }
+
+        nextVisualRingSpawnTime =
+            Time.time +
+            Mathf.Max(0.01f, visualRingSpawnInterval);
+    }
+
+    bool ShouldRecycleVisualDrone(VisualDroneInstance visualDrone)
+    {
+        if (visualDrone == null || player == null)
+        {
+            return true;
+        }
+
+        Vector3 toDrone = visualDrone.transform.position - player.position;
+        float distanceSqr = toDrone.sqrMagnitude;
+        float minDistance = Mathf.Max(1f, visualRingMinDistance * 0.85f);
+        float recycleDistance = Mathf.Max(visualRingMaxDistance, visualRingRecycleDistance);
+
+        if (distanceSqr < minDistance * minDistance ||
+            distanceSqr > recycleDistance * recycleDistance)
+        {
+            return true;
+        }
+
+        if (!IsPlayerMovingFast())
+        {
+            return false;
+        }
+
+        Vector3 forward = GetPlayerMovementForward();
+        Vector3 flatToDrone = Vector3.ProjectOnPlane(toDrone, Vector3.up);
+
+        if (forward.sqrMagnitude < 0.001f ||
+            flatToDrone.sqrMagnitude <
+            visualRingBehindRecycleDistance * visualRingBehindRecycleDistance)
+        {
+            return false;
+        }
+
+        float dot = Vector3.Dot(forward.normalized, flatToDrone.normalized);
+        return dot <= visualRingBehindRecycleDotThreshold;
+    }
+
+    bool TryGetVisualRingPosition(out Vector3 position)
+    {
+        position = Vector3.zero;
+
+        if (grid == null || player == null)
+        {
+            return false;
+        }
+
+        if (visualRingBiasAheadOfFastPlayer &&
+            IsPlayerMovingFast() &&
+            TryGetForwardBiasedVisualRingPosition(out position))
+        {
+            return true;
+        }
+
+        int attempts = Mathf.Max(1, visualRingSpawnAttempts);
+
+        for (int i = 0; i < attempts; i++)
+        {
+            if (!grid.TryGetRandomWalkablePointInRange(
+                player.position,
+                visualRingMinDistance,
+                visualRingMaxDistance,
+                out Vector3 candidate))
+            {
+                return false;
+            }
+
+            if (IsValidVisualRingPosition(candidate))
+            {
+                position = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool TryGetForwardBiasedVisualRingPosition(out Vector3 position)
+    {
+        position = Vector3.zero;
+
+        Vector3 forward = GetPlayerMovementForward();
+
+        if (forward.sqrMagnitude < 0.001f)
+        {
+            return false;
+        }
+
+        forward.Normalize();
+
+        Vector3 center =
+            player.position +
+            forward * Mathf.Max(visualRingMinDistance, visualRingFrontDistance);
+        float radius = Mathf.Max(1f, visualRingFrontRadius);
+        int attempts = Mathf.Max(1, visualRingSpawnAttempts);
+
+        for (int i = 0; i < attempts; i++)
+        {
+            if (!grid.TryGetRandomWalkablePointNear(center, radius, out Vector3 candidate))
+            {
+                return false;
+            }
+
+            if (!IsValidVisualRingPosition(candidate))
+            {
+                continue;
+            }
+
+            Vector3 flatToCandidate =
+                Vector3.ProjectOnPlane(candidate - player.position, Vector3.up);
+
+            if (flatToCandidate.sqrMagnitude < 0.001f ||
+                Vector3.Dot(forward, flatToCandidate.normalized) < 0f)
+            {
+                continue;
+            }
+
+            position = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    bool IsValidVisualRingPosition(Vector3 position)
+    {
+        if (player == null)
+        {
+            return false;
+        }
+
+        Vector3 toPosition = position - player.position;
+        float distanceSqr = toPosition.sqrMagnitude;
+        float minDistance = Mathf.Max(1f, visualRingMinDistance);
+        float maxDistance = Mathf.Max(minDistance, visualRingMaxDistance);
+
+        return distanceSqr >= minDistance * minDistance &&
+               distanceSqr <= maxDistance * maxDistance;
+    }
+
+    void ActivateVisualDrone(VisualDroneInstance visualDrone, Vector3 position)
+    {
+        if (visualDrone == null)
+        {
+            return;
+        }
+
+        visualDrone.transform.position = position;
+        visualDrone.transform.rotation =
+            Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+        visualDrone.speed = Random.Range(
+            Mathf.Max(0f, visualRingMoveSpeedMin),
+            Mathf.Max(visualRingMoveSpeedMin, visualRingMoveSpeedMax)
+        );
+
+        ConfigureVisualDroneInstance(visualDrone);
+        AssignVisualRingDestination(visualDrone);
+        visualDrone.gameObject.SetActive(true);
+        activeVisualDrones.Add(visualDrone);
+    }
+
+    void AssignVisualRingDestination(VisualDroneInstance visualDrone)
+    {
+        if (visualDrone == null)
+        {
+            return;
+        }
+
+        if (!TryGetVisualRingDestination(visualDrone, out Vector3 destination))
+        {
+            destination =
+                visualDrone.transform.position +
+                visualDrone.transform.forward *
+                Mathf.Max(12f, visualRingDestinationRadius * 0.35f);
+        }
+
+        visualDrone.destination = destination;
+        float interval = Mathf.Max(1f, visualRingDestinationRefreshInterval);
+        visualDrone.nextDestinationTime =
+            Time.time +
+            interval +
+            Random.Range(0f, interval * 0.5f);
+    }
+
+    bool TryGetVisualRingDestination(
+        VisualDroneInstance visualDrone,
+        out Vector3 destination
+    )
+    {
+        destination = Vector3.zero;
+
+        if (grid == null || player == null || visualDrone == null)
+        {
+            return false;
+        }
+
+        destination = visualDrone.transform.position;
+
+        Vector3 center =
+            visualDrone.transform.position +
+            visualDrone.transform.forward *
+            Mathf.Max(16f, visualRingDestinationRadius * 0.35f);
+        float radius = Mathf.Max(8f, visualRingDestinationRadius);
+
+        for (int i = 0; i < 4; i++)
+        {
+            if (!grid.TryGetRandomWalkablePointNear(center, radius, out Vector3 candidate))
+            {
+                return false;
+            }
+
+            if (IsValidVisualRingPosition(candidate))
+            {
+                destination = candidate;
+                return true;
+            }
+        }
+
+        return TryGetVisualRingPosition(out destination);
+    }
+
+    VisualDroneInstance GetVisualDroneFromPool()
+    {
+        if (pooledVisualDrones.Count > 0)
+        {
+            return pooledVisualDrones.Dequeue();
+        }
+
+        return CreateVisualDroneInstance();
+    }
+
+    void ReturnVisualDroneToPool(VisualDroneInstance visualDrone)
+    {
+        if (visualDrone == null)
+        {
+            return;
+        }
+
+        visualDrone.gameObject.SetActive(false);
+        visualDrone.transform.SetParent(transform);
+        pooledVisualDrones.Enqueue(visualDrone);
+    }
+
+    void DisableAllVisualDrones()
+    {
+        for (int i = activeVisualDrones.Count - 1; i >= 0; i--)
+        {
+            VisualDroneInstance visualDrone = activeVisualDrones[i];
+
+            if (visualDrone != null && visualDrone.gameObject != null)
+            {
+                ReturnVisualDroneToPool(visualDrone);
+            }
+        }
+
+        activeVisualDrones.Clear();
+    }
+
+    bool IsValidActiveVisualDrone(VisualDroneInstance visualDrone)
+    {
+        return visualDrone != null &&
+               visualDrone.gameObject != null &&
+               visualDrone.transform != null &&
+               visualDrone.gameObject.activeSelf;
     }
 
     bool IsLikelyVisibleSpawnPosition(Vector3 position)

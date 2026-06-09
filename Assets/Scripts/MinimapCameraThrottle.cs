@@ -6,6 +6,10 @@ public class MinimapCameraThrottle : MonoBehaviour
 {
     [Tooltip("小地圖每秒更新次數。手腕 UI 通常 4~8 已足夠。")]
     public float updatesPerSecond = 5f;
+    [Header("Fog")]
+    [Tooltip("讓小地圖 Camera 渲染時暫時不受 RenderSettings Fog 影響")]
+    public bool disableFogWhileRendering = true;
+
 
     private Camera minimapCamera;
     private float nextRenderTime;
@@ -40,6 +44,28 @@ public class MinimapCameraThrottle : MonoBehaviour
         }
 
         nextRenderTime = Time.unscaledTime + interval;
-        minimapCamera.Render();
+        RenderMinimapOnce();
+    }
+
+    void RenderMinimapOnce()
+    {
+        if (!disableFogWhileRendering)
+        {
+            minimapCamera.Render();
+            return;
+        }
+
+        bool previousFogState = RenderSettings.fog;
+
+        RenderSettings.fog = false;
+
+        try
+        {
+            minimapCamera.Render();
+        }
+        finally
+        {
+            RenderSettings.fog = previousFogState;
+        }
     }
 }

@@ -70,7 +70,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   playerTag: Player
   playerTargetOffset: {x: 0, y: 1.1, z: 0}
-  patrolPlayerCheckInterval: 0.6
+  patrolPlayerCheckInterval: 0.75
   chasePlayerCheckInterval: 0.16
   chaseSlotRetryInterval: 0.35
   detectRange: 55
@@ -96,9 +96,9 @@ MonoBehaviour:
   closeAttackCollisionRadius: 0.6
   blockedCloseAttackExplodeRange: 3
   closeAttackLineOfSightCheckInterval: 0.12
-  blockedCloseAttackRepathInterval: 0.65
-  closeApproachSpeedMultiplier: 0.82
-  closeApproachMinSpeed: 3.2
+  blockedCloseAttackRepathInterval: 0.55
+  closeApproachSpeedMultiplier: 0.78
+  closeApproachMinSpeed: 3.8
   closeApproachSlowDistance: 10
   grid: {fileID: 0}
   pathNodeReachDistance: 6
@@ -110,8 +110,11 @@ MonoBehaviour:
   patrolRepathInterval: 15.9
   chaseRepathInterval: 5
   forcedHuntRepathInterval: 3.5
-  chaseTargetRepathDistance: 14
-  chaseTargetRepathInterval: 1
+  chaseTargetRepathDistance: 12
+  chaseTargetRepathInterval: 0.9
+  chaseTargetPredictionTime: 0.25
+  closeAttackPredictionTime: 0.12
+  maxPredictedTargetOffset: 12
   minPatrolDestinationDistance: 80
   maxPatrolDestinationDistance: 220
   obstacleLayer:
@@ -132,10 +135,10 @@ MonoBehaviour:
   allowDownwardDynamicDodge: 1
   dynamicBackwardWeight: 0.7
   dynamicDownwardWeight: 0.4
-  acceleration: 6
+  acceleration: 7.5
   deceleration: 8
-  steeringSmooth: 6.5
-  closeAttackSteeringSmooth: 18
+  steeringSmooth: 7.5
+  closeAttackSteeringSmooth: 24
   maxBankAngle: 18
   bankSmooth: 4
   stuckCheckInterval: 1.2
@@ -151,7 +154,7 @@ MonoBehaviour:
   hardStopDuringPathFollow: 0
   enableDynamicAvoidanceWhilePatrolling: 0
   enableVisualLOD: 1
-  visualCullDistance: 260
+  visualCullDistance: 240
   visualCullHysteresis: 30
   visualPrewarmViewportPadding: 0.15
   visualLODCheckInterval: 0.45
@@ -159,10 +162,10 @@ MonoBehaviour:
   disableChildMeshColliders: 1
   optimizeRendererSettings: 1
   enableFarSimulationLOD: 1
-  farSimulationDistance: 120
-  farSimulationInterval: 0.16
+  farSimulationDistance: 105
+  farSimulationInterval: 0.22
   hiddenSimulationDistance: 200
-  hiddenSimulationInterval: 0.45
+  hiddenSimulationInterval: 0.5
   maxFarSimulationDelta: 0.25
   interruptPlayerMobilityOnExplode: 1
   mobilityInterruptRadius: 3

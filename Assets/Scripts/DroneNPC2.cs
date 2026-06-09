@@ -388,6 +388,12 @@ public class DroneNPC2 : MonoBehaviour
             return false;
         }
 
+        if (IsInsideVisualPrewarmViewport(transform.position))
+        {
+            accumulatedFarSimulationDt = 0f;
+            return false;
+        }
+
         accumulatedFarSimulationDt += dt;
 
         if (Time.time < nextFarSimulationTime)

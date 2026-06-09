@@ -81,6 +81,9 @@ public class DroneNPC : MonoBehaviour
     public float forcedHuntRepathInterval = 3.5f;
     public float chaseTargetRepathDistance = 14f;
     public float chaseTargetRepathInterval = 1.0f;
+    public float chaseTargetPredictionTime = 0.25f;
+    public float closeAttackPredictionTime = 0.12f;
+    public float maxPredictedTargetOffset = 12f;
     public float minPatrolDestinationDistance = 80f;
     public float maxPatrolDestinationDistance = 220f;
 
@@ -217,6 +220,9 @@ public class DroneNPC : MonoBehaviour
     private Vector3 cachedPlayerTarget;
     private float cachedDistanceToPlayer = Mathf.Infinity;
     private float nextPlayerCheckTime = 0f;
+    private Vector3 lastPlayerPositionForVelocity;
+    private Vector3 estimatedPlayerVelocity = Vector3.zero;
+    private bool hasPlayerVelocityEstimate = false;
 
     private float outOfRangeTimer = 0f;
     private bool hasBeenInitialized = false;
@@ -321,6 +327,8 @@ public class DroneNPC : MonoBehaviour
         nextCloseAttackLineOfSightCheckTime = 0f;
         cachedCloseAttackLineOfSight = true;
         hasRequestedPathTarget = false;
+        hasPlayerVelocityEstimate = false;
+        estimatedPlayerVelocity = Vector3.zero;
 
         state = DroneState.Patrol;
         hasBeenInitialized = true;
@@ -363,6 +371,7 @@ public class DroneNPC : MonoBehaviour
             FindPlayer();
         }
 
+        UpdatePlayerVelocityEstimate(dt);
         UpdateVisualLOD(false);
 
         if (ShouldThrottleFarSimulation(ref dt))
@@ -545,6 +554,56 @@ public class DroneNPC : MonoBehaviour
         return player.position + playerTargetOffset;
     }
 
+    Vector3 GetPredictedChaseTarget(float distanceToPlayer)
+    {
+        Vector3 target = GetPlayerTarget();
+
+        if (!hasPlayerVelocityEstimate ||
+            estimatedPlayerVelocity.sqrMagnitude < 0.01f)
+        {
+            return target;
+        }
+
+        float predictionTime = distanceToPlayer <= closeAttackRange
+            ? closeAttackPredictionTime
+            : chaseTargetPredictionTime;
+        Vector3 offset =
+            estimatedPlayerVelocity *
+            Mathf.Max(0f, predictionTime);
+        float maxOffset = Mathf.Max(0f, maxPredictedTargetOffset);
+
+        if (maxOffset > 0f && offset.sqrMagnitude > maxOffset * maxOffset)
+        {
+            offset = offset.normalized * maxOffset;
+        }
+
+        return target + offset;
+    }
+
+    void UpdatePlayerVelocityEstimate(float dt)
+    {
+        if (player == null || dt <= 0f)
+        {
+            hasPlayerVelocityEstimate = false;
+            estimatedPlayerVelocity = Vector3.zero;
+            return;
+        }
+
+        Vector3 currentPosition = player.position;
+
+        if (!hasPlayerVelocityEstimate)
+        {
+            lastPlayerPositionForVelocity = currentPosition;
+            estimatedPlayerVelocity = Vector3.zero;
+            hasPlayerVelocityEstimate = true;
+            return;
+        }
+
+        Vector3 velocity = (currentPosition - lastPlayerPositionForVelocity) / dt;
+        estimatedPlayerVelocity = Vector3.Lerp(estimatedPlayerVelocity, velocity, 0.35f);
+        lastPlayerPositionForVelocity = currentPosition;
+    }
+
     void HandlePatrol(float distanceToPlayer, float dt)
     {
         if (isCloseAttacking && crowdDirector != null)
@@ -640,14 +699,16 @@ public class DroneNPC : MonoBehaviour
             }
         }
 
-        Vector3 target = GetPlayerTarget();
-        distanceToPlayer = Vector3.Distance(transform.position, target);
+        Vector3 actualTarget = GetPlayerTarget();
+        distanceToPlayer = Vector3.Distance(transform.position, actualTarget);
 
         if (distanceToPlayer <= explodeRange)
         {
             Explode();
             return;
         }
+
+        Vector3 target = GetPredictedChaseTarget(distanceToPlayer);
 
         if (!isForcedHunter)
         {
@@ -1998,5 +2059,7 @@ public class DroneNPC : MonoBehaviour
         nextLineOfSightCheckTime = 0f;
         nextVisualLODCheckTime = 0f;
         accumulatedFarSimulationDt = 0f;
+        hasPlayerVelocityEstimate = false;
+        estimatedPlayerVelocity = Vector3.zero;
     }
 }

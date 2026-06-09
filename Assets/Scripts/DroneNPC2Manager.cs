@@ -44,6 +44,11 @@ public class DroneNPC2Manager : MonoBehaviour
     public int maxLocalRecyclesPerRefresh = 4;
     public int localDestinationSampleAttempts = 12;
 
+    [Header("Visible Active Protection")]
+    [Tooltip("看得到的送貨 Drone 保持完整 DroneNPC2，不因為超過 localRecycleDistance 被回收。")]
+    public bool keepVisibleDronesActive = true;
+    public float visibleActiveDistance = 420f;
+
     private readonly List<DroneNPC2> activeDrones = new List<DroneNPC2>();
     private readonly Queue<DroneNPC2> pooledDrones = new Queue<DroneNPC2>();
 
@@ -114,9 +119,19 @@ public class DroneNPC2Manager : MonoBehaviour
         {
             DroneNPC2 drone = activeDrones[i];
 
-            if (drone == null ||
-                !drone.CanRecycleForLocalPopulation ||
-                (drone.transform.position - player.position).sqrMagnitude <= recycleDistanceSqr)
+            if (drone == null || !drone.CanRecycleForLocalPopulation)
+            {
+                continue;
+            }
+
+            Vector3 dronePosition = drone.transform.position;
+
+            if ((dronePosition - player.position).sqrMagnitude <= recycleDistanceSqr)
+            {
+                continue;
+            }
+
+            if (keepVisibleDronesActive && IsLikelyVisibleActiveDrone(dronePosition))
             {
                 continue;
             }
@@ -307,6 +322,36 @@ public class DroneNPC2Manager : MonoBehaviour
         }
 
         float distance = Mathf.Max(1f, preventVisibleSpawnDistance);
+
+        if ((position - spawnVisibilityCamera.transform.position).sqrMagnitude >
+            distance * distance)
+        {
+            return false;
+        }
+
+        Vector3 viewport = spawnVisibilityCamera.WorldToViewportPoint(position);
+        float padding = Mathf.Max(0f, spawnViewportPadding);
+
+        return viewport.z > 0f &&
+               viewport.x >= -padding &&
+               viewport.x <= 1f + padding &&
+               viewport.y >= -padding &&
+               viewport.y <= 1f + padding;
+    }
+
+    bool IsLikelyVisibleActiveDrone(Vector3 position)
+    {
+        if (spawnVisibilityCamera == null)
+        {
+            spawnVisibilityCamera = Camera.main;
+        }
+
+        if (spawnVisibilityCamera == null)
+        {
+            return false;
+        }
+
+        float distance = Mathf.Max(1f, visibleActiveDistance);
 
         if ((position - spawnVisibilityCamera.transform.position).sqrMagnitude >
             distance * distance)
