@@ -680,7 +680,7 @@ public class WristUIController : MonoBehaviour
         bgmAudioSource.Play();
         
         // 將 UI 圖案改為「播放中狀態 (|| 暫停符號)」
-        UpdatePlayButtonIcon(true);
+        UpdatePlayButtonIcon(false);
         UpdateSongNameUIDisplay();
         Debug.Log($"[隨身聽] 遊戲開始，自動播放第 1 首音樂: {bgmAudioSource.clip.name}");
     }
