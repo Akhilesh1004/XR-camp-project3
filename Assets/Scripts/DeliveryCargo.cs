@@ -101,9 +101,12 @@ public class DeliveryCargo : MonoBehaviour
 
         isCarried = true;
 
+        Vector3 worldScale = transform.lossyScale;
+
         transform.SetParent(holdAnchor, false);
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
+        transform.localScale = GetLocalScaleForWorldScale(worldScale, holdAnchor.lossyScale);
 
         if (rb != null)
         {
@@ -158,5 +161,24 @@ public class DeliveryCargo : MonoBehaviour
                 col.enabled = enabled;
             }
         }
+    }
+
+    Vector3 GetLocalScaleForWorldScale(Vector3 worldScale, Vector3 parentWorldScale)
+    {
+        return new Vector3(
+            SafeDivide(worldScale.x, parentWorldScale.x),
+            SafeDivide(worldScale.y, parentWorldScale.y),
+            SafeDivide(worldScale.z, parentWorldScale.z)
+        );
+    }
+
+    float SafeDivide(float value, float divisor)
+    {
+        if (Mathf.Approximately(divisor, 0f))
+        {
+            return value;
+        }
+
+        return value / divisor;
     }
 }

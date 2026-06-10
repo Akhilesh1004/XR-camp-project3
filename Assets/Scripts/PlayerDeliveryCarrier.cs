@@ -12,6 +12,19 @@ public class PlayerDeliveryCarrier : MonoBehaviour
     [Tooltip("收起餐點時是否直接隱藏模型")]
     public bool hideCargoWhenStored = true;
 
+    [Header("拿取顯示位置")]
+    [Tooltip("餐點拿在手上時，相對 holdAnchor 的位置。用來避免模型卡在手心或控制器裡")]
+    public Vector3 heldLocalPosition = new Vector3(0f, -0.04f, 0.18f);
+
+    [Tooltip("餐點拿在手上時，相對 holdAnchor 的旋轉")]
+    public Vector3 heldLocalEulerAngles = Vector3.zero;
+
+    [Tooltip("餐點收起來時，相對 storageAnchor 的位置")]
+    public Vector3 storedLocalPosition = Vector3.zero;
+
+    [Tooltip("餐點收起來時，相對 storageAnchor 的旋轉")]
+    public Vector3 storedLocalEulerAngles = Vector3.zero;
+
     [Tooltip("可以撿餐點的 Layer")]
     public LayerMask cargoLayer;
 
@@ -133,7 +146,7 @@ public class PlayerDeliveryCarrier : MonoBehaviour
 
         Transform anchor = holdAnchor != null ? holdAnchor : transform;
 
-        carriedCargo.AttachTo(anchor);
+        AttachCargoToAnchor(carriedCargo, anchor, heldLocalPosition, heldLocalEulerAngles);
         SetCargoVisible(true);
 
         if (DeliveryGameManager.Instance != null)
@@ -229,7 +242,7 @@ public class PlayerDeliveryCarrier : MonoBehaviour
             ? storageAnchor
             : transform;
 
-        carriedCargo.AttachTo(anchor);
+        AttachCargoToAnchor(carriedCargo, anchor, storedLocalPosition, storedLocalEulerAngles);
 
         if (hideCargoWhenStored)
         {
@@ -259,7 +272,7 @@ public class PlayerDeliveryCarrier : MonoBehaviour
             ? holdAnchor
             : transform;
 
-        carriedCargo.AttachTo(anchor);
+        AttachCargoToAnchor(carriedCargo, anchor, heldLocalPosition, heldLocalEulerAngles);
         SetCargoVisible(true);
 
         if (DeliveryGameManager.Instance != null)
@@ -270,6 +283,11 @@ public class PlayerDeliveryCarrier : MonoBehaviour
 
     void SetCargoVisible(bool visible)
     {
+        if (visible && carriedCargo != null)
+        {
+            carriedCargo.gameObject.SetActive(true);
+        }
+
         if (carriedCargoRenderers == null)
         {
             return;
@@ -282,6 +300,22 @@ public class PlayerDeliveryCarrier : MonoBehaviour
                 r.enabled = visible;
             }
         }
+    }
+
+    void AttachCargoToAnchor(
+        DeliveryCargo cargo,
+        Transform anchor,
+        Vector3 localPosition,
+        Vector3 localEulerAngles)
+    {
+        if (cargo == null || anchor == null)
+        {
+            return;
+        }
+
+        cargo.AttachTo(anchor);
+        cargo.transform.localPosition = localPosition;
+        cargo.transform.localRotation = Quaternion.Euler(localEulerAngles);
     }
 
     public void DamageCarriedCargo(int damage)
