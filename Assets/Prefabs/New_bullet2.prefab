@@ -13,7 +13,8 @@ GameObject:
   - component: {fileID: 4181705549675136870}
   - component: {fileID: 6823493767499781766}
   - component: {fileID: 6288952547425945045}
-  m_Layer: 0
+  - component: {fileID: -6945699908174925236}
+  m_Layer: 8
   m_Name: New_bullet2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4921,11 +4922,11 @@ SphereCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 1
+  m_IsTrigger: 0
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.32
+  m_Radius: 0.2
   m_Center: {x: 0, y: 0, z: 0.5}
 --- !u!54 &6288952547425945045
 Rigidbody:
@@ -4954,6 +4955,22 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &-6945699908174925236
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1272111383351841318}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 872f6f4b7760442e78151c10b20af453, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetLayers:
+    serializedVersion: 2
+    m_Bits: 584
+  lifetimeLimit: 5
 --- !u!1 &2532020139253409875
 GameObject:
   m_ObjectHideFlags: 0
@@ -4965,7 +4982,7 @@ GameObject:
   - component: {fileID: 1544410555094016954}
   - component: {fileID: 2663314656831720812}
   - component: {fileID: 3336906240411719435}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: FX_SwordSlash_Sparks_Up_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9865,7 +9882,7 @@ GameObject:
   - component: {fileID: 8564302956264177060}
   - component: {fileID: 7266852848798200455}
   - component: {fileID: 4431478907447264640}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: FX_SwordSlash_Sparks_Sideways_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14765,7 +14782,7 @@ GameObject:
   - component: {fileID: 3373537566699239508}
   - component: {fileID: 2543818939343714616}
   - component: {fileID: 6610208183445616617}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: FX_SwordSlash_Hit_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19665,7 +19682,7 @@ GameObject:
   - component: {fileID: 788963443997333064}
   - component: {fileID: 5970451954455922032}
   - component: {fileID: 7547733602337619057}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: FX_SwordSlash_Sparks_Down_01
   m_TagString: Untagged
   m_Icon: {fileID: 0}
