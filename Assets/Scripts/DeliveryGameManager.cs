@@ -434,11 +434,11 @@ public class DeliveryGameManager : MonoBehaviour
         if (prefabM == null || prefabD == null) return;
         
         Vector3 spawnPosition = order.pickupPoint.position + new Vector3(0f, MiniMapHeightOffset, 0f);
-        order.pickupMinimapMarker = Instantiate(prefabM, spawnPosition, order.pickupPoint.rotation);
+        order.pickupMinimapMarker = Instantiate(prefabM, spawnPosition, Quaternion.Euler(0f, 180f, 0f));
         order.pickupMinimapMarker.name = $"MinimapMarker_Pickup_{order.orderId}";
         
         spawnPosition = order.destinationPoint.position + new Vector3(0f, MiniMapHeightOffset, 0f);
-        order.destinationMinimapMarker = Instantiate(prefabD, spawnPosition, order.destinationPoint.rotation);
+        order.destinationMinimapMarker = Instantiate(prefabD, spawnPosition,  Quaternion.Euler(0f, 180f, 0f));
         order.destinationMinimapMarker.name = $"MinimapMarker_Destination_{order.orderId}";
     }
 
@@ -757,14 +757,14 @@ public class DeliveryGameManager : MonoBehaviour
         {
             // 配合你原本的起點高度偏移量，讓預覽也對齊相同高度
             Vector3 spawnPosition = order.pickupPoint.position + new Vector3(0f, MiniMapHeightOffset, 0f);
-            currentPickupPreviewInstance = Instantiate(pickupPreviewPrefab, spawnPosition, order.pickupPoint.rotation);
+            currentPickupPreviewInstance = Instantiate(pickupPreviewPrefab, spawnPosition, Quaternion.Euler(0f, 180f, 0f));
         }
 
         // 生成目的地預覽
         if (destinationPreviewPrefab != null && order.destinationPoint != null)
         {
             Vector3 spawnPosition = order.destinationPoint.position + new Vector3(0f, MiniMapHeightOffset, 0f);
-            currentDestinationPreviewInstance = Instantiate(destinationPreviewPrefab, spawnPosition, order.destinationPoint.rotation);
+            currentDestinationPreviewInstance = Instantiate(destinationPreviewPrefab, spawnPosition, Quaternion.Euler(0f, 180f, 0f));
         }
     }
 
