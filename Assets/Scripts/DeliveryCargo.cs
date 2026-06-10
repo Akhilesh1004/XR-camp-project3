@@ -18,7 +18,7 @@ public class DeliveryCargo : MonoBehaviour
     private int orderId = -1;
     private bool isCarried = false;
 
-    private Rigidbody rb;
+    private Rigidbody[] rigidbodies;
     private Collider[] colliders;
 
     public int CurrentHealth
@@ -48,8 +48,8 @@ public class DeliveryCargo : MonoBehaviour
 
     void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        colliders = GetComponentsInChildren<Collider>();
+        rigidbodies = GetComponentsInChildren<Rigidbody>(true);
+        colliders = GetComponentsInChildren<Collider>(true);
 
         currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
     }
@@ -103,18 +103,12 @@ public class DeliveryCargo : MonoBehaviour
 
         Vector3 worldScale = transform.lossyScale;
 
+        SetRigidbodiesCarried(true, Vector3.zero);
+
         transform.SetParent(holdAnchor, false);
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
         transform.localScale = GetLocalScaleForWorldScale(worldScale, holdAnchor.lossyScale);
-
-        if (rb != null)
-        {
-            rb.isKinematic = true;
-            rb.useGravity = false;
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
 
         if (disableCollidersWhileCarried)
         {
@@ -130,14 +124,7 @@ public class DeliveryCargo : MonoBehaviour
         transform.position = worldPosition;
 
         SetCollidersEnabled(true);
-
-        if (rb != null)
-        {
-            rb.isKinematic = false;
-            rb.useGravity = true;
-            rb.velocity = throwVelocity;
-            rb.angularVelocity = Vector3.zero;
-        }
+        SetRigidbodiesCarried(false, throwVelocity);
     }
 
     public void DetachWithoutPhysics()
@@ -145,6 +132,7 @@ public class DeliveryCargo : MonoBehaviour
         isCarried = false;
         transform.SetParent(null, true);
         SetCollidersEnabled(true);
+        SetRigidbodiesCarried(false, Vector3.zero);
     }
 
     void SetCollidersEnabled(bool enabled)
@@ -160,6 +148,27 @@ public class DeliveryCargo : MonoBehaviour
             {
                 col.enabled = enabled;
             }
+        }
+    }
+
+    void SetRigidbodiesCarried(bool carried, Vector3 releaseVelocity)
+    {
+        if (rigidbodies == null)
+        {
+            return;
+        }
+
+        foreach (Rigidbody body in rigidbodies)
+        {
+            if (body == null)
+            {
+                continue;
+            }
+
+            body.isKinematic = carried;
+            body.useGravity = !carried;
+            body.velocity = carried ? Vector3.zero : releaseVelocity;
+            body.angularVelocity = Vector3.zero;
         }
     }
 
