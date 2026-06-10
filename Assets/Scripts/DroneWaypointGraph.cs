@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 
 [ExecuteAlways]
@@ -108,6 +109,13 @@ public class DroneWaypointGraph : MonoBehaviour
     private int[] closedStamp;
     private int searchId = 0;
     private MinHeap openHeap;
+
+    private static readonly ProfilerMarker FindPathPositionsMarker =
+        new ProfilerMarker("Drone.Grid.TryFindPathPositions");
+    private static readonly ProfilerMarker FindPathCellIndicesMarker =
+        new ProfilerMarker("Drone.Grid.FindPathCellIndices");
+    private static readonly ProfilerMarker RandomPointFallbackMarker =
+        new ProfilerMarker("Drone.Grid.RandomPointFallbackScan");
 
     public int TotalCellCount => totalCellCount;
     public int WalkableCellCount => walkableCellCount;
@@ -720,82 +728,85 @@ public class DroneWaypointGraph : MonoBehaviour
         bool requireClearGoal = false
     )
     {
-        if (pathPositions == null)
+        using (FindPathPositionsMarker.Auto())
         {
-            return false;
-        }
+            if (pathPositions == null)
+            {
+                return false;
+            }
 
-        pathPositions.Clear();
+            pathPositions.Clear();
 
-        if (!EnsureGridReady())
-        {
-            return false;
-        }
+            if (!EnsureGridReady())
+            {
+                return false;
+            }
 
-        if (HasClearPath(from, to))
-        {
-            pathPositions.Add(to);
+            if (HasClearPath(from, to))
+            {
+                pathPositions.Add(to);
+                return true;
+            }
+
+            int startIndex = FindNearestWalkableCellIndex(from);
+            int goalIndex = FindNearestWalkableCellIndex(to);
+
+            if (startIndex < 0 || goalIndex < 0)
+            {
+                return false;
+            }
+
+            bool found = FindPathCellIndices(
+                startIndex,
+                goalIndex,
+                reusablePathIndices,
+                variant
+            );
+
+            if (!found || reusablePathIndices.Count == 0)
+            {
+                return false;
+            }
+
+            reusableRawPath.Clear();
+
+            for (int i = 0; i < reusablePathIndices.Count; i++)
+            {
+                reusableRawPath.Add(IndexToWorld(reusablePathIndices[i]));
+            }
+
+            if (smoothPath)
+            {
+                SmoothPath(reusableRawPath, reusableSmoothedPath);
+
+                for (int i = 0; i < reusableSmoothedPath.Count; i++)
+                {
+                    pathPositions.Add(reusableSmoothedPath[i]);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < reusableRawPath.Count; i++)
+                {
+                    pathPositions.Add(reusableRawPath[i]);
+                }
+            }
+
+            if (pathPositions.Count == 0)
+            {
+                return false;
+            }
+
+            Vector3 last = pathPositions[pathPositions.Count - 1];
+            float snapDistance = cellSize * 0.5f;
+
+            if ((last - to).sqrMagnitude > snapDistance * snapDistance && HasClearPath(last, to))
+            {
+                pathPositions.Add(to);
+            }
+
             return true;
         }
-
-        int startIndex = FindNearestWalkableCellIndex(from);
-        int goalIndex = FindNearestWalkableCellIndex(to);
-
-        if (startIndex < 0 || goalIndex < 0)
-        {
-            return false;
-        }
-
-        bool found = FindPathCellIndices(
-            startIndex,
-            goalIndex,
-            reusablePathIndices,
-            variant
-        );
-
-        if (!found || reusablePathIndices.Count == 0)
-        {
-            return false;
-        }
-
-        reusableRawPath.Clear();
-
-        for (int i = 0; i < reusablePathIndices.Count; i++)
-        {
-            reusableRawPath.Add(IndexToWorld(reusablePathIndices[i]));
-        }
-
-        if (smoothPath)
-        {
-            SmoothPath(reusableRawPath, reusableSmoothedPath);
-
-            for (int i = 0; i < reusableSmoothedPath.Count; i++)
-            {
-                pathPositions.Add(reusableSmoothedPath[i]);
-            }
-        }
-        else
-        {
-            for (int i = 0; i < reusableRawPath.Count; i++)
-            {
-                pathPositions.Add(reusableRawPath[i]);
-            }
-        }
-
-        if (pathPositions.Count == 0)
-        {
-            return false;
-        }
-
-        Vector3 last = pathPositions[pathPositions.Count - 1];
-        float snapDistance = cellSize * 0.5f;
-
-        if ((last - to).sqrMagnitude > snapDistance * snapDistance && HasClearPath(last, to))
-        {
-            pathPositions.Add(to);
-        }
-
-        return true;
     }
 
     bool FindPathCellIndices(
@@ -805,113 +816,116 @@ public class DroneWaypointGraph : MonoBehaviour
         int variant
     )
     {
-        result.Clear();
-
-        if (startIndex == goalIndex)
+        using (FindPathCellIndicesMarker.Auto())
         {
-            result.Add(startIndex);
-            return true;
-        }
+            result.Clear();
 
-        BeginSearch();
-
-        IndexToCell(startIndex, out int startX, out int startY, out int startZ);
-        IndexToCell(goalIndex, out int goalX, out int goalY, out int goalZ);
-
-        gScore[startIndex] = 0f;
-        cameFrom[startIndex] = -1;
-        openedStamp[startIndex] = searchId;
-        openHeap.Push(
-            startIndex,
-            HeuristicCost(startX, startY, startZ, goalX, goalY, goalZ)
-        );
-
-        int searchedNodes = 0;
-
-        while (openHeap.Count > 0)
-        {
-            int current = openHeap.Pop();
-
-            if (closedStamp[current] == searchId)
+            if (startIndex == goalIndex)
             {
-                continue;
-            }
-
-            if (current == goalIndex)
-            {
-                ReconstructPath(cameFrom, current, result);
+                result.Add(startIndex);
                 return true;
             }
 
-            closedStamp[current] = searchId;
-            searchedNodes++;
+            BeginSearch();
 
-            if (searchedNodes > maxSearchNodes)
+            IndexToCell(startIndex, out int startX, out int startY, out int startZ);
+            IndexToCell(goalIndex, out int goalX, out int goalY, out int goalZ);
+
+            gScore[startIndex] = 0f;
+            cameFrom[startIndex] = -1;
+            openedStamp[startIndex] = searchId;
+            openHeap.Push(
+                startIndex,
+                HeuristicCost(startX, startY, startZ, goalX, goalY, goalZ)
+            );
+
+            int searchedNodes = 0;
+
+            while (openHeap.Count > 0)
             {
-                return false;
+                int current = openHeap.Pop();
+
+                if (closedStamp[current] == searchId)
+                {
+                    continue;
+                }
+
+                if (current == goalIndex)
+                {
+                    ReconstructPath(cameFrom, current, result);
+                    return true;
+                }
+
+                closedStamp[current] = searchId;
+                searchedNodes++;
+
+                if (searchedNodes > maxSearchNodes)
+                {
+                    return false;
+                }
+
+                IndexToCell(current, out int cx, out int cy, out int cz);
+
+                for (int i = 0; i < neighborOffsets.Count; i++)
+                {
+                    Vector3Int offset = neighborOffsets[i];
+                    float moveCost = neighborMoveCosts[i];
+
+                    int nx = cx + offset.x;
+                    int ny = cy + offset.y;
+                    int nz = cz + offset.z;
+
+                    if (!IsInsideGrid(nx, ny, nz))
+                    {
+                        continue;
+                    }
+
+                    if (!IsMoveAllowedWithoutCornerCutting(cx, cy, cz, offset))
+                    {
+                        continue;
+                    }
+
+                    int neighborIndex = ToIndex(nx, ny, nz);
+
+                    if (!walkableCells[neighborIndex])
+                    {
+                        continue;
+                    }
+
+                    if (closedStamp[neighborIndex] == searchId)
+                    {
+                        continue;
+                    }
+
+                    if (openedStamp[neighborIndex] != searchId)
+                    {
+                        openedStamp[neighborIndex] = searchId;
+                        gScore[neighborIndex] = float.MaxValue;
+                        cameFrom[neighborIndex] = -1;
+                    }
+
+                    moveCost *= GetEdgeCostFactor(current, neighborIndex, variant);
+
+                    float tentativeG = gScore[current] + moveCost;
+
+                    if (tentativeG >= gScore[neighborIndex])
+                    {
+                        continue;
+                    }
+
+                    cameFrom[neighborIndex] = current;
+                    gScore[neighborIndex] = tentativeG;
+
+                    float fScore =
+                        tentativeG +
+                        HeuristicCost(nx, ny, nz, goalX, goalY, goalZ);
+
+                    openHeap.Push(neighborIndex, fScore);
+                }
             }
 
-            IndexToCell(current, out int cx, out int cy, out int cz);
-
-            for (int i = 0; i < neighborOffsets.Count; i++)
-            {
-                Vector3Int offset = neighborOffsets[i];
-                float moveCost = neighborMoveCosts[i];
-
-                int nx = cx + offset.x;
-                int ny = cy + offset.y;
-                int nz = cz + offset.z;
-
-                if (!IsInsideGrid(nx, ny, nz))
-                {
-                    continue;
-                }
-
-                if (!IsMoveAllowedWithoutCornerCutting(cx, cy, cz, offset))
-                {
-                    continue;
-                }
-
-                int neighborIndex = ToIndex(nx, ny, nz);
-
-                if (!walkableCells[neighborIndex])
-                {
-                    continue;
-                }
-
-                if (closedStamp[neighborIndex] == searchId)
-                {
-                    continue;
-                }
-
-                if (openedStamp[neighborIndex] != searchId)
-                {
-                    openedStamp[neighborIndex] = searchId;
-                    gScore[neighborIndex] = float.MaxValue;
-                    cameFrom[neighborIndex] = -1;
-                }
-
-                moveCost *= GetEdgeCostFactor(current, neighborIndex, variant);
-
-                float tentativeG = gScore[current] + moveCost;
-
-                if (tentativeG >= gScore[neighborIndex])
-                {
-                    continue;
-                }
-
-                cameFrom[neighborIndex] = current;
-                gScore[neighborIndex] = tentativeG;
-
-                float fScore =
-                    tentativeG +
-                    HeuristicCost(nx, ny, nz, goalX, goalY, goalZ);
-
-                openHeap.Push(neighborIndex, fScore);
-            }
+            return false;
         }
-
-        return false;
     }
 
     void BeginSearch()
@@ -1202,37 +1216,40 @@ public class DroneWaypointGraph : MonoBehaviour
         out Vector3 point
     )
     {
-        point = Vector3.zero;
-
-        int selectedIndex = -1;
-        int matchingCount = 0;
-
-        for (int i = 0; i < walkableCellIndices.Count; i++)
+        using (RandomPointFallbackMarker.Auto())
         {
-            int index = walkableCellIndices[i];
-            Vector3 candidate = IndexToWorld(index);
-            float sqr = (candidate - origin).sqrMagnitude;
+            point = Vector3.zero;
 
-            if (sqr < minSqrDistance || sqr > maxSqrDistance)
+            int selectedIndex = -1;
+            int matchingCount = 0;
+
+            for (int i = 0; i < walkableCellIndices.Count; i++)
             {
-                continue;
+                int index = walkableCellIndices[i];
+                Vector3 candidate = IndexToWorld(index);
+                float sqr = (candidate - origin).sqrMagnitude;
+
+                if (sqr < minSqrDistance || sqr > maxSqrDistance)
+                {
+                    continue;
+                }
+
+                matchingCount++;
+
+                if (Random.Range(0, matchingCount) == 0)
+                {
+                    selectedIndex = index;
+                }
             }
 
-            matchingCount++;
-
-            if (Random.Range(0, matchingCount) == 0)
+            if (selectedIndex < 0)
             {
-                selectedIndex = index;
+                return false;
             }
-        }
 
-        if (selectedIndex < 0)
-        {
-            return false;
+            point = IndexToWorld(selectedIndex);
+            return true;
         }
-
-        point = IndexToWorld(selectedIndex);
-        return true;
     }
 
     int FindNearestWalkableCellIndex(Vector3 worldPosition)

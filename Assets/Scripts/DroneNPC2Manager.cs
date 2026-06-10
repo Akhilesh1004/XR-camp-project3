@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 
 public class DroneNPC2Manager : MonoBehaviour
@@ -59,6 +60,11 @@ public class DroneNPC2Manager : MonoBehaviour
     private float nextActiveListCleanupTime = 0f;
     private float nextLocalPopulationRefreshTime = 0f;
 
+    private static readonly ProfilerMarker RecycleMarker =
+        new ProfilerMarker("Drone2.Manager.RecycleDistant");
+    private static readonly ProfilerMarker SpawnMarker =
+        new ProfilerMarker("Drone2.Manager.Spawn");
+
     void Awake()
     {
         FindPlayer();
@@ -90,59 +96,62 @@ public class DroneNPC2Manager : MonoBehaviour
 
     void RecycleDistantDronesThrottled()
     {
-        if (!restrictPopulationToPlayerArea ||
-            Time.time < nextLocalPopulationRefreshTime)
+        using (RecycleMarker.Auto())
         {
-            return;
-        }
-
-        nextLocalPopulationRefreshTime =
-            Time.time +
-            Mathf.Max(0.1f, localPopulationRefreshInterval);
-
-        if (player == null)
-        {
-            FindPlayer();
-        }
-
-        if (player == null)
-        {
-            return;
-        }
-
-        float recycleDistance = Mathf.Max(localSpawnMaxDistance, localRecycleDistance);
-        float recycleDistanceSqr = recycleDistance * recycleDistance;
-        int maxRecycles = Mathf.Max(1, maxLocalRecyclesPerRefresh);
-        int recycled = 0;
-
-        for (int i = activeDrones.Count - 1; i >= 0; i--)
-        {
-            DroneNPC2 drone = activeDrones[i];
-
-            if (drone == null || !drone.CanRecycleForLocalPopulation)
+            if (!restrictPopulationToPlayerArea ||
+                Time.time < nextLocalPopulationRefreshTime)
             {
-                continue;
+                return;
             }
 
-            Vector3 dronePosition = drone.transform.position;
+            nextLocalPopulationRefreshTime =
+                Time.time +
+                Mathf.Max(0.1f, localPopulationRefreshInterval);
 
-            if ((dronePosition - player.position).sqrMagnitude <= recycleDistanceSqr)
+            if (player == null)
             {
-                continue;
+                FindPlayer();
             }
 
-            if (keepVisibleDronesActive && IsLikelyVisibleActiveDrone(dronePosition))
+            if (player == null)
             {
-                continue;
+                return;
             }
 
-            activeDrones.RemoveAt(i);
-            ReturnDroneToPool(drone);
-            recycled++;
+            float recycleDistance = Mathf.Max(localSpawnMaxDistance, localRecycleDistance);
+            float recycleDistanceSqr = recycleDistance * recycleDistance;
+            int maxRecycles = Mathf.Max(1, maxLocalRecyclesPerRefresh);
+            int recycled = 0;
 
-            if (recycled >= maxRecycles)
+            for (int i = activeDrones.Count - 1; i >= 0; i--)
             {
-                break;
+                DroneNPC2 drone = activeDrones[i];
+
+                if (drone == null || !drone.CanRecycleForLocalPopulation)
+                {
+                    continue;
+                }
+
+                Vector3 dronePosition = drone.transform.position;
+
+                if ((dronePosition - player.position).sqrMagnitude <= recycleDistanceSqr)
+                {
+                    continue;
+                }
+
+                if (keepVisibleDronesActive && IsLikelyVisibleActiveDrone(dronePosition))
+                {
+                    continue;
+                }
+
+                activeDrones.RemoveAt(i);
+                ReturnDroneToPool(drone);
+                recycled++;
+
+                if (recycled >= maxRecycles)
+                {
+                    break;
+                }
             }
         }
     }
@@ -221,40 +230,43 @@ public class DroneNPC2Manager : MonoBehaviour
 
     bool SpawnOneDrone()
     {
-        if (dronePrefab == null || grid == null || !grid.IsReady)
+        using (SpawnMarker.Auto())
         {
-            return false;
+            if (dronePrefab == null || grid == null || !grid.IsReady)
+            {
+                return false;
+            }
+
+            if (!TryGetSpawnPosition(out Vector3 spawnPosition))
+            {
+                return false;
+            }
+
+            DroneNPC2 drone = GetDroneFromPool();
+
+            if (drone == null)
+            {
+                return false;
+            }
+
+            Quaternion spawnRotation = Quaternion.Euler(
+                0f,
+                Random.Range(0f, 360f),
+                0f
+            );
+
+            drone.Initialize(
+                this,
+                spawnPosition,
+                spawnRotation,
+                grid
+            );
+
+            drone.gameObject.SetActive(true);
+            activeDrones.Add(drone);
+
+            return true;
         }
-
-        if (!TryGetSpawnPosition(out Vector3 spawnPosition))
-        {
-            return false;
-        }
-
-        DroneNPC2 drone = GetDroneFromPool();
-
-        if (drone == null)
-        {
-            return false;
-        }
-
-        Quaternion spawnRotation = Quaternion.Euler(
-            0f,
-            Random.Range(0f, 360f),
-            0f
-        );
-
-        drone.Initialize(
-            this,
-            spawnPosition,
-            spawnRotation,
-            grid
-        );
-
-        drone.gameObject.SetActive(true);
-        activeDrones.Add(drone);
-
-        return true;
     }
 
     bool TryGetSpawnPosition(out Vector3 spawnPosition)
