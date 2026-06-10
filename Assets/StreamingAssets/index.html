@@ -215,9 +215,13 @@
         // ==================== [ 1. 自訂餐點資料 ] ====================
         const menuData = [
             { id: 1, name: "Burger", price: 200, category: "food" },
-            { id: 2, name: "50嵐", price: 200, category: "drink" },
-            { id: 3, name: "QQ地瓜球", price: 100, category: "food" },
-            { id: 4, name: "Meta Quest", price: 1000, category: "other" }
+            { id: 2, name: "50 LAN", price: 200, category: "drink" },
+            { id: 3, name: "QQ ball", price: 100, category: "food" },
+            { id: 4, name: "hot pot", price: 200, category: "food" },
+            { id: 5, name: "wheel cake", price: 100, category: "food" },
+            { id: 6, name: "shushi", price: 300, category: "food" },
+            { id: 7, name: "cake", price: 300, category: "food" },
+            { id: 8, name: "Meta Quest", price: 1000, category: "other" }
         ];
 
         let selectedMeal = null;      // 儲存被選中的餐點物件
@@ -225,9 +229,9 @@
 
         // ==================== [ 2. 自訂照片地圖設定 ] ====================
         
-        const customImageUrl = 'Map.png'; 
+        const customImageUrl = 'NewMap.png'; 
         
-        const imageBounds = [[0, 0], [1000, 1000]];
+        const imageBounds = [[0, 0], [900, 1100]];
 
         const map = L.map('map', {
             crs: L.CRS.Simple,
@@ -241,9 +245,9 @@
 
         // ==================== [ 3. 設定地圖中的自訂可選地點 ] ====================
         const locations = [
-            { id: "loc_A", name: "A", coords: [700, 300], index: 0 },
-            { id: "loc_B", name: "B", coords: [400, 750], index: 1 },
-            { id: "loc_C", name: "C", coords: [250, 200], index: 2 }
+            { id: "loc_A", name: "A", coords: [700, 300], index: 0 }
+            // { id: "loc_B", name: "B", coords: [400, 750], index: 1 },
+            // { id: "loc_C", name: "C", coords: [250, 200], index: 2 }
         ];
 
         let selectedLocationObj = null; // 改為紀錄完整地點物件
@@ -268,10 +272,10 @@
             const textIcon = L.divIcon({
                 className: 'custom-text-marker',
                 // 調整了 padding 縮小邊距、font-size 縮小字體
-                html: `<div style="background: #0056C6; color: #FFF; border: 2px solid #FCD116; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">${loc.name}</div>`,
+                html: `<div style="background: #0056C6; color: #FFF; border: 2px solid #FCD116; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.6rem; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">${loc.name}</div>`,
                 // ➔ 同步縮小 icon 的感應框與中心點對齊（寬 50px, 高 22px）
-                iconSize: [50, 22],
-                iconAnchor: [25, 11] // 中心點設為寬高的一半，確保精準對齊 [Y, X] 座標
+                iconSize: [30, 20],
+                iconAnchor: [15, 10] // 中心點設為寬高的一半，確保精準對齊 [Y, X] 座標
             });
 
             // 使用縮小版的文字 Icon 產生標籤
