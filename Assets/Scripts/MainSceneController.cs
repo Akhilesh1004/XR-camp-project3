@@ -10,7 +10,7 @@ public class MainSceneController : MonoBehaviour
     [Header("場景設定")]
     public string nextSceneNameGoodEnding; // 好結局場景名稱
     public string nextSceneNameBadEnding; // 壞結局場景名稱
-    private AsyncOperation asyncLoad;
+    private string nextSceneName; // 實際要切換的場景名稱
 
     void Start()
     {
@@ -22,8 +22,9 @@ public class MainSceneController : MonoBehaviour
         // 保持空白
     }
 
-    public void TriggerSceneTransition()
+    public void TriggerSceneTransition(bool isGoodEnding)
     {
+        nextSceneName = isGoodEnding ? nextSceneNameGoodEnding : nextSceneNameBadEnding;
         StartCoroutine(OpeningSequence());
     }
 
@@ -33,7 +34,6 @@ public class MainSceneController : MonoBehaviour
 
         yield return new WaitForSeconds(fadeScreen.fadeDuration);
 
-        // SceneManager.LoadScene(nextSceneName);
-        asyncLoad.allowSceneActivation = true;
+        SceneManager.LoadScene(nextSceneName);
     }
 }

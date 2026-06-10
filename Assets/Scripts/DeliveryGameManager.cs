@@ -58,7 +58,9 @@ public class DeliveryGameManager : MonoBehaviour
 
     [Header("遊戲時間")]
     public float gameDuration = 180f;
+    public int goalScore = 100;
     public bool startOnAwake = false;
+    public MainSceneController mainSceneController;
 
     [Header("新訂單生成設定")]
     [Tooltip("每隔多少秒自動派發一筆新訂單到等待區")]
@@ -206,6 +208,15 @@ public class DeliveryGameManager : MonoBehaviour
 
         SetMessage("Time Up! Final Score: " + score);
         UpdateUI();
+
+        if (score >= goalScore)
+        {
+            mainSceneController.TriggerSceneTransition(true);
+        }
+        else
+        {
+            mainSceneController.TriggerSceneTransition(false);
+        }
     }
 
     #region 訂單生成與生命週期
