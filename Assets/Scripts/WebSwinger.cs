@@ -8,6 +8,7 @@ using Debug = UnityEngine.Debug;
 public class WebSwinger : MonoBehaviour
 {
     [Header("綁定物件")]
+    [SerializeField] private Animator animator;
     public Rigidbody playerRigidbody;
     public Transform handTransform;
     public LineRenderer[] lineRenderers; 
@@ -76,6 +77,10 @@ public class WebSwinger : MonoBehaviour
     public static int pendingSwingCount = 0;
 
     private bool isWristUIOpen = false;
+    private bool isPausedMidway = false;
+    private bool isWaitingToPause = false;
+    private bool isGrabWaitingToPause = false;
+    private bool isGrabPausedMidway = false;
     
     private static List<WebSwinger> activeSwingerScripts = new List<WebSwinger>();
     void OnEnableR() { if (!activeSwingerScripts.Contains(this)) activeSwingerScripts.Add(this); }
@@ -127,6 +132,10 @@ public class WebSwinger : MonoBehaviour
         {
             if (!canShoot)
             {
+                animator.speed = 1f;
+                animator.Play("shoot_state", 0, 0f);
+                isPausedMidway = false;       
+                isWaitingToPause = true;
                 if (WallGrabber.IsGrabbing)
                 {
                     StartPendingSwing();
@@ -139,6 +148,24 @@ public class WebSwinger : MonoBehaviour
             }
             OnEnableR();
             swingStartTime = Time.time;
+        }
+
+        if (OVRInput.Get(swingButton, controller)) 
+        {
+            // 如果正在轉場（Transition），先不要檢查進度，讓新動畫順利播進去
+            if (!animator.IsInTransition(0))
+            {
+                AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+
+                // 確保不是 Idle，且我們正在等待暫停，且進度過半了
+                if (!stateInfo.IsName("Idle") && isWaitingToPause && stateInfo.normalizedTime >= 0.6f)
+                {
+                    // 改用 speed = 0 暫停，這樣按下的前半段動畫才會是完全流暢的！
+                    animator.speed = 0f; 
+                    isWaitingToPause = false; // 停下來了，不用再重複執行這段
+                    isPausedMidway = true;
+                }
+            }
         }
 
         if (controller == OVRInput.Controller.LTouch && OVRInput.GetDown(OVRInput.Button.Three) || 
@@ -155,6 +182,9 @@ public class WebSwinger : MonoBehaviour
 
         if (OVRInput.GetUp(swingButton, controller))
         {
+            animator.speed = 1f;
+            isWaitingToPause = false;
+            isPausedMidway = false;
             if (joint != null)
             {
                 StopSwing();
@@ -204,10 +234,34 @@ public class WebSwinger : MonoBehaviour
         if (OVRInput.GetDown(OVRInput.Button.PrimaryHandTrigger, controller))
         {
             ThisHandGrabbing = true;
+            
+            animator.speed = 1f;
+            animator.Play("grab_state", 0, 0f); 
+            isGrabPausedMidway = false;
+            isGrabWaitingToPause = true;
+        }
+        if (OVRInput.Get(OVRInput.Button.PrimaryHandTrigger, controller))
+        {
+            if (!animator.IsInTransition(0))
+            {
+                AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
+
+                // 專門監控抓取動畫，到了 50% (0.5f) 就卡住
+                if (stateInfo.IsName("grab_state") && isGrabWaitingToPause && stateInfo.normalizedTime >= 0.5f)
+                {
+                    animator.speed = 0f;
+                    isGrabWaitingToPause = false;
+                    isGrabPausedMidway = true;
+                }
+            }
         }
         if (OVRInput.GetUp(OVRInput.Button.PrimaryHandTrigger, controller))
         {
             ThisHandGrabbing = false;
+
+            animator.speed = 1f;
+            isGrabWaitingToPause = false;
+            isGrabPausedMidway = false;
         }
 
         UpdateReticle();
