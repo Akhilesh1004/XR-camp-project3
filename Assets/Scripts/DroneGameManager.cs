@@ -137,6 +137,8 @@ public class DroneGameManager : MonoBehaviour
         public Vector3 destination;
         public float speed;
         public float nextDestinationTime;
+        public bool configured;
+        public bool visible;
     }
 
     void Awake()
@@ -376,13 +378,19 @@ public class DroneGameManager : MonoBehaviour
         };
 
         ConfigureVisualDroneInstance(visualDrone);
-        obj.SetActive(false);
+        visualDrone.visible = true;
+        SetVisualDroneVisible(visualDrone, false);
         return visualDrone;
     }
 
     void ConfigureVisualDroneInstance(VisualDroneInstance visualDrone)
     {
         if (visualDrone == null)
+        {
+            return;
+        }
+
+        if (visualDrone.configured)
         {
             return;
         }
@@ -462,6 +470,43 @@ public class DroneGameManager : MonoBehaviour
 
                 rigidbody.isKinematic = true;
                 rigidbody.detectCollisions = false;
+            }
+        }
+
+        visualDrone.configured = true;
+    }
+
+    void SetVisualDroneVisible(VisualDroneInstance visualDrone, bool visible)
+    {
+        if (visualDrone == null)
+        {
+            return;
+        }
+
+        if (visualDrone.gameObject != null && !visualDrone.gameObject.activeSelf)
+        {
+            visualDrone.gameObject.SetActive(true);
+        }
+
+        if (visualDrone.visible == visible)
+        {
+            return;
+        }
+
+        visualDrone.visible = visible;
+
+        if (visualDrone.renderers == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < visualDrone.renderers.Length; i++)
+        {
+            Renderer renderer = visualDrone.renderers[i];
+
+            if (renderer != null)
+            {
+                renderer.enabled = visible;
             }
         }
     }
@@ -1110,9 +1155,8 @@ public class DroneGameManager : MonoBehaviour
             Mathf.Max(visualRingMoveSpeedMin, visualRingMoveSpeedMax)
         );
 
-        ConfigureVisualDroneInstance(visualDrone);
         AssignVisualRingDestination(visualDrone);
-        visualDrone.gameObject.SetActive(true);
+        SetVisualDroneVisible(visualDrone, true);
         activeVisualDrones.Add(visualDrone);
     }
 
@@ -1265,7 +1309,7 @@ public class DroneGameManager : MonoBehaviour
             return;
         }
 
-        visualDrone.gameObject.SetActive(false);
+        SetVisualDroneVisible(visualDrone, false);
         visualDrone.transform.SetParent(transform);
         pooledVisualDrones.Enqueue(visualDrone);
     }
@@ -1290,7 +1334,8 @@ public class DroneGameManager : MonoBehaviour
         return visualDrone != null &&
                visualDrone.gameObject != null &&
                visualDrone.transform != null &&
-               visualDrone.gameObject.activeSelf;
+               visualDrone.gameObject.activeSelf &&
+               visualDrone.visible;
     }
 
     bool IsLikelyVisibleSpawnPosition(Vector3 position)
