@@ -86,6 +86,8 @@ public class DroneGameManager : MonoBehaviour
     public float visualRingMoveSpeedMax = 7f;
     public float visualRingDestinationRadius = 140f;
     public float visualRingDestinationRefreshInterval = 8f;
+    [Tooltip("false 時 visual-only Drone 用便宜巡航目標，不查 grid。建議 false，避免 visual ring 在大 grid 上造成 FPS spike。")]
+    public bool visualRingUseGridDestinations = false;
     public float visualRingRelocateCheckInterval = 0.45f;
     public float visualRingBehindRecycleDistance = 320f;
     public float visualRingBehindRecycleDotThreshold = -0.2f;
@@ -1005,10 +1007,11 @@ public class DroneGameManager : MonoBehaviour
 
             for (int i = 0; i < attempts; i++)
             {
-                if (!grid.TryGetRandomWalkablePointInRange(
+                if (!grid.TryGetRandomWalkablePointInRangeFast(
                     player.position,
                     visualRingMinDistance,
                     visualRingMaxDistance,
+                    visualRingSpawnAttempts,
                     out Vector3 candidate))
                 {
                     return false;
@@ -1046,7 +1049,11 @@ public class DroneGameManager : MonoBehaviour
 
         for (int i = 0; i < attempts; i++)
         {
-            if (!grid.TryGetRandomWalkablePointNear(center, radius, out Vector3 candidate))
+            if (!grid.TryGetRandomWalkablePointNearFast(
+                center,
+                radius,
+                visualRingSpawnAttempts,
+                out Vector3 candidate))
             {
                 return false;
             }
@@ -1118,10 +1125,7 @@ public class DroneGameManager : MonoBehaviour
 
         if (!TryGetVisualRingDestination(visualDrone, out Vector3 destination))
         {
-            destination =
-                visualDrone.transform.position +
-                visualDrone.transform.forward *
-                Mathf.Max(12f, visualRingDestinationRadius * 0.35f);
+            destination = GetCheapVisualRingDestination(visualDrone);
         }
 
         visualDrone.destination = destination;
@@ -1146,6 +1150,12 @@ public class DroneGameManager : MonoBehaviour
                 return false;
             }
 
+            if (!visualRingUseGridDestinations)
+            {
+                destination = GetCheapVisualRingDestination(visualDrone);
+                return true;
+            }
+
             destination = visualDrone.transform.position;
 
             Vector3 center =
@@ -1156,7 +1166,11 @@ public class DroneGameManager : MonoBehaviour
 
             for (int i = 0; i < 4; i++)
             {
-                if (!grid.TryGetRandomWalkablePointNear(center, radius, out Vector3 candidate))
+                if (!grid.TryGetRandomWalkablePointNearFast(
+                    center,
+                    radius,
+                    visualRingSpawnAttempts,
+                    out Vector3 candidate))
                 {
                     return false;
                 }
@@ -1170,6 +1184,68 @@ public class DroneGameManager : MonoBehaviour
 
             return TryGetVisualRingPosition(out destination);
         }
+    }
+
+    Vector3 GetCheapVisualRingDestination(VisualDroneInstance visualDrone)
+    {
+        if (visualDrone == null || visualDrone.transform == null)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 position = visualDrone.transform.position;
+        Vector3 direction = Vector3.ProjectOnPlane(visualDrone.transform.forward, Vector3.up);
+
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            direction = Random.insideUnitSphere;
+            direction.y = 0f;
+        }
+
+        if (direction.sqrMagnitude < 0.001f)
+        {
+            direction = Vector3.forward;
+        }
+
+        direction.Normalize();
+        direction = Quaternion.Euler(0f, Random.Range(-35f, 35f), 0f) * direction;
+
+        float distance = Random.Range(
+            Mathf.Max(12f, visualRingDestinationRadius * 0.45f),
+            Mathf.Max(24f, visualRingDestinationRadius)
+        );
+        Vector3 destination = position + direction * distance;
+        destination.y = position.y + Random.Range(-8f, 8f);
+
+        if (player == null)
+        {
+            return destination;
+        }
+
+        Vector3 fromPlayer = destination - player.position;
+        Vector3 flatFromPlayer = Vector3.ProjectOnPlane(fromPlayer, Vector3.up);
+
+        if (flatFromPlayer.sqrMagnitude < 0.001f)
+        {
+            flatFromPlayer = direction;
+        }
+
+        float minDistance = Mathf.Max(1f, visualRingMinDistance);
+        float maxDistance = Mathf.Max(minDistance, visualRingMaxDistance);
+        float flatDistance = flatFromPlayer.magnitude;
+
+        if (flatDistance < minDistance)
+        {
+            flatFromPlayer = flatFromPlayer.normalized * minDistance;
+        }
+        else if (flatDistance > maxDistance)
+        {
+            flatFromPlayer = flatFromPlayer.normalized * maxDistance;
+        }
+
+        destination.x = player.position.x + flatFromPlayer.x;
+        destination.z = player.position.z + flatFromPlayer.z;
+        return destination;
     }
 
     VisualDroneInstance GetVisualDroneFromPool()
