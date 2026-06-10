@@ -1173,6 +1173,43 @@ public class DroneWaypointGraph : MonoBehaviour
         return TryGetRandomWalkablePointFiltered(origin, minSqr, maxSqr, out point);
     }
 
+    public bool TryGetRandomWalkablePointInRangeFast(
+        Vector3 origin,
+        float minDistance,
+        float maxDistance,
+        int attempts,
+        out Vector3 point
+    )
+    {
+        point = Vector3.zero;
+
+        if (!EnsureGridReady() || walkableCellIndices.Count == 0)
+        {
+            return false;
+        }
+
+        float minSqr = minDistance * minDistance;
+        float maxSqr = maxDistance > 0f
+            ? maxDistance * maxDistance
+            : float.MaxValue;
+        int maxAttempts = Mathf.Max(1, attempts);
+
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            int index = walkableCellIndices[Random.Range(0, walkableCellIndices.Count)];
+            Vector3 candidate = IndexToWorld(index);
+            float sqr = (candidate - origin).sqrMagnitude;
+
+            if (sqr >= minSqr && sqr <= maxSqr)
+            {
+                point = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public bool TryGetRandomWalkablePointNear(
         Vector3 origin,
         float maxDistance,
@@ -1207,6 +1244,38 @@ public class DroneWaypointGraph : MonoBehaviour
         }
 
         return TryGetRandomWalkablePointFiltered(origin, 0f, maxSqr, out point);
+    }
+
+    public bool TryGetRandomWalkablePointNearFast(
+        Vector3 origin,
+        float maxDistance,
+        int attempts,
+        out Vector3 point
+    )
+    {
+        point = Vector3.zero;
+
+        if (!EnsureGridReady() || walkableCellIndices.Count == 0)
+        {
+            return false;
+        }
+
+        float maxSqr = maxDistance * maxDistance;
+        int maxAttempts = Mathf.Max(1, attempts);
+
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            int index = walkableCellIndices[Random.Range(0, walkableCellIndices.Count)];
+            Vector3 candidate = IndexToWorld(index);
+
+            if ((candidate - origin).sqrMagnitude <= maxSqr)
+            {
+                point = candidate;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     bool TryGetRandomWalkablePointFiltered(
