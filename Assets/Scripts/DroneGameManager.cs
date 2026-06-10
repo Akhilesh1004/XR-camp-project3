@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -110,6 +111,17 @@ public class DroneGameManager : MonoBehaviour
     private float lastPlayerVelocitySampleTime = 0f;
     private float nextPlayerVelocitySampleTime = 0f;
     private bool hasPlayerVelocitySample = false;
+
+    private static readonly ProfilerMarker SpawnDroneMarker =
+        new ProfilerMarker("Drone.Manager.SpawnActiveDrone");
+    private static readonly ProfilerMarker VisualRingUpdateMarker =
+        new ProfilerMarker("Drone.VisualRing.Update");
+    private static readonly ProfilerMarker VisualRingSpawnMarker =
+        new ProfilerMarker("Drone.VisualRing.Spawn");
+    private static readonly ProfilerMarker VisualRingDestinationMarker =
+        new ProfilerMarker("Drone.VisualRing.PickDestination");
+    private static readonly ProfilerMarker VisualRingPositionMarker =
+        new ProfilerMarker("Drone.VisualRing.PickSpawnPosition");
 
     private class VisualDroneInstance
     {
@@ -454,40 +466,43 @@ public class DroneGameManager : MonoBehaviour
 
     bool SpawnOneDrone()
     {
-        if (dronePrefab == null || grid == null || !grid.IsReady)
+        using (SpawnDroneMarker.Auto())
         {
-            return false;
+            if (dronePrefab == null || grid == null || !grid.IsReady)
+            {
+                return false;
+            }
+
+            if (!TryGetSpawnPosition(out Vector3 spawnPosition))
+            {
+                return false;
+            }
+
+            DroneNPC drone = GetDroneFromPool();
+
+            if (drone == null)
+            {
+                return false;
+            }
+
+            Quaternion spawnRotation = Quaternion.Euler(
+                0f,
+                Random.Range(0f, 360f),
+                0f
+            );
+
+            drone.Initialize(
+                this,
+                spawnPosition,
+                spawnRotation,
+                grid
+            );
+
+            drone.gameObject.SetActive(true);
+            activeDrones.Add(drone);
+
+            return true;
         }
-
-        if (!TryGetSpawnPosition(out Vector3 spawnPosition))
-        {
-            return false;
-        }
-
-        DroneNPC drone = GetDroneFromPool();
-
-        if (drone == null)
-        {
-            return false;
-        }
-
-        Quaternion spawnRotation = Quaternion.Euler(
-            0f,
-            Random.Range(0f, 360f),
-            0f
-        );
-
-        drone.Initialize(
-            this,
-            spawnPosition,
-            spawnRotation,
-            grid
-        );
-
-        drone.gameObject.SetActive(true);
-        activeDrones.Add(drone);
-
-        return true;
     }
 
     bool TryGetSpawnPosition(out Vector3 spawnPosition)
@@ -785,25 +800,28 @@ public class DroneGameManager : MonoBehaviour
 
     void UpdateVisualRing()
     {
-        if (!enableVisualRing || !spawnOnStart)
+        using (VisualRingUpdateMarker.Auto())
         {
-            DisableAllVisualDrones();
-            return;
-        }
+            if (!enableVisualRing || !spawnOnStart)
+            {
+                DisableAllVisualDrones();
+                return;
+            }
 
-        if (player == null)
-        {
-            FindPlayer();
-        }
+            if (player == null)
+            {
+                FindPlayer();
+            }
 
-        if (player == null)
-        {
-            return;
-        }
+            if (player == null)
+            {
+                return;
+            }
 
-        MoveVisualRingDrones(Time.deltaTime);
-        RecycleVisualRingDronesThrottled();
-        SpawnVisualRingDronesThrottled();
+            MoveVisualRingDrones(Time.deltaTime);
+            RecycleVisualRingDronesThrottled();
+            SpawnVisualRingDronesThrottled();
+        }
     }
 
     void MoveVisualRingDrones(float dt)
@@ -891,38 +909,41 @@ public class DroneGameManager : MonoBehaviour
 
     void SpawnVisualRingDronesThrottled()
     {
-        int targetCount = Mathf.Max(0, visualDroneCount);
-
-        if (activeVisualDrones.Count >= targetCount ||
-            Time.time < nextVisualRingSpawnTime)
+        using (VisualRingSpawnMarker.Auto())
         {
-            return;
-        }
+            int targetCount = Mathf.Max(0, visualDroneCount);
 
-        int maxSpawns = Mathf.Max(1, visualRingMaxSpawnsPerFrame);
-        int spawned = 0;
-
-        while (activeVisualDrones.Count < targetCount && spawned < maxSpawns)
-        {
-            if (!TryGetVisualRingPosition(out Vector3 spawnPosition))
+            if (activeVisualDrones.Count >= targetCount ||
+                Time.time < nextVisualRingSpawnTime)
             {
-                break;
+                return;
             }
 
-            VisualDroneInstance visualDrone = GetVisualDroneFromPool();
+            int maxSpawns = Mathf.Max(1, visualRingMaxSpawnsPerFrame);
+            int spawned = 0;
 
-            if (visualDrone == null)
+            while (activeVisualDrones.Count < targetCount && spawned < maxSpawns)
             {
-                break;
+                if (!TryGetVisualRingPosition(out Vector3 spawnPosition))
+                {
+                    break;
+                }
+
+                VisualDroneInstance visualDrone = GetVisualDroneFromPool();
+
+                if (visualDrone == null)
+                {
+                    break;
+                }
+
+                ActivateVisualDrone(visualDrone, spawnPosition);
+                spawned++;
             }
 
-            ActivateVisualDrone(visualDrone, spawnPosition);
-            spawned++;
+            nextVisualRingSpawnTime =
+                Time.time +
+                Mathf.Max(0.01f, visualRingSpawnInterval);
         }
-
-        nextVisualRingSpawnTime =
-            Time.time +
-            Mathf.Max(0.01f, visualRingSpawnInterval);
     }
 
     bool ShouldRecycleVisualDrone(VisualDroneInstance visualDrone)
@@ -964,41 +985,44 @@ public class DroneGameManager : MonoBehaviour
 
     bool TryGetVisualRingPosition(out Vector3 position)
     {
-        position = Vector3.zero;
-
-        if (grid == null || player == null)
+        using (VisualRingPositionMarker.Auto())
         {
-            return false;
-        }
+            position = Vector3.zero;
 
-        if (visualRingBiasAheadOfFastPlayer &&
-            IsPlayerMovingFast() &&
-            TryGetForwardBiasedVisualRingPosition(out position))
-        {
-            return true;
-        }
-
-        int attempts = Mathf.Max(1, visualRingSpawnAttempts);
-
-        for (int i = 0; i < attempts; i++)
-        {
-            if (!grid.TryGetRandomWalkablePointInRange(
-                player.position,
-                visualRingMinDistance,
-                visualRingMaxDistance,
-                out Vector3 candidate))
+            if (grid == null || player == null)
             {
                 return false;
             }
 
-            if (IsValidVisualRingPosition(candidate))
+            if (visualRingBiasAheadOfFastPlayer &&
+                IsPlayerMovingFast() &&
+                TryGetForwardBiasedVisualRingPosition(out position))
             {
-                position = candidate;
                 return true;
             }
-        }
 
-        return false;
+            int attempts = Mathf.Max(1, visualRingSpawnAttempts);
+
+            for (int i = 0; i < attempts; i++)
+            {
+                if (!grid.TryGetRandomWalkablePointInRange(
+                    player.position,
+                    visualRingMinDistance,
+                    visualRingMaxDistance,
+                    out Vector3 candidate))
+                {
+                    return false;
+                }
+
+                if (IsValidVisualRingPosition(candidate))
+                {
+                    position = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     bool TryGetForwardBiasedVisualRingPosition(out Vector3 position)
@@ -1113,36 +1137,39 @@ public class DroneGameManager : MonoBehaviour
         out Vector3 destination
     )
     {
-        destination = Vector3.zero;
-
-        if (grid == null || player == null || visualDrone == null)
+        using (VisualRingDestinationMarker.Auto())
         {
-            return false;
-        }
+            destination = Vector3.zero;
 
-        destination = visualDrone.transform.position;
-
-        Vector3 center =
-            visualDrone.transform.position +
-            visualDrone.transform.forward *
-            Mathf.Max(16f, visualRingDestinationRadius * 0.35f);
-        float radius = Mathf.Max(8f, visualRingDestinationRadius);
-
-        for (int i = 0; i < 4; i++)
-        {
-            if (!grid.TryGetRandomWalkablePointNear(center, radius, out Vector3 candidate))
+            if (grid == null || player == null || visualDrone == null)
             {
                 return false;
             }
 
-            if (IsValidVisualRingPosition(candidate))
-            {
-                destination = candidate;
-                return true;
-            }
-        }
+            destination = visualDrone.transform.position;
 
-        return TryGetVisualRingPosition(out destination);
+            Vector3 center =
+                visualDrone.transform.position +
+                visualDrone.transform.forward *
+                Mathf.Max(16f, visualRingDestinationRadius * 0.35f);
+            float radius = Mathf.Max(8f, visualRingDestinationRadius);
+
+            for (int i = 0; i < 4; i++)
+            {
+                if (!grid.TryGetRandomWalkablePointNear(center, radius, out Vector3 candidate))
+                {
+                    return false;
+                }
+
+                if (IsValidVisualRingPosition(candidate))
+                {
+                    destination = candidate;
+                    return true;
+                }
+            }
+
+            return TryGetVisualRingPosition(out destination);
+        }
     }
 
     VisualDroneInstance GetVisualDroneFromPool()

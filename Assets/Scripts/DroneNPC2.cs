@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using TMPro;
+using Unity.Profiling;
 using UnityEngine;
 
 public class DroneNPC2 : MonoBehaviour
@@ -155,6 +156,13 @@ public class DroneNPC2 : MonoBehaviour
     private float nextFarSimulationTime = 0f;
     private float accumulatedFarSimulationDt = 0f;
     private string currentCargoDisplayName = "";
+
+    private static readonly ProfilerMarker SpawnCargoMarker =
+        new ProfilerMarker("Drone2.Cargo.SpawnRandomCargo");
+    private static readonly ProfilerMarker ClearCargoMarker =
+        new ProfilerMarker("Drone2.Cargo.ClearCargo");
+    private static readonly ProfilerMarker DropCargoMarker =
+        new ProfilerMarker("Drone2.Cargo.DropCargo");
 
     public bool CanRecycleForLocalPopulation =>
         hasBeenInitialized &&
@@ -1212,50 +1220,53 @@ public class DroneNPC2 : MonoBehaviour
 
     void SpawnRandomCargo()
     {
-        if (cargoPrefabs == null || cargoPrefabs.Length == 0)
+        using (SpawnCargoMarker.Auto())
         {
-            return;
-        }
+            if (cargoPrefabs == null || cargoPrefabs.Length == 0)
+            {
+                return;
+            }
 
-        GameObject prefab = cargoPrefabs[Random.Range(0, cargoPrefabs.Length)];
+            GameObject prefab = cargoPrefabs[Random.Range(0, cargoPrefabs.Length)];
 
-        if (prefab == null)
-        {
-            return;
-        }
+            if (prefab == null)
+            {
+                return;
+            }
 
-        Transform parent = cargoAnchor != null ? cargoAnchor : transform;
-        Vector3 prefabScale = prefab.transform.localScale;
+            Transform parent = cargoAnchor != null ? cargoAnchor : transform;
+            Vector3 prefabScale = prefab.transform.localScale;
 
-        currentCargo = Instantiate(prefab, parent, false);
-        currentCargo.transform.localPosition = Vector3.zero;
-        currentCargo.transform.localRotation = Quaternion.identity;
-        currentCargo.transform.localScale = DivideScale(prefabScale, parent.lossyScale);
-        currentCargoDisplayName = GetCargoDisplayName(currentCargo);
-        UpdateCargoNameLabel(true);
+            currentCargo = Instantiate(prefab, parent, false);
+            currentCargo.transform.localPosition = Vector3.zero;
+            currentCargo.transform.localRotation = Quaternion.identity;
+            currentCargo.transform.localScale = DivideScale(prefabScale, parent.lossyScale);
+            currentCargoDisplayName = GetCargoDisplayName(currentCargo);
+            UpdateCargoNameLabel(true);
 
-        Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>(true);
+            Rigidbody[] rigidbodies = currentCargo.GetComponentsInChildren<Rigidbody>(true);
 
-        foreach (Rigidbody cargoRb in rigidbodies)
-        {
-            cargoRb.isKinematic = true;
-            cargoRb.useGravity = false;
-            cargoRb.interpolation = RigidbodyInterpolation.None;
-            cargoRb.collisionDetectionMode = CollisionDetectionMode.Discrete;
-            cargoRb.velocity = Vector3.zero;
-            cargoRb.angularVelocity = Vector3.zero;
-        }
+            foreach (Rigidbody cargoRb in rigidbodies)
+            {
+                cargoRb.isKinematic = true;
+                cargoRb.useGravity = false;
+                cargoRb.interpolation = RigidbodyInterpolation.None;
+                cargoRb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+                cargoRb.velocity = Vector3.zero;
+                cargoRb.angularVelocity = Vector3.zero;
+            }
 
-        // Re-apply the anchor pose after configuring nested rigidbodies so carried
-        // cargo cannot retain a transient world-space physics pose from spawning.
-        currentCargo.transform.localPosition = Vector3.zero;
-        currentCargo.transform.localRotation = Quaternion.identity;
+            // Re-apply the anchor pose after configuring nested rigidbodies so carried
+            // cargo cannot retain a transient world-space physics pose from spawning.
+            currentCargo.transform.localPosition = Vector3.zero;
+            currentCargo.transform.localRotation = Quaternion.identity;
 
-        Collider[] colliders = currentCargo.GetComponentsInChildren<Collider>(true);
+            Collider[] colliders = currentCargo.GetComponentsInChildren<Collider>(true);
 
-        foreach (Collider c in colliders)
-        {
-            c.enabled = false;
+            foreach (Collider c in colliders)
+            {
+                c.enabled = false;
+            }
         }
     }
 
@@ -1270,63 +1281,69 @@ public class DroneNPC2 : MonoBehaviour
 
     void ClearCargo()
     {
-        if (currentCargo == null)
+        using (ClearCargoMarker.Auto())
         {
+            if (currentCargo == null)
+            {
+                currentCargoDisplayName = "";
+                UpdateCargoNameLabel(true);
+                return;
+            }
+
+            Destroy(currentCargo);
+            currentCargo = null;
             currentCargoDisplayName = "";
             UpdateCargoNameLabel(true);
-            return;
         }
-
-        Destroy(currentCargo);
-        currentCargo = null;
-        currentCargoDisplayName = "";
-        UpdateCargoNameLabel(true);
     }
 
     void DropCargo()
     {
-        if (currentCargo == null)
+        using (DropCargoMarker.Auto())
         {
+            if (currentCargo == null)
+            {
+                currentCargoDisplayName = "";
+                UpdateCargoNameLabel(true);
+                return;
+            }
+
+            GameObject dropped = currentCargo;
+            currentCargo = null;
             currentCargoDisplayName = "";
             UpdateCargoNameLabel(true);
-            return;
-        }
+            dropped.transform.SetParent(null, true);
+            SetCargoRenderersEnabled(dropped, true);
 
-        GameObject dropped = currentCargo;
-        currentCargo = null;
-        currentCargoDisplayName = "";
-        UpdateCargoNameLabel(true);
-        dropped.transform.SetParent(null, true);
-        SetCargoRenderersEnabled(dropped, true);
+            Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>(true);
 
-        Rigidbody[] rigidbodies = dropped.GetComponentsInChildren<Rigidbody>(true);
-
-        if (rigidbodies.Length == 0 && addRigidbodyToDroppedCargo)
-        {
-            Rigidbody newRb = dropped.AddComponent<Rigidbody>();
-            newRb.isKinematic = false;
-            newRb.useGravity = true;
-            newRb.interpolation = RigidbodyInterpolation.Interpolate;
-            newRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-            newRb.velocity = Vector3.down * cargoDropDownVelocity;
-        }
-        else
-        {
-            foreach (Rigidbody cargoRb in rigidbodies)
+            if (rigidbodies.Length == 0 && addRigidbodyToDroppedCargo)
             {
-                cargoRb.isKinematic = false;
-                cargoRb.useGravity = true;
-                cargoRb.interpolation = RigidbodyInterpolation.Interpolate;
-                cargoRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-                cargoRb.velocity = Vector3.down * cargoDropDownVelocity;
+                Rigidbody newRb = dropped.AddComponent<Rigidbody>();
+                newRb.isKinematic = false;
+                newRb.useGravity = true;
+                newRb.interpolation = RigidbodyInterpolation.Interpolate;
+                newRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                newRb.velocity = Vector3.down * cargoDropDownVelocity;
             }
-        }
+            else
+            {
+                foreach (Rigidbody cargoRb in rigidbodies)
+                {
+                    cargoRb.isKinematic = false;
+                    cargoRb.useGravity = true;
+                    cargoRb.interpolation = RigidbodyInterpolation.Interpolate;
+                    cargoRb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+                    cargoRb.velocity = Vector3.down * cargoDropDownVelocity;
+                }
+            }
 
-        Collider[] colliders = dropped.GetComponentsInChildren<Collider>(true);
+            Collider[] colliders = dropped.GetComponentsInChildren<Collider>(true);
 
-        foreach (Collider c in colliders)
-        {
-            c.enabled = true;
+            foreach (Collider c in colliders)
+            {
+                c.enabled = true;
+            }
         }
     }
 

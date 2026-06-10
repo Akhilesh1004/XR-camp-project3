@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Unity.Profiling;
 using UnityEngine;
 
 public class DronePathRequestManager : MonoBehaviour
@@ -121,6 +122,13 @@ public class DronePathRequestManager : MonoBehaviour
 
     private readonly Stopwatch stopwatch = new Stopwatch();
     private float nextPathSearchTime = 0f;
+
+    private static readonly ProfilerMarker ProcessRequestMarker =
+        new ProfilerMarker("Drone.PathRequest.ProcessRequest");
+    private static readonly ProfilerMarker PathSearchMarker =
+        new ProfilerMarker("Drone.PathRequest.AStarSearch");
+    private static readonly ProfilerMarker StoreCacheMarker =
+        new ProfilerMarker("Drone.PathRequest.StoreCache");
 
     void Awake()
     {
@@ -263,34 +271,42 @@ public class DronePathRequestManager : MonoBehaviour
 
     void ProcessRequest(PathRequest request)
     {
-        if (request.grid == null)
+        using (ProcessRequestMarker.Auto())
         {
-            request.callback(false, null);
-            return;
-        }
+            if (request.grid == null)
+            {
+                request.callback(false, null);
+                return;
+            }
 
-        if (enablePathCache && TryReturnCachedPath(request))
-        {
-            return;
-        }
+            if (enablePathCache && TryReturnCachedPath(request))
+            {
+                return;
+            }
 
-        bool found = request.grid.TryFindPathPositionsNonAlloc(
-            request.from,
-            request.to,
-            reusablePathResult,
-            request.variant,
-            false,
-            false
-        );
+            bool found;
 
-        if (found && reusablePathResult.Count > 0)
-        {
-            StoreCache(request, reusablePathResult);
-            ReturnPath(request, reusablePathResult);
-        }
-        else
-        {
-            request.callback(false, null);
+            using (PathSearchMarker.Auto())
+            {
+                found = request.grid.TryFindPathPositionsNonAlloc(
+                    request.from,
+                    request.to,
+                    reusablePathResult,
+                    request.variant,
+                    false,
+                    false
+                );
+            }
+
+            if (found && reusablePathResult.Count > 0)
+            {
+                StoreCache(request, reusablePathResult);
+                ReturnPath(request, reusablePathResult);
+            }
+            else
+            {
+                request.callback(false, null);
+            }
         }
     }
 
@@ -336,18 +352,21 @@ public class DronePathRequestManager : MonoBehaviour
             return;
         }
 
-        if (pathCache.Count >= maxCacheEntries)
+        using (StoreCacheMarker.Auto())
         {
-            RemoveExpiredOrOldestCacheEntry();
+            if (pathCache.Count >= maxCacheEntries)
+            {
+                RemoveExpiredOrOldestCacheEntry();
+            }
+
+            PathCacheKey key = MakeCacheKey(request);
+
+            pathCache[key] = new CacheEntry
+            {
+                path = new List<Vector3>(path),
+                expireTime = Time.time + cacheLifeTime
+            };
         }
-
-        PathCacheKey key = MakeCacheKey(request);
-
-        pathCache[key] = new CacheEntry
-        {
-            path = new List<Vector3>(path),
-            expireTime = Time.time + cacheLifeTime
-        };
     }
 
     void RemoveExpiredOrOldestCacheEntry()
