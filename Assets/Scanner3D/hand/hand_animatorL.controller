@@ -1,5 +1,32 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1102 &-3958286354777417452
+AnimatorState:
+  serializedVersion: 6
+  m_ObjectHideFlags: 1
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: grab_state
+  m_Speed: 1
+  m_CycleOffset: 0
+  m_Transitions: []
+  m_StateMachineBehaviours: []
+  m_Position: {x: 50, y: 50, z: 0}
+  m_IKOnFeet: 0
+  m_WriteDefaultValues: 1
+  m_Mirror: 0
+  m_SpeedParameterActive: 0
+  m_MirrorParameterActive: 0
+  m_CycleOffsetParameterActive: 0
+  m_TimeParameterActive: 0
+  m_Motion: {fileID: -623603649343465320, guid: 0438c58d28c3f8d48b3148c98fb3fdfd,
+    type: 3}
+  m_Tag: 
+  m_SpeedParameter: 
+  m_MirrorParameter: 
+  m_CycleOffsetParameter: 
+  m_TimeParameter: 
 --- !u!1102 &-558005162427209024
 AnimatorState:
   serializedVersion: 6
@@ -39,11 +66,11 @@ AnimatorStateMachine:
     m_State: {fileID: -558005162427209024}
     m_Position: {x: 260, y: 390, z: 0}
   - serializedVersion: 1
-    m_State: {fileID: 8347467495471744389}
-    m_Position: {x: 720, y: 390, z: 0}
+    m_State: {fileID: 1954342155367293823}
+    m_Position: {x: 579.2727, y: 606.0455, z: 0}
   - serializedVersion: 1
-    m_State: {fileID: 1045814246346284555}
-    m_Position: {x: 490, y: 590, z: 0}
+    m_State: {fileID: -3958286354777417452}
+    m_Position: {x: 710, y: 350, z: 0}
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
   m_EntryTransitions: []
@@ -94,7 +121,7 @@ AnimatorController:
     m_IKPass: 0
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
---- !u!1102 &1045814246346284555
+--- !u!1102 &1954342155367293823
 AnimatorState:
   serializedVersion: 6
   m_ObjectHideFlags: 1
@@ -114,34 +141,7 @@ AnimatorState:
   m_MirrorParameterActive: 0
   m_CycleOffsetParameterActive: 0
   m_TimeParameterActive: 0
-  m_Motion: {fileID: -1555138464945251499, guid: 3bc9d6c0f008616488d2625f98486ef1,
-    type: 3}
-  m_Tag: 
-  m_SpeedParameter: 
-  m_MirrorParameter: 
-  m_CycleOffsetParameter: 
-  m_TimeParameter: 
---- !u!1102 &8347467495471744389
-AnimatorState:
-  serializedVersion: 6
-  m_ObjectHideFlags: 1
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: grab_state
-  m_Speed: 1
-  m_CycleOffset: 0
-  m_Transitions: []
-  m_StateMachineBehaviours: []
-  m_Position: {x: 50, y: 50, z: 0}
-  m_IKOnFeet: 0
-  m_WriteDefaultValues: 1
-  m_Mirror: 0
-  m_SpeedParameterActive: 0
-  m_MirrorParameterActive: 0
-  m_CycleOffsetParameterActive: 0
-  m_TimeParameterActive: 0
-  m_Motion: {fileID: 4847398990401322872, guid: 638805858cfe5bb478745f88df15eea3,
+  m_Motion: {fileID: -623603649343465320, guid: 872f8e94c01df27468f1aa5561fd402b,
     type: 3}
   m_Tag: 
   m_SpeedParameter: 
