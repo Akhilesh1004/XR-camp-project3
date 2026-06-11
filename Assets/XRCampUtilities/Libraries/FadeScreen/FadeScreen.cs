@@ -30,6 +30,7 @@ public class FadeScreen : MonoBehaviour
 
     public void Fade(float alphaIn, float alphaOut)
     {
+        if (rend == null) rend = GetComponent<Renderer>();
         StartCoroutine(FadeScreenCoroutine(alphaIn, alphaOut));
     }
 
