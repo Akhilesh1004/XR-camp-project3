@@ -13,6 +13,8 @@ GameObject:
   - component: {fileID: 3723193566276231889}
   - component: {fileID: 4107028222798349297}
   - component: {fileID: 8512820412117538224}
+  - component: {fileID: 3800367630338772660}
+  - component: {fileID: 3608959357485799773}
   m_Layer: 0
   m_Name: CP_Skyscraper_02
   m_TagString: Untagged
@@ -125,3 +127,45 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 39.537907, y: 78.67774, z: 29.710526}
   m_Center: {x: 5.2254868, y: 39.33887, z: 0.33269215}
+--- !u!65 &3800367630338772660
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7273917052744627638}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 15.33897, y: 76.60669, z: 19.435408}
+  m_Center: {x: 17.324966, y: 38.303547, z: -4.804867}
+--- !u!65 &3608959357485799773
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7273917052744627638}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 19.690634, y: 11.804835, z: 16.826357}
+  m_Center: {x: -1.9341506, y: 79.450554, z: -0.6421907}

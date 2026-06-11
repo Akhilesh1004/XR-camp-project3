@@ -130535,7 +130535,7 @@ GameObject:
   - component: {fileID: 3563570106081444841}
   - component: {fileID: 4930375444530157754}
   - component: {fileID: 3882344288065948781}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: CP_Signboard_Skyscraper_18
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -549894,6 +549894,8 @@ GameObject:
   - component: {fileID: 4445478719045796926}
   - component: {fileID: 6481852293389372330}
   - component: {fileID: 948653226825957290}
+  - component: {fileID: 7497819718327033003}
+  - component: {fileID: 3788921112081435938}
   m_Layer: 0
   m_Name: CP_Skyscraper_07
   m_TagString: Untagged
@@ -549985,8 +549987,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 38.496796, y: 80.22832, z: 32.91589}
-  m_Center: {x: -0.0056152344, y: 40.11416, z: -0.17105675}
+  m_Size: {x: 24.73574, y: 33.980618, z: 19.110788}
+  m_Center: {x: -0.07852664, y: 16.990309, z: -0.005193542}
 --- !u!205 &948653226825957290
 LODGroup:
   m_ObjectHideFlags: 0
@@ -550006,6 +550008,48 @@ LODGroup:
     renderers:
     - renderer: {fileID: 4445478719045796926}
   m_Enabled: 1
+--- !u!65 &7497819718327033003
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9173955067734738812}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 27.453777, y: 41.199238, z: 21.620527}
+  m_Center: {x: -0.005346345, y: 54.46449, z: 0.5675789}
+--- !u!65 &3788921112081435938
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9173955067734738812}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 38.496796, y: 4.6663537, z: 32.91589}
+  m_Center: {x: -0.0056150677, y: 77.327385, z: -0.17105669}
 --- !u!1 &9176075090036196776
 GameObject:
   m_ObjectHideFlags: 0

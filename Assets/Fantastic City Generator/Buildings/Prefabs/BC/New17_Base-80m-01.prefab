@@ -227,6 +227,36 @@ PrefabInstance:
       propertyPath: m_Name
       value: CP_Skyscraper_02 (1)
       objectReference: {fileID: 0}
+    - target: {fileID: 8512820412117538224, guid: 28ebe726298f3ed43a61133a069fe968,
+        type: 3}
+      propertyPath: m_Size.x
+      value: 24.744997
+      objectReference: {fileID: 0}
+    - target: {fileID: 8512820412117538224, guid: 28ebe726298f3ed43a61133a069fe968,
+        type: 3}
+      propertyPath: m_Size.y
+      value: 76.62206
+      objectReference: {fileID: 0}
+    - target: {fileID: 8512820412117538224, guid: 28ebe726298f3ed43a61133a069fe968,
+        type: 3}
+      propertyPath: m_Size.z
+      value: 29.710527
+      objectReference: {fileID: 0}
+    - target: {fileID: 8512820412117538224, guid: 28ebe726298f3ed43a61133a069fe968,
+        type: 3}
+      propertyPath: m_Center.x
+      value: -2.1709602
+      objectReference: {fileID: 0}
+    - target: {fileID: 8512820412117538224, guid: 28ebe726298f3ed43a61133a069fe968,
+        type: 3}
+      propertyPath: m_Center.y
+      value: 38.311146
+      objectReference: {fileID: 0}
+    - target: {fileID: 8512820412117538224, guid: 28ebe726298f3ed43a61133a069fe968,
+        type: 3}
+      propertyPath: m_Center.z
+      value: 0.33269274
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -320,6 +350,26 @@ PrefabInstance:
         type: 3}
       propertyPath: m_Name
       value: CP_Skyscraper_10 (3)
+      objectReference: {fileID: 0}
+    - target: {fileID: 8285246693328986586, guid: 80b8b36860400fb498a8a05fe66b9664,
+        type: 3}
+      propertyPath: m_Size.y
+      value: 11.798746
+      objectReference: {fileID: 0}
+    - target: {fileID: 8285246693328986586, guid: 80b8b36860400fb498a8a05fe66b9664,
+        type: 3}
+      propertyPath: m_Size.z
+      value: 25.71464
+      objectReference: {fileID: 0}
+    - target: {fileID: 8285246693328986586, guid: 80b8b36860400fb498a8a05fe66b9664,
+        type: 3}
+      propertyPath: m_Center.y
+      value: 5.899373
+      objectReference: {fileID: 0}
+    - target: {fileID: 8285246693328986586, guid: 80b8b36860400fb498a8a05fe66b9664,
+        type: 3}
+      propertyPath: m_Center.z
+      value: -6.016796
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
