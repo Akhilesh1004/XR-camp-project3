@@ -51,6 +51,9 @@ MonoBehaviour:
   currentHealth: 100
   canBeDelivered: 1
   disableCollidersWhileCarried: 1
+  normalVisualRoot: {fileID: 4559838413100735226}
+  damagedVisualRoot: {fileID: 1706983831896119024}
+  damagedVisualHealthRatio: 0.5
 --- !u!1001 &1977367284876700577
 PrefabInstance:
   m_ObjectHideFlags: 0
