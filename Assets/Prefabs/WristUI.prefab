@@ -543,6 +543,7 @@ GameObject:
   - component: {fileID: 2338031492079774454}
   - component: {fileID: 951209976729046879}
   - component: {fileID: 1379491794939570226}
+  - component: {fileID: 9124386751023348765}
   m_Layer: 5
   m_Name: MiniMap
   m_TagString: Untagged
@@ -591,7 +592,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -604,6 +605,38 @@ MonoBehaviour:
     y: 0
     width: 1
     height: 1
+--- !u!114 &9124386751023348765
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5678363424193185625}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b7c8d0e1f2a4b5c9d0e1f2a3b4c5d6e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mapRect: {fileID: 2338031492079774454}
+  player: {fileID: 0}
+  playerTag: Player
+  updatesPerSecond: 10
+  mapWorldRange: 180
+  edgePadding: 4
+  rotateMapWithPlayer: 0
+  showActiveOrders: 1
+  showWaitingOrders: 0
+  showPickupBlips: 1
+  showDestinationBlips: 1
+  pickupBlipSize: {x: 7, y: 7}
+  destinationBlipSize: {x: 8, y: 8}
+  edgeBlipScale: {x: 1.15, y: 1.15}
+  pickupTint: {r: 1, g: 1, b: 1, a: 1}
+  destinationTint: {r: 1, g: 1, b: 1, a: 1}
+  orderColors:
+  - {r: 0.25, g: 0.65, b: 1, a: 1}
+  - {r: 0.2, g: 1, b: 0.45, a: 1}
+  - {r: 1, g: 0.35, b: 0.25, a: 1}
 --- !u!1 &6869677024463965860
 GameObject:
   m_ObjectHideFlags: 0

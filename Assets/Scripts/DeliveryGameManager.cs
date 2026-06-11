@@ -89,6 +89,7 @@ public class DeliveryGameManager : MonoBehaviour
     public GameObject[] NPCPrefabs;
 
     [Header("Minimap Marker Prefab (三種顏色)")]
+    public bool spawnWorldMinimapMarkers = false;
     public GameObject[] minimapMarkerPrefabs = new GameObject[3];
     public GameObject[] minimapDestinationPrefabs = new GameObject[3];
     
@@ -440,6 +441,7 @@ public class DeliveryGameManager : MonoBehaviour
     
     void SpawnMinimapMarkers(DeliveryOrder order)
     {
+        if (!spawnWorldMinimapMarkers) return;
         if (order.colorIndex < 0 || order.colorIndex >= minimapMarkerPrefabs.Length) return;
         
         GameObject prefabM = minimapMarkerPrefabs[order.colorIndex];
