@@ -29,6 +29,7 @@ public class DeliveryOrder
     public GameObject pickupMarker;
     public GameObject destinationMarker;
     public DeliveryDestinationZone destinationZone;
+    public GameObject spawnedNPC; // 在目的地隨機生成的NPC
     
     // Minimap 相關
     public int colorIndex = -1; // 0, 1, 2 分別代表三種不同顏色；-1 表示未分配
@@ -84,6 +85,8 @@ public class DeliveryGameManager : MonoBehaviour
     public GameObject pickupMarkerPrefab;
     public GameObject destinationMarkerPrefab;
     public DeliveryDestinationZone destinationZonePrefab;
+    
+    public GameObject[] NPCPrefabs;
 
     [Header("Minimap Marker Prefab (三種顏色)")]
     public GameObject[] minimapMarkerPrefabs = new GameObject[3];
@@ -422,6 +425,16 @@ public class DeliveryGameManager : MonoBehaviour
             order.destinationZone.Initialize(order.orderId);
         }
         
+        // 隨機生成NPC
+        if (NPCPrefabs != null && NPCPrefabs.Length > 0)
+        {
+            GameObject npcPrefab = NPCPrefabs[Random.Range(0, NPCPrefabs.Length)];
+            if (npcPrefab != null)
+            {
+                order.spawnedNPC = Instantiate(npcPrefab, order.destinationPoint.position, order.destinationPoint.rotation);
+            }
+        }
+        
         SpawnMinimapMarkers(order);
     }
     
@@ -448,6 +461,7 @@ public class DeliveryGameManager : MonoBehaviour
         if (order.pickupMarker != null) Destroy(order.pickupMarker);
         if (order.destinationMarker != null) Destroy(order.destinationMarker);
         if (order.destinationZone != null) Destroy(order.destinationZone.gameObject);
+        if (order.spawnedNPC != null) Destroy(order.spawnedNPC);
         
         if (order.pickupMinimapMarker != null) Destroy(order.pickupMinimapMarker);
         if (order.destinationMinimapMarker != null) Destroy(order.destinationMinimapMarker);
