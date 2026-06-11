@@ -64,8 +64,13 @@ public class WebSwinger : MonoBehaviour
     private bool canShoot = false;
     private bool ThisHandGrabbing = false;
 
-    [Header("音效檔案")]
+    [Header("蛛絲音效")]
+    public AudioSource webAudioSource;
     public AudioClip webShootSound;
+    public float webShootVolume = 1f;
+    public AudioClip webLoopSound;
+    public float webLoopVolume = 0.45f;
+    public float webLoopPitch = 1f;
 
     private SpringJoint joint;
     private Vector3 swingPoint;
@@ -144,7 +149,7 @@ public class WebSwinger : MonoBehaviour
                 {
                     StartSwing();
                 }
-                DeliveryGameManager.Instance.PlaySound(webShootSound);
+                PlayWebShootSound();
             }
             OnEnableR();
             swingStartTime = Time.time;
@@ -370,6 +375,8 @@ public class WebSwinger : MonoBehaviour
                 webEffectPrefab.SetActive(true);
             }
 
+            StartWebLoopSound();
+
             Debug.Log("Pending swing created: " + gameObject.name);
         }
     }
@@ -432,6 +439,8 @@ public class WebSwinger : MonoBehaviour
             {
                 webEffectPrefab.SetActive(false);
             }
+
+            StopWebLoopSound();
         }
 
         Debug.Log("Pending swing cancelled: " + gameObject.name);
@@ -524,6 +533,8 @@ public class WebSwinger : MonoBehaviour
             webEffectPrefab.SetActive(true);
         }
 
+        StartWebLoopSound();
+
         Debug.Log("Swing joint created: " + gameObject.name);
     }
 
@@ -561,6 +572,8 @@ public class WebSwinger : MonoBehaviour
         {
             webEffectPrefab.SetActive(false);
         }
+
+        StopWebLoopSound();
 
         if (applyBoost && playerRigidbody.velocity.sqrMagnitude > 0.01f)
         {
@@ -616,6 +629,8 @@ public class WebSwinger : MonoBehaviour
                 webEffectPrefab.SetActive(true);
             }
 
+            StartWebLoopSound();
+
             Debug.Log("Active swing suspended and converted to pending: " + gameObject.name);
         }
         else
@@ -633,8 +648,78 @@ public class WebSwinger : MonoBehaviour
                 webEffectPrefab.SetActive(false);
             }
 
+            StopWebLoopSound();
+
             Debug.Log("Active swing stopped by wall grab: " + gameObject.name);
         }
+    }
+
+    void PlayWebShootSound()
+    {
+        if (webShootSound == null)
+        {
+            return;
+        }
+
+        AudioSource source = GetWebAudioSource();
+
+        if (source != null)
+        {
+            source.PlayOneShot(webShootSound, webShootVolume);
+        }
+    }
+
+    void StartWebLoopSound()
+    {
+        if (webLoopSound == null)
+        {
+            return;
+        }
+
+        AudioSource source = GetWebAudioSource();
+
+        if (source == null)
+        {
+            return;
+        }
+
+        if (source.clip != webLoopSound)
+        {
+            source.clip = webLoopSound;
+        }
+
+        source.loop = true;
+        source.volume = webLoopVolume;
+        source.pitch = webLoopPitch;
+
+        if (!source.isPlaying)
+        {
+            source.Play();
+        }
+    }
+
+    void StopWebLoopSound()
+    {
+        if (webAudioSource == null || webAudioSource.clip != webLoopSound)
+        {
+            return;
+        }
+
+        webAudioSource.Stop();
+        webAudioSource.loop = false;
+        webAudioSource.clip = null;
+    }
+
+    AudioSource GetWebAudioSource()
+    {
+        if (webAudioSource == null)
+        {
+            webAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        webAudioSource.playOnAwake = false;
+        webAudioSource.spatialBlend = 1f;
+        return webAudioSource;
     }
 
     void HandleAutoReeling()
@@ -764,6 +849,7 @@ public class WebSwinger : MonoBehaviour
 
     void OnDisable()
     {
+        StopWebLoopSound();
         StopVibration();
         StopSlowMotion();
         ForceStopSwing(false);

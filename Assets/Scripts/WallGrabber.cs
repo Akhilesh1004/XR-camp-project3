@@ -50,12 +50,26 @@ public class WallGrabber : MonoBehaviour
     public float grabVibrationAmplitude = 0.3f;
     public float grabVibrationDuration = 0.1f;
 
+    [Header("抓牆音效")]
+    public AudioSource wallGrabAudioSource;
+    public AudioClip wallGrabSound;
+    public float wallGrabVolume = 0.8f;
+    public AudioClip wallReleaseSound;
+    public float wallReleaseVolume = 0.5f;
+    public AudioClip[] wallClimbSounds;
+    public float wallClimbVolume = 0.65f;
+    public float wallClimbSoundDistance = 0.3f;
+    public float wallClimbSoundMinInterval = 0.12f;
+
     private bool isTouchingWall = false;
     private bool isGrabbing = false;
 
     private Vector3 previousHandLocalPos;
     private Vector3 grabbedWallNormal = Vector3.zero;
     private Vector3 grabWorldPoint; 
+    private float accumulatedClimbSoundDistance = 0f;
+    private float nextClimbSoundTime = 0f;
+    private int lastClimbSoundIndex = -1;
 
     private static WallGrabber activeGrabber;
     private static readonly List<WallGrabber> grabbingHands = new List<WallGrabber>();
@@ -135,6 +149,9 @@ public class WallGrabber : MonoBehaviour
         }
 
         isGrabbing = true;
+        accumulatedClimbSoundDistance = 0f;
+        nextClimbSoundTime = 0f;
+        PlayOneShot(wallGrabSound, wallGrabVolume);
 
         if (!grabbingHands.Contains(this))
         {
@@ -177,6 +194,7 @@ public class WallGrabber : MonoBehaviour
         Vector3 worldDelta = LocalDirectionToWorld(localDelta);
 
         Vector3 desiredMove = -worldDelta;
+        TrackClimbSound(desiredMove.magnitude);
 
         if (desiredMove.sqrMagnitude < 0.000001f)
         {
@@ -443,6 +461,8 @@ public class WallGrabber : MonoBehaviour
 
         isGrabbing = false;
         grabbingHands.Remove(this);
+        accumulatedClimbSoundDistance = 0f;
+        PlayOneShot(wallReleaseSound, wallReleaseVolume);
 
         if (grabbingHands.Count > 0)
         {
@@ -522,6 +542,79 @@ public class WallGrabber : MonoBehaviour
     void StopVibration()
     {
         OVRInput.SetControllerVibration(0f, 0f, controller);
+    }
+
+    void TrackClimbSound(float moveDistance)
+    {
+        if (moveDistance <= 0.0001f || wallClimbSounds == null || wallClimbSounds.Length == 0)
+        {
+            return;
+        }
+
+        accumulatedClimbSoundDistance += moveDistance;
+
+        if (accumulatedClimbSoundDistance < wallClimbSoundDistance ||
+            Time.time < nextClimbSoundTime)
+        {
+            return;
+        }
+
+        accumulatedClimbSoundDistance = 0f;
+        nextClimbSoundTime = Time.time + wallClimbSoundMinInterval;
+
+        AudioClip clip = GetRandomClip(wallClimbSounds, ref lastClimbSoundIndex);
+        PlayOneShot(clip, wallClimbVolume);
+    }
+
+    AudioClip GetRandomClip(AudioClip[] clips, ref int lastIndex)
+    {
+        if (clips == null || clips.Length == 0)
+        {
+            return null;
+        }
+
+        if (clips.Length == 1)
+        {
+            lastIndex = 0;
+            return clips[0];
+        }
+
+        int index = Random.Range(0, clips.Length);
+
+        if (index == lastIndex)
+        {
+            index = (index + 1) % clips.Length;
+        }
+
+        lastIndex = index;
+        return clips[index];
+    }
+
+    void PlayOneShot(AudioClip clip, float volume)
+    {
+        if (clip == null || volume <= 0f)
+        {
+            return;
+        }
+
+        AudioSource source = GetWallGrabAudioSource();
+
+        if (source != null)
+        {
+            source.PlayOneShot(clip, volume);
+        }
+    }
+
+    AudioSource GetWallGrabAudioSource()
+    {
+        if (wallGrabAudioSource == null)
+        {
+            wallGrabAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        wallGrabAudioSource.playOnAwake = false;
+        wallGrabAudioSource.spatialBlend = 1f;
+        return wallGrabAudioSource;
     }
 
     void OnDrawGizmosSelected()

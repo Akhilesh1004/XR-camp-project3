@@ -64,6 +64,16 @@ public class ArmSwingLocomotion : MonoBehaviour
     public float groundCheckRadius = 0.25f;
     public float maxGroundAngle = 30f;
 
+    [Header("擺臂音效")]
+    public AudioSource armSwingAudioSource;
+    public AudioClip[] armSwingStepSounds;
+    public float armSwingStepVolume = 0.65f;
+    public float minArmSwingStepInterval = 0.22f;
+    public float maxArmSwingStepInterval = 0.55f;
+    public float speedForFastestStep = 6f;
+    public float minStepPitch = 0.95f;
+    public float maxStepPitch = 1.08f;
+
     private bool isGrounded;
     private Vector3 groundNormal = Vector3.up;
 
@@ -71,6 +81,8 @@ public class ArmSwingLocomotion : MonoBehaviour
 
     private Vector3 smoothedMoveDirection = Vector3.forward;
     private bool hasSmoothedMoveDirection = false;
+    private float nextArmSwingStepTime = 0f;
+    private int lastArmSwingStepIndex = -1;
 
     private void Awake()
     {
@@ -134,6 +146,7 @@ public class ArmSwingLocomotion : MonoBehaviour
         if (WallGrabber.IsGrabbing || WebSwinger.IsSwinging || !isGrounded)
         {
             smoothedSwingSpeed = 0f;
+            ResetArmSwingStepTiming();
             return;
         }
 
@@ -219,6 +232,7 @@ public class ArmSwingLocomotion : MonoBehaviour
             if (moveDirection.sqrMagnitude < 0.001f)
             {
                 ApplyDeceleration(currentHorizontalVelocity, currentVelocity);
+                ResetArmSwingStepTiming();
                 return;
             }
 
@@ -245,10 +259,13 @@ public class ArmSwingLocomotion : MonoBehaviour
                 currentVelocity.y,
                 newHorizontalVelocity.z
             );
+
+            TryPlayArmSwingStep(targetSpeed);
         }
         else
         {
             ApplyDeceleration(currentHorizontalVelocity, currentVelocity);
+            ResetArmSwingStepTiming();
         }
     }
 
@@ -360,6 +377,79 @@ public class ArmSwingLocomotion : MonoBehaviour
             currentVelocity.y,
             brakedHorizontalVelocity.z
         );
+    }
+
+    private void TryPlayArmSwingStep(float moveSpeed)
+    {
+        if (moveSpeed <= 0.1f ||
+            armSwingStepSounds == null ||
+            armSwingStepSounds.Length == 0 ||
+            Time.time < nextArmSwingStepTime)
+        {
+            return;
+        }
+
+        AudioClip clip = GetRandomStepClip();
+
+        if (clip == null)
+        {
+            return;
+        }
+
+        AudioSource source = GetArmSwingAudioSource();
+
+        if (source == null)
+        {
+            return;
+        }
+
+        float speedT = Mathf.InverseLerp(0f, speedForFastestStep, moveSpeed);
+        float interval = Mathf.Lerp(maxArmSwingStepInterval, minArmSwingStepInterval, speedT);
+
+        nextArmSwingStepTime = Time.time + interval;
+        source.pitch = Random.Range(minStepPitch, maxStepPitch);
+        source.PlayOneShot(clip, armSwingStepVolume);
+    }
+
+    private AudioClip GetRandomStepClip()
+    {
+        if (armSwingStepSounds == null || armSwingStepSounds.Length == 0)
+        {
+            return null;
+        }
+
+        if (armSwingStepSounds.Length == 1)
+        {
+            lastArmSwingStepIndex = 0;
+            return armSwingStepSounds[0];
+        }
+
+        int index = Random.Range(0, armSwingStepSounds.Length);
+
+        if (index == lastArmSwingStepIndex)
+        {
+            index = (index + 1) % armSwingStepSounds.Length;
+        }
+
+        lastArmSwingStepIndex = index;
+        return armSwingStepSounds[index];
+    }
+
+    private AudioSource GetArmSwingAudioSource()
+    {
+        if (armSwingAudioSource == null)
+        {
+            armSwingAudioSource = gameObject.AddComponent<AudioSource>();
+        }
+
+        armSwingAudioSource.playOnAwake = false;
+        armSwingAudioSource.spatialBlend = 1f;
+        return armSwingAudioSource;
+    }
+
+    private void ResetArmSwingStepTiming()
+    {
+        nextArmSwingStepTime = 0f;
     }
 
     private void OnDrawGizmosSelected()
