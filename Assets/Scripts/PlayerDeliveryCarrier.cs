@@ -57,8 +57,6 @@ public class PlayerDeliveryCarrier : MonoBehaviour
     private DeliveryCargo carriedCargo;
     private bool isCargoStored = false;
 
-    private Renderer[] carriedCargoRenderers;
-
     public bool HasCargo
     {
         get { return carriedCargo != null; }
@@ -140,7 +138,6 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         }
 
         carriedCargo = cargo;
-        carriedCargoRenderers = carriedCargo.GetComponentsInChildren<Renderer>(true);
 
         isCargoStored = false;
 
@@ -285,20 +282,13 @@ public class PlayerDeliveryCarrier : MonoBehaviour
     {
         if (visible && carriedCargo != null)
         {
-            carriedCargo.gameObject.SetActive(true);
-        }
-
-        if (carriedCargoRenderers == null)
-        {
+            carriedCargo.SetCarriedVisible(true);
             return;
         }
 
-        foreach (Renderer r in carriedCargoRenderers)
+        if (carriedCargo != null)
         {
-            if (r != null)
-            {
-                r.enabled = visible;
-            }
+            carriedCargo.SetCarriedVisible(false);
         }
     }
 
@@ -313,9 +303,11 @@ public class PlayerDeliveryCarrier : MonoBehaviour
             return;
         }
 
-        cargo.AttachTo(anchor);
-        cargo.transform.localPosition = localPosition;
-        cargo.transform.localRotation = Quaternion.Euler(localEulerAngles);
+        cargo.AttachTo(
+            anchor,
+            localPosition,
+            Quaternion.Euler(localEulerAngles)
+        );
     }
 
     public void DamageCarriedCargo(int damage)
@@ -333,7 +325,7 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         }
     }
 
-    public void CompleteCurrentDelivery()
+    public void CompleteCurrentDelivery(int destinationOrderId = -1)
     {
         if (carriedCargo == null)
         {
@@ -343,12 +335,15 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         DeliveryCargo deliveredCargo = carriedCargo;
 
         carriedCargo = null;
-        carriedCargoRenderers = null;
         isCargoStored = false;
 
         if (DeliveryGameManager.Instance != null)
         {
-            DeliveryGameManager.Instance.CompleteDelivery(deliveredCargo, this);
+            DeliveryGameManager.Instance.CompleteDelivery(
+                deliveredCargo,
+                this,
+                destinationOrderId
+            );
         }
         else
         {
@@ -366,7 +361,6 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         DeliveryCargo cargo = carriedCargo;
 
         carriedCargo = null;
-        carriedCargoRenderers = null;
         isCargoStored = false;
 
         Destroy(cargo.gameObject);
@@ -389,7 +383,6 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         SetCargoVisible(true);
 
         carriedCargo = null;
-        carriedCargoRenderers = null;
         isCargoStored = false;
 
         Transform point = dropPoint != null

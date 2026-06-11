@@ -386,7 +386,7 @@ public class DeliveryGameManager : MonoBehaviour
         order.state = OrderState.Discarded;
         ClearSingleOrderObjects(order);
         
-        if (currentActiveOrder == order) currentActiveOrder = null;
+        SelectFallbackCurrentActiveOrder(order);
         
         allOrders.Remove(order); 
         NotifyUIOrderListChanged();
@@ -499,7 +499,7 @@ public class DeliveryGameManager : MonoBehaviour
         DeliveryOrder order = allOrders.Find(o => o.orderId == destinationOrderId);
         if (order == null || order.state != OrderState.Active) return false;
 
-        return true;
+        return IsCargoCorrectForOrder(cargo, order);
     }
 
     public bool IsCargoCorrectForOrder(DeliveryCargo cargo, DeliveryOrder order)
@@ -511,13 +511,33 @@ public class DeliveryGameManager : MonoBehaviour
         return false;
     }
 
-    public void CompleteDelivery(DeliveryCargo cargo, PlayerDeliveryCarrier carrier)
+    public void CompleteDelivery(
+        DeliveryCargo cargo,
+        PlayerDeliveryCarrier carrier,
+        int destinationOrderId = -1)
     {
         if (!gameActive || cargo == null) return;
 
-        DeliveryOrder order = allOrders.Find(o => o.orderId == cargo.OrderId);
+        DeliveryOrder order = null;
+
+        if (destinationOrderId >= 0)
+        {
+            order = allOrders.Find(o =>
+                o.orderId == destinationOrderId &&
+                o.state == OrderState.Active
+            );
+
+            if (order != null && !IsCargoCorrectForOrder(cargo, order))
+            {
+                order = null;
+            }
+        }
+        else
+        {
+            order = allOrders.Find(o => o.orderId == cargo.OrderId);
+        }
         
-        if (order == null && correctCargoByFoodName)
+        if (order == null && destinationOrderId < 0 && correctCargoByFoodName)
         {
             order = allOrders.Find(o => o.state == OrderState.Active && o.food.foodName == cargo.FoodName);
         }
@@ -552,7 +572,7 @@ public class DeliveryGameManager : MonoBehaviour
 
             order.state = OrderState.Completed;
             ClearSingleOrderObjects(order);
-            if (currentActiveOrder == order) currentActiveOrder = null;
+            SelectFallbackCurrentActiveOrder(order);
             allOrders.Remove(order);
         }
 
@@ -562,6 +582,19 @@ public class DeliveryGameManager : MonoBehaviour
     }
 
     #endregion
+
+    void SelectFallbackCurrentActiveOrder(DeliveryOrder removedOrder)
+    {
+        if (currentActiveOrder != removedOrder)
+        {
+            return;
+        }
+
+        currentActiveOrder = allOrders.Find(o =>
+            o != removedOrder &&
+            o.state == OrderState.Active
+        );
+    }
 
     #region 玩家狀態通知
 

@@ -33,13 +33,13 @@ public class DeliveryDestinationZone : MonoBehaviour
 
         if (DeliveryGameManager.Instance == null)
         {
-            carrier.CompleteCurrentDelivery();
+            carrier.CompleteCurrentDelivery(orderId);
             return;
         }
 
         if (DeliveryGameManager.Instance.CanCompleteDelivery(cargo, orderId))
         {
-            carrier.CompleteCurrentDelivery();
+            carrier.CompleteCurrentDelivery(orderId);
         }
     }
 }

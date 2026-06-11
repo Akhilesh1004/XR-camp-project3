@@ -29,6 +29,8 @@ public class DeliveryCargo : MonoBehaviour
     private int orderId = -1;
     private bool isCarried = false;
     private bool showingDamagedVisual = false;
+    private bool hasCarriedWorldScale = false;
+    private Vector3 carriedWorldScale = Vector3.one;
 
     private Rigidbody[] rigidbodies;
     private Collider[] colliders;
@@ -113,21 +115,33 @@ public class DeliveryCargo : MonoBehaviour
 
     public void AttachTo(Transform holdAnchor)
     {
+        AttachTo(holdAnchor, Vector3.zero, Quaternion.identity);
+    }
+
+    public void AttachTo(
+        Transform holdAnchor,
+        Vector3 localPosition,
+        Quaternion localRotation)
+    {
         if (holdAnchor == null)
         {
             return;
         }
 
-        isCarried = true;
+        if (!isCarried || !hasCarriedWorldScale)
+        {
+            carriedWorldScale = transform.lossyScale;
+            hasCarriedWorldScale = true;
+        }
 
-        Vector3 worldScale = transform.lossyScale;
+        isCarried = true;
 
         SetRigidbodiesCarried(true, Vector3.zero);
 
         transform.SetParent(holdAnchor, false);
-        transform.localPosition = Vector3.zero;
-        transform.localRotation = Quaternion.identity;
-        transform.localScale = GetLocalScaleForWorldScale(worldScale, holdAnchor.lossyScale);
+        transform.localPosition = localPosition;
+        transform.localRotation = localRotation;
+        transform.localScale = GetLocalScaleForWorldScale(carriedWorldScale, holdAnchor.lossyScale);
 
         if (disableCollidersWhileCarried)
         {
@@ -138,9 +152,11 @@ public class DeliveryCargo : MonoBehaviour
     public void Drop(Vector3 worldPosition, Vector3 throwVelocity)
     {
         isCarried = false;
+        hasCarriedWorldScale = false;
 
         transform.SetParent(null, true);
         transform.position = worldPosition;
+        gameObject.SetActive(true);
 
         SetCollidersEnabled(true);
         SetRigidbodiesCarried(false, throwVelocity);
@@ -149,9 +165,39 @@ public class DeliveryCargo : MonoBehaviour
     public void DetachWithoutPhysics()
     {
         isCarried = false;
+        hasCarriedWorldScale = false;
         transform.SetParent(null, true);
+        gameObject.SetActive(true);
         SetCollidersEnabled(true);
         SetRigidbodiesCarried(false, Vector3.zero);
+    }
+
+    public void SetCarriedVisible(bool visible)
+    {
+        if (visible && !gameObject.activeSelf)
+        {
+            gameObject.SetActive(true);
+        }
+
+        SetRenderersEnabled(visible);
+
+        if (!visible && gameObject.activeSelf)
+        {
+            gameObject.SetActive(false);
+        }
+    }
+
+    void SetRenderersEnabled(bool enabled)
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+
+        foreach (Renderer r in renderers)
+        {
+            if (r != null)
+            {
+                r.enabled = enabled;
+            }
+        }
     }
 
     void SetCollidersEnabled(bool enabled)
