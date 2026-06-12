@@ -19,8 +19,8 @@ public class DeliveryCargo : MonoBehaviour
     [Tooltip("指定餐點被拿在手上時要對齊 holdAnchor 的點。若未指定，會自動找 CarryAnchor/HoldAnchor/GrabAnchor。")]
     public Transform carryAnchor;
 
-    [Tooltip("未指定 carryAnchor 時，自動用目前可見 Renderer 的 bounds 中心對齊，避免不同食物 prefab root pivot 不一致。")]
-    public bool alignVisibleBoundsCenterWhenCarried = true;
+    [Tooltip("開啟時會嘗試用 carryAnchor 或 Renderer bounds 修正手上位置。若要完全固定在 holdAnchor，請保持關閉。")]
+    public bool alignVisibleBoundsCenterWhenCarried = false;
 
     [Tooltip("若 prefab 內有這些名稱的子物件，會優先拿來當手上對齊點。")]
     public string[] autoCarryAnchorNames = { "CarryAnchor", "HoldAnchor", "GrabAnchor" };
@@ -47,7 +47,6 @@ public class DeliveryCargo : MonoBehaviour
     private float carriedScaleMultiplier = 1f;
 
     private Transform carriedAnchor;
-    private Vector3 requestedCarriedLocalPosition;
     private Vector3 carriedLocalPosition;
     private Quaternion carriedLocalRotation = Quaternion.identity;
 
@@ -172,7 +171,9 @@ public class DeliveryCargo : MonoBehaviour
 
         isCarried = true;
         carriedAnchor = holdAnchor;
-        requestedCarriedLocalPosition = localPosition;
+        carriedLocalPosition = alignVisibleBoundsCenterWhenCarried
+            ? GetAlignedLocalPosition(localPosition, localRotation)
+            : localPosition;
         carriedLocalRotation = localRotation;
         carriedScaleMultiplier = Mathf.Max(0.01f, scaleMultiplier);
 
@@ -181,7 +182,6 @@ public class DeliveryCargo : MonoBehaviour
         transform.SetParent(holdAnchor, false);
         transform.localRotation = localRotation;
         transform.localScale = GetCarriedLocalScale(holdAnchor);
-        RecalculateCarriedLocalPosition();
         SnapToCarriedAnchor();
 
         if (disableCollidersWhileCarried)
@@ -241,14 +241,18 @@ public class DeliveryCargo : MonoBehaviour
             gameObject.SetActive(true);
         }
 
+        SetRigidbodiesCarried(true, Vector3.zero);
+
         if (transform.parent != carriedAnchor)
         {
             transform.SetParent(carriedAnchor, false);
         }
 
-        transform.localRotation = carriedLocalRotation;
         transform.localScale = GetCarriedLocalScale(carriedAnchor);
-        transform.localPosition = carriedLocalPosition;
+        transform.SetLocalPositionAndRotation(
+            carriedLocalPosition,
+            carriedLocalRotation
+        );
     }
 
     void SetRenderersEnabled(bool enabled)
@@ -298,6 +302,11 @@ public class DeliveryCargo : MonoBehaviour
             body.useGravity = !carried;
             body.velocity = carried ? Vector3.zero : releaseVelocity;
             body.angularVelocity = Vector3.zero;
+
+            if (carried)
+            {
+                body.Sleep();
+            }
         }
     }
 
@@ -469,17 +478,8 @@ public class DeliveryCargo : MonoBehaviour
 
         if (isCarried && carriedAnchor != null)
         {
-            RecalculateCarriedLocalPosition();
             SnapToCarriedAnchor();
         }
-    }
-
-    void RecalculateCarriedLocalPosition()
-    {
-        carriedLocalPosition = GetAlignedLocalPosition(
-            requestedCarriedLocalPosition,
-            carriedLocalRotation
-        );
     }
 
     Vector3 GetCarriedLocalScale(Transform parent)
