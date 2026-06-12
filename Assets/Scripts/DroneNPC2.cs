@@ -104,6 +104,12 @@ public class DroneNPC2 : MonoBehaviour
     public int maxHealth = 1;
     public DroneEffectPool destroyedEffectPool;
 
+    [Header("餐點爆炸傷害")]
+    public bool damageCarriedCargoOnExplode = true;
+    public int cargoExplosionDamage = 20;
+    public float cargoExplosionDamageRadius = 3f;
+    public LayerMask cargoExplosionPlayerLayer;
+
     [Header("破壞後警戒 / Forced Hunt")]
     public float alertDuration = 10f;
     public float alertDetectRange = 120f;
@@ -1155,10 +1161,14 @@ public class DroneNPC2 : MonoBehaviour
             destroyedEffectPool = DroneEffectPool.Instance;
         }
 
+        PooledEffect explosionEffect = null;
+
         if (destroyedEffectPool != null)
         {
-            destroyedEffectPool.Play(transform.position, Quaternion.identity);
+            explosionEffect = destroyedEffectPool.Play(transform.position, Quaternion.identity);
         }
+
+        ApplyCargoExplosionDamage(explosionEffect);
 
         DroneAlertSystem.BroadcastDroneNPC2Destroyed(
             transform.position,
@@ -1176,6 +1186,26 @@ public class DroneNPC2 : MonoBehaviour
         {
             gameObject.SetActive(false);
         }
+    }
+
+    void ApplyCargoExplosionDamage(PooledEffect explosionEffect)
+    {
+        if (!damageCarriedCargoOnExplode)
+        {
+            return;
+        }
+
+        if (explosionEffect != null && explosionEffect.HasAutoApplyDeliveryDamageSource())
+        {
+            return;
+        }
+
+        DeliveryDamageSource.DamageCarriedCargoInRadius(
+            transform.position,
+            cargoExplosionDamageRadius,
+            cargoExplosionDamage,
+            cargoExplosionPlayerLayer
+        );
     }
 
     void FinishNormally()

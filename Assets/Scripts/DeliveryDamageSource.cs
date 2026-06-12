@@ -15,12 +15,27 @@ public class DeliveryDamageSource : MonoBehaviour
 
     private bool hasApplied = false;
 
+    public bool HasApplied
+    {
+        get { return hasApplied; }
+    }
+
     void OnEnable()
     {
         if (applyOnEnable)
         {
             ApplyDamage();
         }
+    }
+
+    void OnDisable()
+    {
+        ResetForReuse();
+    }
+
+    public void ResetForReuse()
+    {
+        hasApplied = false;
     }
 
     public void ApplyDamage()

@@ -116,6 +116,9 @@ public class DeliveryGameManager : MonoBehaviour
 
     [Header("取餐標記的垂直高度偏移量（公尺）")]
     public float pickupMarkerHeightOffset = 1.5f;
+    public float destinationMarkerHeightOffset = 1.5f;
+    public float fallbackMarkerHeightOffset = 1.5f;
+    public bool usePickupMarkerAsDestinationFallback = true;
 
     // 核心資料結構
     private List<DeliveryOrder> allOrders = new List<DeliveryOrder>();
@@ -252,7 +255,7 @@ public class DeliveryGameManager : MonoBehaviour
 
             // ➔ 【條件 1】：檢查是否已有「相同食物且相同目的地」的未結算訂單（避免一模一樣的單）
             bool duplicateExists = allOrders.Exists(o => 
-                o.food.foodName == selectedFood.foodName && 
+                FoodNamesMatch(o.food.foodName, selectedFood.foodName) &&
                 o.destinationPoint == selectedDestination &&
                 o.state != OrderState.Completed && 
                 o.state != OrderState.Discarded
@@ -429,14 +432,27 @@ public class DeliveryGameManager : MonoBehaviour
 
         if (pickupMarkerPrefab != null)
         {
-            Vector3 spawnPosition = order.pickupPoint.position + new Vector3(0f, pickupMarkerHeightOffset, 0f);
+            Vector3 spawnPosition = order.pickupPoint.position +
+                                    Vector3.up * ResolveMarkerHeightOffset(pickupMarkerHeightOffset);
             order.pickupMarker = Instantiate(pickupMarkerPrefab, spawnPosition, order.pickupPoint.rotation);
         }
 
-        // if (destinationMarkerPrefab != null)
-        // {
-        //     order.destinationMarker = Instantiate(destinationMarkerPrefab, order.destinationPoint.position, order.destinationPoint.rotation);
-        // }
+        GameObject destinationMarker = destinationMarkerPrefab != null
+            ? destinationMarkerPrefab
+            : usePickupMarkerAsDestinationFallback
+                ? pickupMarkerPrefab
+                : null;
+
+        if (destinationMarker != null)
+        {
+            Vector3 spawnPosition = order.destinationPoint.position +
+                                    Vector3.up * ResolveMarkerHeightOffset(destinationMarkerHeightOffset);
+            order.destinationMarker = Instantiate(
+                destinationMarker,
+                spawnPosition,
+                order.destinationPoint.rotation
+            );
+        }
 
         if (destinationZonePrefab != null)
         {
@@ -456,6 +472,16 @@ public class DeliveryGameManager : MonoBehaviour
         }
         
         SpawnMinimapMarkers(order);
+    }
+
+    float ResolveMarkerHeightOffset(float configuredOffset)
+    {
+        if (!Mathf.Approximately(configuredOffset, 0f))
+        {
+            return configuredOffset;
+        }
+
+        return fallbackMarkerHeightOffset;
     }
     
     void SpawnMinimapMarkers(DeliveryOrder order)
@@ -527,17 +553,17 @@ public class DeliveryGameManager : MonoBehaviour
     {
         if (cargo == null || order == null) return false;
         if (cargo.OrderId == order.orderId) return true;
-        if (correctCargoByFoodName && cargo.FoodName == order.food.foodName) return true;
+        if (correctCargoByFoodName && FoodNamesMatch(cargo.FoodName, order.food.foodName)) return true;
 
         return false;
     }
 
-    public void CompleteDelivery(
+    public bool CompleteDelivery(
         DeliveryCargo cargo,
         PlayerDeliveryCarrier carrier,
         int destinationOrderId = -1)
     {
-        if (!gameActive || cargo == null) return;
+        if (!gameActive || cargo == null) return false;
 
         DeliveryOrder order = null;
 
@@ -560,46 +586,63 @@ public class DeliveryGameManager : MonoBehaviour
         
         if (order == null && destinationOrderId < 0 && correctCargoByFoodName)
         {
-            order = allOrders.Find(o => o.state == OrderState.Active && o.food.foodName == cargo.FoodName);
+            order = allOrders.Find(o =>
+                o.state == OrderState.Active &&
+                FoodNamesMatch(o.food.foodName, cargo.FoodName)
+            );
         }
 
         if (order == null)
         {
-            score -= wrongFoodPenalty;
-            SetMessage("Wrong Food Delivered! -" + wrongFoodPenalty + " pts");
+            SetMessage("Wrong Food Delivered! No score change.");
+            UpdateUI();
+            return false;
+        }
+
+        int hp = cargo.CurrentHealth;
+        if (hp <= 0)
+        {
+            score -= brokenFoodPenalty;
+            SetMessage("Food Destroyed! -" + brokenFoodPenalty + " pts");
         }
         else
         {
-            int hp = cargo.CurrentHealth;
-            if (hp <= 0)
-            {
-                score -= brokenFoodPenalty;
-                SetMessage("Food Destroyed! -" + brokenFoodPenalty + " pts");
-            }
-            else
-            {
-                float maxHp = order.food.maxHealth;
-                float maxTimeInSeconds = order.food.maxDeliveryTime * 60f;
+            float maxHp = order.food.maxHealth;
+            float maxTimeInSeconds = order.food.maxDeliveryTime * 60f;
 
-                float hpRatio = (maxHp > 0) ? (hp / maxHp) : 0f;
-                float timeRatio = (maxTimeInSeconds > 0) ? (order.activeTimer / maxTimeInSeconds) : 0f;
+            float hpRatio = (maxHp > 0) ? (hp / maxHp) : 0f;
+            float timeRatio = (maxTimeInSeconds > 0) ? (order.activeTimer / maxTimeInSeconds) : 0f;
 
-                float totalRatio = (hpRatio * 0.7f) + (timeRatio * 0.3f);
-                int earnedPoints = Mathf.RoundToInt(totalRatio * order.food.foodValue);
+            float totalRatio = (hpRatio * 0.7f) + (timeRatio * 0.3f);
+            int earnedPoints = Mathf.RoundToInt(totalRatio * order.food.foodValue);
 
-                score += earnedPoints;
-                SetMessage($"Success! {order.food.foodName} | HP:{hpRatio:P0} TimeLeft:{timeRatio:P0} | Earned: +{earnedPoints} pts");
-            }
-
-            order.state = OrderState.Completed;
-            ClearSingleOrderObjects(order);
-            SelectFallbackCurrentActiveOrder(order);
-            allOrders.Remove(order);
+            score += earnedPoints;
+            SetMessage($"Success! {order.food.foodName} | HP:{hpRatio:P0} TimeLeft:{timeRatio:P0} | Earned: +{earnedPoints} pts");
         }
+
+        order.state = OrderState.Completed;
+        ClearSingleOrderObjects(order);
+        SelectFallbackCurrentActiveOrder(order);
+        allOrders.Remove(order);
 
         Destroy(cargo.gameObject);
         NotifyUIOrderListChanged();
         UpdateUI();
+        return true;
+    }
+
+    bool FoodNamesMatch(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            left.Trim(),
+            right.Trim(),
+            System.StringComparison.OrdinalIgnoreCase
+        );
     }
 
     #endregion
@@ -642,7 +685,9 @@ public class DeliveryGameManager : MonoBehaviour
     {
         if (!gameActive) return false;
 
-        FoodOption targetFood = System.Array.Find(foodOptions, f => f.foodName.Equals(request.foodName, System.StringComparison.OrdinalIgnoreCase));
+        FoodOption targetFood = System.Array.Find(foodOptions, f =>
+            FoodNamesMatch(f.foodName, request.foodName)
+        );
         if (targetFood == null) return false;
 
         if (destinationPoints == null || request.destinationIndex < 0 || request.destinationIndex >= destinationPoints.Length) return false;
@@ -653,7 +698,7 @@ public class DeliveryGameManager : MonoBehaviour
 
         // 外部呼叫時也一併遵守這兩條安全過濾機制
         bool duplicateExists = allOrders.Exists(o => 
-            o.food.foodName == targetFood.foodName && 
+            FoodNamesMatch(o.food.foodName, targetFood.foodName) &&
             o.destinationPoint == targetDestination &&
             o.state != OrderState.Completed && 
             o.state != OrderState.Discarded

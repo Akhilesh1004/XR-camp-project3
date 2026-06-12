@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -30,6 +31,9 @@ public class VRInstructionPauseMenu : MonoBehaviour
 
     [Header("Game Start")]
     public bool openOnStart = true;
+    public bool delayOpenOnStartUntilFadeIn = true;
+    public FadeScreen fadeScreen;
+    public float openAfterFadeExtraDelay = 0.05f;
     public bool startDeliveryGameOnFirstClose = true;
     public DeliveryGameManager deliveryGameManager;
     public WristUIController wristUIController;
@@ -56,6 +60,10 @@ public class VRInstructionPauseMenu : MonoBehaviour
         {
             wristUIController = FindFirstObjectByType<WristUIController>();
         }
+        if (fadeScreen == null)
+        {
+            fadeScreen = FindFirstObjectByType<FadeScreen>();
+        }
     }
 
     void Start()
@@ -72,7 +80,14 @@ public class VRInstructionPauseMenu : MonoBehaviour
 
         if (openOnStart)
         {
-            OpenMenu();
+            if (delayOpenOnStartUntilFadeIn && fadeScreen != null)
+            {
+                StartCoroutine(OpenMenuAfterFadeIn());
+            }
+            else
+            {
+                OpenMenu();
+            }
         }
         else
         {
@@ -83,6 +98,21 @@ public class VRInstructionPauseMenu : MonoBehaviour
                 deliveryGameManager.StartGame();
                 wristUIController.StartGame();
             }
+        }
+    }
+
+    IEnumerator OpenMenuAfterFadeIn()
+    {
+        float waitTime = Mathf.Max(0f, fadeScreen.fadeDuration + openAfterFadeExtraDelay);
+
+        if (waitTime > 0f)
+        {
+            yield return new WaitForSecondsRealtime(waitTime);
+        }
+
+        if (!isOpen && openOnStart)
+        {
+            OpenMenu();
         }
     }
 

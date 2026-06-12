@@ -21,6 +21,7 @@ public class PooledEffect : MonoBehaviour
     private Transform[] cachedTransforms;
     private ParticleSystem[] cachedParticleSystems;
     private AudioSource[] cachedAudioSources;
+    private DeliveryDamageSource[] cachedDamageSources;
 
     public bool IsPlayingFromPool
     {
@@ -52,6 +53,8 @@ public class PooledEffect : MonoBehaviour
         transform.position = position;
         transform.rotation = rotation;
 
+        ResetDamageSourcesForReuse();
+
         if (!gameObject.activeSelf)
         {
             gameObject.SetActive(true);
@@ -63,6 +66,7 @@ public class PooledEffect : MonoBehaviour
         }
 
         CacheComponents();
+        ApplyAutoDamageSourcesIfNeeded();
 
         foreach (ParticleSystem ps in cachedParticleSystems)
         {
@@ -111,7 +115,8 @@ public class PooledEffect : MonoBehaviour
     {
         if (cachedTransforms != null &&
             cachedParticleSystems != null &&
-            cachedAudioSources != null)
+            cachedAudioSources != null &&
+            cachedDamageSources != null)
         {
             return;
         }
@@ -119,6 +124,55 @@ public class PooledEffect : MonoBehaviour
         cachedTransforms = GetComponentsInChildren<Transform>(true);
         cachedParticleSystems = GetComponentsInChildren<ParticleSystem>(true);
         cachedAudioSources = GetComponentsInChildren<AudioSource>(true);
+        cachedDamageSources = GetComponentsInChildren<DeliveryDamageSource>(true);
+    }
+
+    void ResetDamageSourcesForReuse()
+    {
+        CacheComponents();
+
+        foreach (DeliveryDamageSource damageSource in cachedDamageSources)
+        {
+            if (damageSource != null)
+            {
+                damageSource.ResetForReuse();
+            }
+        }
+    }
+
+    public bool HasAutoApplyDeliveryDamageSource()
+    {
+        CacheComponents();
+
+        foreach (DeliveryDamageSource damageSource in cachedDamageSources)
+        {
+            if (damageSource != null &&
+                damageSource.enabled &&
+                damageSource.applyOnEnable)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void ApplyAutoDamageSourcesIfNeeded()
+    {
+        CacheComponents();
+
+        foreach (DeliveryDamageSource damageSource in cachedDamageSources)
+        {
+            if (damageSource == null ||
+                !damageSource.enabled ||
+                !damageSource.applyOnEnable ||
+                damageSource.HasApplied)
+            {
+                continue;
+            }
+
+            damageSource.ApplyDamage();
+        }
     }
 
     void Update()

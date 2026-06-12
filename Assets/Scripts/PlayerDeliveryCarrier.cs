@@ -333,22 +333,32 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         }
 
         DeliveryCargo deliveredCargo = carriedCargo;
+        bool wasCargoStored = isCargoStored;
 
         carriedCargo = null;
         isCargoStored = false;
 
         if (DeliveryGameManager.Instance != null)
         {
-            DeliveryGameManager.Instance.CompleteDelivery(
+            bool completed = DeliveryGameManager.Instance.CompleteDelivery(
                 deliveredCargo,
                 this,
                 destinationOrderId
             );
+
+            if (!completed)
+            {
+                carriedCargo = deliveredCargo;
+                isCargoStored = wasCargoStored;
+                DeliveryGameManager.Instance.NotifyCargoMessage(
+                    "Wrong Food Delivered! No score change."
+                );
+            }
+
+            return;
         }
-        else
-        {
-            Destroy(deliveredCargo.gameObject);
-        }
+
+        Destroy(deliveredCargo.gameObject);
     }
 
     public void RemoveCarriedCargoWithoutScoring()

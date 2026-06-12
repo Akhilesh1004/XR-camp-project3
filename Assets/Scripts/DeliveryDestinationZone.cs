@@ -40,6 +40,11 @@ public class DeliveryDestinationZone : MonoBehaviour
         if (DeliveryGameManager.Instance.CanCompleteDelivery(cargo, orderId))
         {
             carrier.CompleteCurrentDelivery(orderId);
+            return;
         }
+
+        DeliveryGameManager.Instance.NotifyCargoMessage(
+            "Wrong Food Delivered! No score change."
+        );
     }
 }

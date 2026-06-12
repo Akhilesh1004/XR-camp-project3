@@ -15,6 +15,16 @@ public class DeliveryCargo : MonoBehaviour
     [Tooltip("被玩家拿著或收起時，是否關閉 Collider，避免爬牆 / 擺盪時卡牆")]
     public bool disableCollidersWhileCarried = true;
 
+    [Header("手上對齊")]
+    [Tooltip("指定餐點被拿在手上時要對齊 holdAnchor 的點。若未指定，會自動找 CarryAnchor/HoldAnchor/GrabAnchor。")]
+    public Transform carryAnchor;
+
+    [Tooltip("未指定 carryAnchor 時，自動用目前可見 Renderer 的 bounds 中心對齊，避免不同食物 prefab root pivot 不一致。")]
+    public bool alignVisibleBoundsCenterWhenCarried = true;
+
+    [Tooltip("若 prefab 內有這些名稱的子物件，會優先拿來當手上對齊點。")]
+    public string[] autoCarryAnchorNames = { "CarryAnchor", "HoldAnchor", "GrabAnchor" };
+
     [Header("餐點外觀切換")]
     [Tooltip("正常狀態外觀。不指定時會自動使用目前 active 的第一個直屬子物件")]
     public GameObject normalVisualRoot;
@@ -67,6 +77,7 @@ public class DeliveryCargo : MonoBehaviour
 
         currentHealth = Mathf.Clamp(currentHealth, 0, maxHealth);
         AutoBindVisualRoots();
+        AutoBindCarryAnchor();
         RefreshDamageVisual();
     }
 
@@ -128,6 +139,11 @@ public class DeliveryCargo : MonoBehaviour
             return;
         }
 
+        if (!gameObject.activeSelf)
+        {
+            gameObject.SetActive(true);
+        }
+
         if (!isCarried || !hasCarriedWorldScale)
         {
             carriedWorldScale = transform.lossyScale;
@@ -139,9 +155,9 @@ public class DeliveryCargo : MonoBehaviour
         SetRigidbodiesCarried(true, Vector3.zero);
 
         transform.SetParent(holdAnchor, false);
-        transform.localPosition = localPosition;
         transform.localRotation = localRotation;
         transform.localScale = GetLocalScaleForWorldScale(carriedWorldScale, holdAnchor.lossyScale);
+        transform.localPosition = GetAlignedLocalPosition(localPosition, localRotation);
 
         if (disableCollidersWhileCarried)
         {
@@ -297,6 +313,83 @@ public class DeliveryCargo : MonoBehaviour
                     ? secondChild.gameObject
                     : null;
         }
+    }
+
+    void AutoBindCarryAnchor()
+    {
+        if (carryAnchor != null ||
+            autoCarryAnchorNames == null ||
+            autoCarryAnchorNames.Length == 0)
+        {
+            return;
+        }
+
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+
+        foreach (string anchorName in autoCarryAnchorNames)
+        {
+            if (string.IsNullOrWhiteSpace(anchorName))
+            {
+                continue;
+            }
+
+            foreach (Transform child in children)
+            {
+                if (child != null && child.name == anchorName)
+                {
+                    carryAnchor = child;
+                    return;
+                }
+            }
+        }
+    }
+
+    Vector3 GetAlignedLocalPosition(Vector3 desiredLocalPosition, Quaternion localRotation)
+    {
+        if (carryAnchor != null && carryAnchor != transform)
+        {
+            Vector3 carryOffset = transform.InverseTransformPoint(carryAnchor.position);
+            return desiredLocalPosition -
+                   localRotation * Vector3.Scale(carryOffset, transform.localScale);
+        }
+
+        if (!alignVisibleBoundsCenterWhenCarried ||
+            !TryGetVisibleRendererBounds(out Bounds bounds))
+        {
+            return desiredLocalPosition;
+        }
+
+        Vector3 centerOffset = transform.InverseTransformPoint(bounds.center);
+        return desiredLocalPosition -
+               localRotation * Vector3.Scale(centerOffset, transform.localScale);
+    }
+
+    bool TryGetVisibleRendererBounds(out Bounds bounds)
+    {
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        bool hasBounds = false;
+        bounds = new Bounds(transform.position, Vector3.zero);
+
+        foreach (Renderer r in renderers)
+        {
+            if (r == null ||
+                !r.gameObject.activeInHierarchy)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = r.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        return hasBounds;
     }
 
     void RefreshDamageVisual()

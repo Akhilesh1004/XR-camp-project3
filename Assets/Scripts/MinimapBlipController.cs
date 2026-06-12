@@ -47,8 +47,17 @@ public class MinimapBlipController : MonoBehaviour
         new Color(1f, 0.35f, 0.25f, 1f)
     };
 
+    [Header("Player Icon")]
+    public bool showPlayerBlip = true;
+    public Sprite playerBlipSprite;
+    public Vector2 playerBlipSize = new Vector2(10f, 10f);
+    public Color playerBlipTint = Color.white;
+    public float playerBlipRotationOffset = 0f;
+    public bool useMainCameraHeadingForPlayerBlip = true;
+
     [Header("Distance")]
     public bool showDistanceLabels = true;
+    public TMP_FontAsset distanceFontAsset;
     public Vector2 distanceLabelSize = new Vector2(42f, 12f);
     public Vector2 pickupDistanceLabelOffset = new Vector2(0f, -10f);
     public Vector2 destinationDistanceLabelOffset = new Vector2(0f, 10f);
@@ -68,6 +77,7 @@ public class MinimapBlipController : MonoBehaviour
 
     private RectTransform[] mapBoundaryGuideLines;
     private RectTransform[] markerClampGuideLines;
+    private RectTransform playerBlip;
     private float nextUpdateTime;
 
     void Awake()
@@ -105,8 +115,11 @@ public class MinimapBlipController : MonoBehaviour
             }
 
             UpdateLayoutGuide();
+            UpdatePlayerBlip();
             return;
         }
+
+        UpdatePlayerBlip();
 
         float interval = 1f / Mathf.Max(0.1f, updatesPerSecond);
 
@@ -128,6 +141,7 @@ public class MinimapBlipController : MonoBehaviour
 
         UpdateLayoutGuide();
         FindPlayerIfNeeded();
+        UpdatePlayerBlip();
 
         if (mapRect == null || player == null || DeliveryGameManager.Instance == null)
         {
@@ -261,6 +275,7 @@ public class MinimapBlipController : MonoBehaviour
         TextMeshProUGUI label = labelObject.GetComponent<TextMeshProUGUI>();
         label.raycastTarget = false;
         label.alignment = TextAlignmentOptions.Center;
+        label.font = distanceFontAsset;
         label.fontSize = distanceFontSize;
         label.color = distanceTextColor;
         label.text = "";
@@ -362,6 +377,7 @@ public class MinimapBlipController : MonoBehaviour
 
         rect.anchoredPosition = labelPosition;
         rect.sizeDelta = distanceLabelSize;
+        label.font = distanceFontAsset;
         label.fontSize = distanceFontSize;
         label.color = distanceTextColor;
         label.text = FormatDistance(Vector3.Distance(player.position, targetPosition));
@@ -506,6 +522,94 @@ public class MinimapBlipController : MonoBehaviour
         }
     }
 
+    void UpdatePlayerBlip()
+    {
+        if (mapRect == null)
+        {
+            return;
+        }
+
+        if (!showPlayerBlip)
+        {
+            if (playerBlip != null)
+            {
+                playerBlip.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
+        EnsurePlayerBlipCreated();
+
+        if (playerBlip == null)
+        {
+            return;
+        }
+
+        playerBlip.gameObject.SetActive(true);
+        playerBlip.anchoredPosition = Vector2.zero;
+        playerBlip.sizeDelta = playerBlipSize;
+        playerBlip.SetAsLastSibling();
+
+        float zRotation = playerBlipRotationOffset;
+
+        Transform headingSource = GetPlayerHeadingSource();
+
+        if (Application.isPlaying && headingSource != null && !rotateMapWithPlayer)
+        {
+            zRotation -= headingSource.eulerAngles.y;
+        }
+
+        playerBlip.localRotation = Quaternion.Euler(0f, 0f, zRotation);
+
+        Image image = playerBlip.GetComponent<Image>();
+
+        if (image != null)
+        {
+            image.sprite = playerBlipSprite;
+            image.preserveAspect = preserveBlipSpriteAspect;
+            image.color = playerBlipTint;
+        }
+    }
+
+    Transform GetPlayerHeadingSource()
+    {
+        if (useMainCameraHeadingForPlayerBlip && Camera.main != null)
+        {
+            return Camera.main.transform;
+        }
+
+        return player;
+    }
+
+    void EnsurePlayerBlipCreated()
+    {
+        if (playerBlip != null)
+        {
+            return;
+        }
+
+        GameObject blipObject = new GameObject(
+            "MinimapBlip_Player",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Image)
+        );
+
+        blipObject.hideFlags = HideFlags.DontSaveInEditor | HideFlags.DontSaveInBuild;
+        blipObject.layer = gameObject.layer;
+
+        playerBlip = blipObject.GetComponent<RectTransform>();
+        playerBlip.SetParent(mapRect, false);
+        playerBlip.anchorMin = new Vector2(0.5f, 0.5f);
+        playerBlip.anchorMax = new Vector2(0.5f, 0.5f);
+        playerBlip.pivot = new Vector2(0.5f, 0.5f);
+        playerBlip.localScale = Vector3.one;
+
+        Image image = blipObject.GetComponent<Image>();
+        image.raycastTarget = false;
+    }
+
     void EnsureLayoutGuideCreated()
     {
         if (NeedsGuideLines(mapBoundaryGuideLines))
@@ -627,8 +731,10 @@ public class MinimapBlipController : MonoBehaviour
     {
         DestroyGuideLines(mapBoundaryGuideLines);
         DestroyGuideLines(markerClampGuideLines);
+        DestroyBlip(playerBlip);
         mapBoundaryGuideLines = null;
         markerClampGuideLines = null;
+        playerBlip = null;
     }
 
     void DestroyGuideLines(RectTransform[] lines)

@@ -36,6 +36,12 @@ public class DroneNPC : MonoBehaviour
     public LayerMask explodeOnCollisionLayer;
     public DroneEffectPool explosionPool;
 
+    [Header("餐點爆炸傷害")]
+    public bool damageCarriedCargoOnExplode = true;
+    public int cargoExplosionDamage = 20;
+    public float cargoExplosionDamageRadius = 3f;
+    public LayerMask cargoExplosionPlayerLayer;
+
     [Header("飛行 / 追擊音效")]
     public AudioSource flightLoopAudioSource;
     public AudioClip patrolFlightLoopClip;
@@ -1976,10 +1982,14 @@ public class DroneNPC : MonoBehaviour
             explosionPool = DroneEffectPool.Instance;
         }
 
+        PooledEffect explosionEffect = null;
+
         if (explosionPool != null)
         {
-            explosionPool.Play(transform.position, Quaternion.identity);
+            explosionEffect = explosionPool.Play(transform.position, Quaternion.identity);
         }
+
+        ApplyCargoExplosionDamage(explosionEffect);
 
         if (manager != null)
         {
@@ -1989,6 +1999,26 @@ public class DroneNPC : MonoBehaviour
         {
             gameObject.SetActive(false);
         }
+    }
+
+    void ApplyCargoExplosionDamage(PooledEffect explosionEffect)
+    {
+        if (!damageCarriedCargoOnExplode)
+        {
+            return;
+        }
+
+        if (explosionEffect != null && explosionEffect.HasAutoApplyDeliveryDamageSource())
+        {
+            return;
+        }
+
+        DeliveryDamageSource.DamageCarriedCargoInRadius(
+            transform.position,
+            cargoExplosionDamageRadius,
+            cargoExplosionDamage,
+            cargoExplosionPlayerLayer
+        );
     }
 
     void InterruptPlayerMobility()
