@@ -169,6 +169,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5377601432761496828}
+  - component: {fileID: 7406817248608105113}
   - component: {fileID: 174974814067050131}
   m_Layer: 0
   m_Name: sushi_container
@@ -214,6 +215,33 @@ MonoBehaviour:
   normalVisualRoot: {fileID: 6329898571792517541}
   damagedVisualRoot: {fileID: 7861531395216104437}
   damagedVisualHealthRatio: 0.5
+--- !u!54 &7406817248608105113
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5383467975234456945}
+  serializedVersion: 4
+  m_Mass: 1
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
 --- !u!1 &6057742226097820189
 GameObject:
   m_ObjectHideFlags: 0
@@ -339,7 +367,6 @@ GameObject:
   m_Component:
   - component: {fileID: 6117458961823530834}
   - component: {fileID: 1027345135477015481}
-  - component: {fileID: 6731907328995688732}
   - component: {fileID: 7855929396488736955}
   m_Layer: 0
   m_Name: sushi
@@ -385,33 +412,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.19771126, y: 0.038816303, z: 0.12023928}
   m_Center: {x: -0.0023145438, y: 0.017621044, z: -0.0016506792}
---- !u!54 &6731907328995688732
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6329898571792517541}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!114 &7855929396488736955
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -431,7 +431,7 @@ MonoBehaviour:
   _twoGrabTransformer: {fileID: 0}
   _targetTransform: {fileID: 6117458961823530834}
   _maxGrabPoints: -1
-  _rigidbody: {fileID: 6731907328995688732}
+  _rigidbody: {fileID: 7406817248608105113}
   _kinematicWhileSelected: 1
   _throwWhenUnselected: 1
   _forceKinematicDisabled: 0
@@ -740,7 +740,6 @@ GameObject:
   m_Component:
   - component: {fileID: 6057191975224104234}
   - component: {fileID: 8108619579461424925}
-  - component: {fileID: 8931740757593677236}
   - component: {fileID: 5053141837641273820}
   m_Layer: 0
   m_Name: sushiBroken
@@ -786,33 +785,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.0019457218, y: 0.00054356316, z: 0.0012526755}
   m_Center: {x: -0.0000028122665, y: -0.00004610342, z: 0.000019678326}
---- !u!54 &8931740757593677236
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7861531395216104437}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 0
-  m_Constraints: 0
-  m_CollisionDetection: 0
 --- !u!114 &5053141837641273820
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -832,7 +804,7 @@ MonoBehaviour:
   _twoGrabTransformer: {fileID: 0}
   _targetTransform: {fileID: 6057191975224104234}
   _maxGrabPoints: -1
-  _rigidbody: {fileID: 8931740757593677236}
+  _rigidbody: {fileID: 7406817248608105113}
   _kinematicWhileSelected: 1
   _throwWhenUnselected: 1
   _forceKinematicDisabled: 0

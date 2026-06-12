@@ -9,6 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 485266417209336742}
+  - component: {fileID: 7949633083540564340}
   - component: {fileID: 8732752545165432994}
   m_Layer: 0
   m_Name: hotpot_container
@@ -54,6 +55,33 @@ MonoBehaviour:
   normalVisualRoot: {fileID: 6772615569780336192}
   damagedVisualRoot: {fileID: 4437820720475974967}
   damagedVisualHealthRatio: 0.5
+--- !u!54 &7949633083540564340
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4607386112763609669}
+  serializedVersion: 4
+  m_Mass: 1
+  m_Drag: 0
+  m_AngularDrag: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 1
+  m_IsKinematic: 0
+  m_Interpolate: 1
+  m_Constraints: 0
+  m_CollisionDetection: 2
 --- !u!1001 &3555354132675792998
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -133,10 +161,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 6da17cd8269412f4fb3a4c6f52c7c179,
         type: 3}
       insertIndex: -1
-      addedObject: {fileID: 3709710104939692558}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 6da17cd8269412f4fb3a4c6f52c7c179,
-        type: 3}
-      insertIndex: -1
       addedObject: {fileID: 5254091819378581348}
   m_SourcePrefab: {fileID: 100100000, guid: 6da17cd8269412f4fb3a4c6f52c7c179, type: 3}
 --- !u!4 &3953490605545813901 stripped
@@ -172,33 +196,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.92089844, y: 0.6575261, z: 0.8887329}
   m_Center: {x: 0, y: 0.32859406, z: -0.01373291}
---- !u!54 &3709710104939692558
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4437820720475974967}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 1
-  m_Constraints: 0
-  m_CollisionDetection: 2
 --- !u!114 &5254091819378581348
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -218,7 +215,7 @@ MonoBehaviour:
   _twoGrabTransformer: {fileID: 0}
   _targetTransform: {fileID: 3953490605545813901}
   _maxGrabPoints: -1
-  _rigidbody: {fileID: 3709710104939692558}
+  _rigidbody: {fileID: 7949633083540564340}
   _kinematicWhileSelected: 1
   _throwWhenUnselected: 1
   _forceKinematicDisabled: 0
@@ -301,10 +298,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 86920942c75a9dd498e66209ecc80741,
         type: 3}
       insertIndex: -1
-      addedObject: {fileID: 6192720794768168664}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 86920942c75a9dd498e66209ecc80741,
-        type: 3}
-      insertIndex: -1
       addedObject: {fileID: 7765756254128414209}
   m_SourcePrefab: {fileID: 100100000, guid: 86920942c75a9dd498e66209ecc80741, type: 3}
 --- !u!4 &6248455684270669050 stripped
@@ -340,33 +333,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.92089844, y: 0.6575261, z: 0.91619873}
   m_Center: {x: 0, y: 0.32859406, z: 0}
---- !u!54 &6192720794768168664
-Rigidbody:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 6772615569780336192}
-  serializedVersion: 4
-  m_Mass: 1
-  m_Drag: 0
-  m_AngularDrag: 0.05
-  m_CenterOfMass: {x: 0, y: 0, z: 0}
-  m_InertiaTensor: {x: 1, y: 1, z: 1}
-  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ImplicitCom: 1
-  m_ImplicitTensor: 1
-  m_UseGravity: 1
-  m_IsKinematic: 0
-  m_Interpolate: 1
-  m_Constraints: 0
-  m_CollisionDetection: 2
 --- !u!114 &7765756254128414209
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -386,7 +352,7 @@ MonoBehaviour:
   _twoGrabTransformer: {fileID: 0}
   _targetTransform: {fileID: 6248455684270669050}
   _maxGrabPoints: -1
-  _rigidbody: {fileID: 6192720794768168664}
+  _rigidbody: {fileID: 7949633083540564340}
   _kinematicWhileSelected: 1
   _throwWhenUnselected: 1
   _forceKinematicDisabled: 0
