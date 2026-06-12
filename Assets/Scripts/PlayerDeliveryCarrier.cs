@@ -86,6 +86,14 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         }
     }
 
+    void LateUpdate()
+    {
+        if (carriedCargo != null)
+        {
+            carriedCargo.SnapToCarriedAnchor();
+        }
+    }
+
     void HandlePickupDropButton()
     {
         if (carriedCargo == null)

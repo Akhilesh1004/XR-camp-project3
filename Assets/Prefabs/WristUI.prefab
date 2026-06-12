@@ -156,7 +156,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 1
+  m_PresetInfoIsWorld: 0
 --- !u!114 &4336510522555631392
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -644,15 +644,13 @@ MonoBehaviour:
   - {r: 0.2, g: 1, b: 0.45, a: 1}
   - {r: 1, g: 0.35, b: 0.25, a: 1}
   showPlayerBlip: 1
-  playerBlipSprite: {fileID: 21300000, guid: 9b37956e8da2e7842b48da16b38f6696,
-    type: 3}
+  playerBlipSprite: {fileID: 21300000, guid: 9b37956e8da2e7842b48da16b38f6696, type: 3}
   playerBlipSize: {x: 12, y: 12}
   playerBlipTint: {r: 1, g: 1, b: 1, a: 1}
   playerBlipRotationOffset: 0
   useMainCameraHeadingForPlayerBlip: 1
   showDistanceLabels: 1
-  distanceFontAsset: {fileID: 11400000, guid: 8a89fa14b10d46a99122fd4f73fca9a2,
-    type: 2}
+  distanceFontAsset: {fileID: 11400000, guid: 8a89fa14b10d46a99122fd4f73fca9a2, type: 2}
   distanceLabelSize: {x: 42, y: 12}
   pickupDistanceLabelOffset: {x: 0, y: -10}
   destinationDistanceLabelOffset: {x: 0, y: 10}

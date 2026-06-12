@@ -25,6 +25,9 @@ public class DeliveryCargo : MonoBehaviour
     [Tooltip("若 prefab 內有這些名稱的子物件，會優先拿來當手上對齊點。")]
     public string[] autoCarryAnchorNames = { "CarryAnchor", "HoldAnchor", "GrabAnchor" };
 
+    [Tooltip("通常建議關閉，避免餐點曾經掛在 drone 或其他縮放父物件底下時，拿到手上大小被錯誤保留。")]
+    public bool preserveWorldScaleWhenCarried = false;
+
     [Header("餐點外觀切換")]
     [Tooltip("正常狀態外觀。不指定時會自動使用目前 active 的第一個直屬子物件")]
     public GameObject normalVisualRoot;
@@ -39,8 +42,13 @@ public class DeliveryCargo : MonoBehaviour
     private int orderId = -1;
     private bool isCarried = false;
     private bool showingDamagedVisual = false;
-    private bool hasCarriedWorldScale = false;
-    private Vector3 carriedWorldScale = Vector3.one;
+    private bool hasCarriedScale = false;
+    private Vector3 carriedScale = Vector3.one;
+
+    private Transform carriedAnchor;
+    private Vector3 requestedCarriedLocalPosition;
+    private Vector3 carriedLocalPosition;
+    private Quaternion carriedLocalRotation = Quaternion.identity;
 
     private Rigidbody[] rigidbodies;
     private Collider[] colliders;
@@ -144,20 +152,26 @@ public class DeliveryCargo : MonoBehaviour
             gameObject.SetActive(true);
         }
 
-        if (!isCarried || !hasCarriedWorldScale)
+        if (!isCarried || !hasCarriedScale)
         {
-            carriedWorldScale = transform.lossyScale;
-            hasCarriedWorldScale = true;
+            carriedScale = preserveWorldScaleWhenCarried
+                ? transform.lossyScale
+                : transform.localScale;
+            hasCarriedScale = true;
         }
 
         isCarried = true;
+        carriedAnchor = holdAnchor;
+        requestedCarriedLocalPosition = localPosition;
+        carriedLocalRotation = localRotation;
 
         SetRigidbodiesCarried(true, Vector3.zero);
 
         transform.SetParent(holdAnchor, false);
         transform.localRotation = localRotation;
-        transform.localScale = GetLocalScaleForWorldScale(carriedWorldScale, holdAnchor.lossyScale);
-        transform.localPosition = GetAlignedLocalPosition(localPosition, localRotation);
+        transform.localScale = GetCarriedLocalScale(holdAnchor);
+        RecalculateCarriedLocalPosition();
+        SnapToCarriedAnchor();
 
         if (disableCollidersWhileCarried)
         {
@@ -168,11 +182,13 @@ public class DeliveryCargo : MonoBehaviour
     public void Drop(Vector3 worldPosition, Vector3 throwVelocity)
     {
         isCarried = false;
-        hasCarriedWorldScale = false;
+        hasCarriedScale = false;
+        carriedAnchor = null;
 
         transform.SetParent(null, true);
         transform.position = worldPosition;
         gameObject.SetActive(true);
+        SetRenderersEnabled(true);
 
         SetCollidersEnabled(true);
         SetRigidbodiesCarried(false, throwVelocity);
@@ -181,9 +197,11 @@ public class DeliveryCargo : MonoBehaviour
     public void DetachWithoutPhysics()
     {
         isCarried = false;
-        hasCarriedWorldScale = false;
+        hasCarriedScale = false;
+        carriedAnchor = null;
         transform.SetParent(null, true);
         gameObject.SetActive(true);
+        SetRenderersEnabled(true);
         SetCollidersEnabled(true);
         SetRigidbodiesCarried(false, Vector3.zero);
     }
@@ -196,11 +214,28 @@ public class DeliveryCargo : MonoBehaviour
         }
 
         SetRenderersEnabled(visible);
+    }
 
-        if (!visible && gameObject.activeSelf)
+    public void SnapToCarriedAnchor()
+    {
+        if (!isCarried || carriedAnchor == null)
         {
-            gameObject.SetActive(false);
+            return;
         }
+
+        if (!gameObject.activeSelf)
+        {
+            gameObject.SetActive(true);
+        }
+
+        if (transform.parent != carriedAnchor)
+        {
+            transform.SetParent(carriedAnchor, false);
+        }
+
+        transform.localRotation = carriedLocalRotation;
+        transform.localScale = GetCarriedLocalScale(carriedAnchor);
+        transform.localPosition = carriedLocalPosition;
     }
 
     void SetRenderersEnabled(bool enabled)
@@ -418,6 +453,30 @@ public class DeliveryCargo : MonoBehaviour
         showingDamagedVisual = shouldShowDamaged;
         normalVisualRoot.SetActive(!shouldShowDamaged);
         damagedVisualRoot.SetActive(shouldShowDamaged);
+
+        if (isCarried && carriedAnchor != null)
+        {
+            RecalculateCarriedLocalPosition();
+            SnapToCarriedAnchor();
+        }
+    }
+
+    void RecalculateCarriedLocalPosition()
+    {
+        carriedLocalPosition = GetAlignedLocalPosition(
+            requestedCarriedLocalPosition,
+            carriedLocalRotation
+        );
+    }
+
+    Vector3 GetCarriedLocalScale(Transform parent)
+    {
+        if (!preserveWorldScaleWhenCarried || parent == null)
+        {
+            return carriedScale;
+        }
+
+        return GetLocalScaleForWorldScale(carriedScale, parent.lossyScale);
     }
 
     Vector3 GetLocalScaleForWorldScale(Vector3 worldScale, Vector3 parentWorldScale)
