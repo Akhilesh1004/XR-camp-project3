@@ -14,16 +14,24 @@ public class PlayerDeliveryCarrier : MonoBehaviour
 
     [Header("拿取顯示位置")]
     [Tooltip("餐點拿在手上時，相對 holdAnchor 的位置。用來避免模型卡在手心或控制器裡")]
-    public Vector3 heldLocalPosition = new Vector3(0f, -0.04f, 0.18f);
+    public Vector3 heldLocalPosition = new Vector3(0f, 0.08f, 0.12f);
 
     [Tooltip("餐點拿在手上時，相對 holdAnchor 的旋轉")]
     public Vector3 heldLocalEulerAngles = Vector3.zero;
+
+    [Tooltip("餐點拿在手上時的縮放倍率。丟下或解除攜帶時會恢復原本大小")]
+    [Range(0.05f, 1f)]
+    public float heldScaleMultiplier = 0.35f;
 
     [Tooltip("餐點收起來時，相對 storageAnchor 的位置")]
     public Vector3 storedLocalPosition = Vector3.zero;
 
     [Tooltip("餐點收起來時，相對 storageAnchor 的旋轉")]
     public Vector3 storedLocalEulerAngles = Vector3.zero;
+
+    [Tooltip("餐點收起來時的縮放倍率。通常跟 heldScaleMultiplier 一樣即可")]
+    [Range(0.05f, 1f)]
+    public float storedScaleMultiplier = 0.35f;
 
     [Tooltip("可以撿餐點的 Layer")]
     public LayerMask cargoLayer;
@@ -151,7 +159,13 @@ public class PlayerDeliveryCarrier : MonoBehaviour
 
         Transform anchor = holdAnchor != null ? holdAnchor : transform;
 
-        AttachCargoToAnchor(carriedCargo, anchor, heldLocalPosition, heldLocalEulerAngles);
+        AttachCargoToAnchor(
+            carriedCargo,
+            anchor,
+            heldLocalPosition,
+            heldLocalEulerAngles,
+            heldScaleMultiplier
+        );
         SetCargoVisible(true);
 
         if (DeliveryGameManager.Instance != null)
@@ -247,7 +261,13 @@ public class PlayerDeliveryCarrier : MonoBehaviour
             ? storageAnchor
             : transform;
 
-        AttachCargoToAnchor(carriedCargo, anchor, storedLocalPosition, storedLocalEulerAngles);
+        AttachCargoToAnchor(
+            carriedCargo,
+            anchor,
+            storedLocalPosition,
+            storedLocalEulerAngles,
+            storedScaleMultiplier
+        );
 
         if (hideCargoWhenStored)
         {
@@ -277,7 +297,13 @@ public class PlayerDeliveryCarrier : MonoBehaviour
             ? holdAnchor
             : transform;
 
-        AttachCargoToAnchor(carriedCargo, anchor, heldLocalPosition, heldLocalEulerAngles);
+        AttachCargoToAnchor(
+            carriedCargo,
+            anchor,
+            heldLocalPosition,
+            heldLocalEulerAngles,
+            heldScaleMultiplier
+        );
         SetCargoVisible(true);
 
         if (DeliveryGameManager.Instance != null)
@@ -304,7 +330,8 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         DeliveryCargo cargo,
         Transform anchor,
         Vector3 localPosition,
-        Vector3 localEulerAngles)
+        Vector3 localEulerAngles,
+        float scaleMultiplier)
     {
         if (cargo == null || anchor == null)
         {
@@ -314,7 +341,8 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         cargo.AttachTo(
             anchor,
             localPosition,
-            Quaternion.Euler(localEulerAngles)
+            Quaternion.Euler(localEulerAngles),
+            scaleMultiplier
         );
     }
 

@@ -44,6 +44,7 @@ public class DeliveryCargo : MonoBehaviour
     private bool showingDamagedVisual = false;
     private bool hasCarriedScale = false;
     private Vector3 carriedScale = Vector3.one;
+    private float carriedScaleMultiplier = 1f;
 
     private Transform carriedAnchor;
     private Vector3 requestedCarriedLocalPosition;
@@ -142,6 +143,15 @@ public class DeliveryCargo : MonoBehaviour
         Vector3 localPosition,
         Quaternion localRotation)
     {
+        AttachTo(holdAnchor, localPosition, localRotation, 1f);
+    }
+
+    public void AttachTo(
+        Transform holdAnchor,
+        Vector3 localPosition,
+        Quaternion localRotation,
+        float scaleMultiplier)
+    {
         if (holdAnchor == null)
         {
             return;
@@ -164,6 +174,7 @@ public class DeliveryCargo : MonoBehaviour
         carriedAnchor = holdAnchor;
         requestedCarriedLocalPosition = localPosition;
         carriedLocalRotation = localRotation;
+        carriedScaleMultiplier = Mathf.Max(0.01f, scaleMultiplier);
 
         SetRigidbodiesCarried(true, Vector3.zero);
 
@@ -187,6 +198,7 @@ public class DeliveryCargo : MonoBehaviour
 
         transform.SetParent(null, true);
         transform.position = worldPosition;
+        RestoreReleasedScale();
         gameObject.SetActive(true);
         SetRenderersEnabled(true);
 
@@ -200,6 +212,7 @@ public class DeliveryCargo : MonoBehaviour
         hasCarriedScale = false;
         carriedAnchor = null;
         transform.SetParent(null, true);
+        RestoreReleasedScale();
         gameObject.SetActive(true);
         SetRenderersEnabled(true);
         SetCollidersEnabled(true);
@@ -471,12 +484,20 @@ public class DeliveryCargo : MonoBehaviour
 
     Vector3 GetCarriedLocalScale(Transform parent)
     {
+        Vector3 scaledCarriedScale = carriedScale * carriedScaleMultiplier;
+
         if (!preserveWorldScaleWhenCarried || parent == null)
         {
-            return carriedScale;
+            return scaledCarriedScale;
         }
 
-        return GetLocalScaleForWorldScale(carriedScale, parent.lossyScale);
+        return GetLocalScaleForWorldScale(scaledCarriedScale, parent.lossyScale);
+    }
+
+    void RestoreReleasedScale()
+    {
+        transform.localScale = carriedScale;
+        carriedScaleMultiplier = 1f;
     }
 
     Vector3 GetLocalScaleForWorldScale(Vector3 worldScale, Vector3 parentWorldScale)
