@@ -559,15 +559,15 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5678363424193185625}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 5.6699953, y: 5.6699953, z: 5.6699953}
-  m_ConstrainProportionsScale: 0
+  m_LocalPosition: {x: 0, y: 0, z: -0}
+  m_LocalScale: {x: 5.5, y: 5.5, z: 5.5}
+  m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 6869233804058923278}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -225, y: -60}
+  m_AnchoredPosition: {x: -217, y: -48}
   m_SizeDelta: {x: 80, y: 60}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &951209976729046879
@@ -629,8 +629,13 @@ MonoBehaviour:
   showWaitingOrders: 0
   showPickupBlips: 1
   showDestinationBlips: 1
+  pickupBlipSprite: {fileID: 0}
+  destinationBlipSprite: {fileID: 0}
+  preserveBlipSpriteAspect: 1
   pickupBlipSize: {x: 7, y: 7}
   destinationBlipSize: {x: 8, y: 8}
+  pickupBlipRotation: 0
+  destinationBlipRotation: 45
   edgeBlipScale: {x: 1.15, y: 1.15}
   pickupTint: {r: 1, g: 1, b: 1, a: 1}
   destinationTint: {r: 1, g: 1, b: 1, a: 1}
@@ -638,6 +643,18 @@ MonoBehaviour:
   - {r: 0.25, g: 0.65, b: 1, a: 1}
   - {r: 0.2, g: 1, b: 0.45, a: 1}
   - {r: 1, g: 0.35, b: 0.25, a: 1}
+  showDistanceLabels: 1
+  distanceLabelSize: {x: 42, y: 12}
+  pickupDistanceLabelOffset: {x: 0, y: -10}
+  destinationDistanceLabelOffset: {x: 0, y: 10}
+  distanceFontSize: 7
+  distanceTextColor: {r: 1, g: 1, b: 1, a: 1}
+  distanceFormat: '{0:0}m'
+  showLayoutGuide: 1
+  showMarkerClampGuide: 1
+  mapBoundaryGuideColor: {r: 1, g: 1, b: 1, a: 0.75}
+  markerClampGuideColor: {r: 1, g: 0.85, b: 0.1, a: 0.75}
+  layoutGuideLineThickness: 1
 --- !u!1 &6869677024463965860
 GameObject:
   m_ObjectHideFlags: 0
