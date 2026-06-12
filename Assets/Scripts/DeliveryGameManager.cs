@@ -393,6 +393,25 @@ public class DeliveryGameManager : MonoBehaviour
         NotifyUIOrderListChanged();
     }
 
+    public bool SelectActiveOrder(int orderId)
+    {
+        DeliveryOrder order = allOrders.Find(o =>
+            o.orderId == orderId &&
+            o.state == OrderState.Active
+        );
+
+        if (order == null)
+        {
+            return false;
+        }
+
+        currentActiveOrder = order;
+        SetMessage("Tracking Order: " + order.food.foodName);
+        NotifyUIOrderListChanged();
+        UpdateUI();
+        return true;
+    }
+
     #endregion
 
     #region 世界物件生成與清理

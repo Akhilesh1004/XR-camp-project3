@@ -22,6 +22,7 @@ public class MinimapBlipController : MonoBehaviour
 
     [Header("Orders")]
     public bool showActiveOrders = true;
+    public bool showOnlyCurrentActiveOrder = true;
     public bool showWaitingOrders = false;
     public bool showPickupBlips = true;
     public bool showDestinationBlips = true;
@@ -138,7 +139,13 @@ public class MinimapBlipController : MonoBehaviour
     {
         if (order.state == OrderState.Active)
         {
-            return showActiveOrders;
+            if (!showActiveOrders)
+            {
+                return false;
+            }
+
+            return !showOnlyCurrentActiveOrder ||
+                   DeliveryGameManager.Instance.CurrentActiveOrder == order;
         }
 
         if (order.state == OrderState.WaitingAccept)

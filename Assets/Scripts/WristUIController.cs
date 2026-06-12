@@ -148,21 +148,17 @@ public class WristUIController : MonoBehaviour
                     customCursor.rotation = Quaternion.LookRotation(-hit.normal, uiCanvasGroup.transform.up);
                 }
 
-                // ➔ 不管是打到按鈕還是卡片本身，先透過 FindOrderEntryRoot 往上抓出 Order_UI_ 根節點
+                // ➔ 不管是打到按鈕還是卡片本身，先透過 FindOrderEntryRoot 往上抓出訂單根節點
                 GameObject hoveredOrderEntry = FindOrderEntryRoot(hit.collider.transform);
                 
-                if (hoveredOrderEntry != null && hoveredOrderEntry.name.StartsWith("Order_UI_"))
+                if (hoveredOrderEntry != null &&
+                    TryGetOrderIdFromEntry(hoveredOrderEntry, out int hoveredOrderId))
                 {
                     ShowHoverPreviewForOrder(hoveredOrderEntry);
 
-                    // 解析 ID 並觸發外送小地圖預覽
-                    string idString = hoveredOrderEntry.name.Replace("Order_UI_", "");
-                    if (int.TryParse(idString, out int hoveredOrderId))
+                    if (DeliveryGameManager.Instance != null)
                     {
-                        if (DeliveryGameManager.Instance != null)
-                        {
-                            DeliveryGameManager.Instance.ShowOrderLocationPreview(hoveredOrderId);
-                        }
+                        DeliveryGameManager.Instance.ShowOrderLocationPreview(hoveredOrderId);
                     }
                 }
                 else
@@ -515,23 +511,49 @@ public class WristUIController : MonoBehaviour
     {
         if (orderUIEntry == null) return;
 
+        bool isTracked = DeliveryGameManager.Instance != null &&
+                         DeliveryGameManager.Instance.CurrentActiveOrder == order;
+
         Transform infoTransform = orderUIEntry.transform.Find("OrderInfo");
         if (infoTransform != null)
         {
-            int currentOrderId = order.orderId;
             string foodName = order.food.foodName;
             int foodValue = order.food.foodValue;
             float maxDeliveryTime = order.food.maxDeliveryTime;
             TextMeshProUGUI infoText = infoTransform.GetComponent<TextMeshProUGUI>();
             if (infoText != null)
             {
-                infoText.text = $"{foodName} ({order.activeTimer:F1}sec)\n" +
+                string trackingLabel = isTracked ? " [Tracking]" : "";
+                infoText.text = $"{foodName}{trackingLabel} ({order.activeTimer:F1}sec)\n" +
                                 $"Score: {foodValue}\nTime Limit: {maxDeliveryTime:F1}min";
             }
         }
 
+        int currentOrderId = order.orderId;
         Button yesBtn = orderUIEntry.transform.Find("YesBotton")?.GetComponent<Button>();
-        if (yesBtn != null) yesBtn.gameObject.SetActive(false);
+        if (yesBtn != null)
+        {
+            yesBtn.gameObject.SetActive(true);
+
+            if (!buttonOriginalScales.ContainsKey(yesBtn))
+            {
+                buttonOriginalScales[yesBtn] = yesBtn.transform.localScale;
+            }
+
+            Transform yesTextTransform = yesBtn.transform.Find("Text (TMP)");
+            if (yesTextTransform != null)
+            {
+                TextMeshProUGUI yesText = yesTextTransform.GetComponent<TextMeshProUGUI>();
+                if (yesText != null)
+                {
+                    yesText.text = isTracked ? "Tracking" : "Track";
+                }
+            }
+
+            yesBtn.interactable = !isTracked;
+            yesBtn.onClick.RemoveAllListeners();
+            yesBtn.onClick.AddListener(() => OnAcceptedOrderTrackClicked(currentOrderId));
+        }
 
         Button noBtn = orderUIEntry.transform.Find("NoBotton")?.GetComponent<Button>();
         if (noBtn != null) noBtn.gameObject.SetActive(false);
@@ -596,6 +618,30 @@ public class WristUIController : MonoBehaviour
         return child.gameObject;
     }
 
+    bool TryGetOrderIdFromEntry(GameObject orderEntry, out int orderId)
+    {
+        orderId = -1;
+
+        if (orderEntry == null)
+        {
+            return false;
+        }
+
+        string name = orderEntry.name;
+
+        if (name.StartsWith("Order_UI_"))
+        {
+            return int.TryParse(name.Replace("Order_UI_", ""), out orderId);
+        }
+
+        if (name.StartsWith("AcceptedOrder_UI_"))
+        {
+            return int.TryParse(name.Replace("AcceptedOrder_UI_", ""), out orderId);
+        }
+
+        return false;
+    }
+
     void OnOrderChoiceClicked(int orderId, bool isAccepted)
     {
         if (DeliveryGameManager.Instance == null) return;
@@ -616,6 +662,14 @@ public class WristUIController : MonoBehaviour
                 DeliveryGameManager.Instance.DiscardOrder(dataOrder);
             }
         }
+    }
+
+    void OnAcceptedOrderTrackClicked(int orderId)
+    {
+        if (DeliveryGameManager.Instance == null) return;
+
+        DeliveryGameManager.Instance.ClearOrderLocationPreview();
+        DeliveryGameManager.Instance.SelectActiveOrder(orderId);
     }
 
     #endregion
