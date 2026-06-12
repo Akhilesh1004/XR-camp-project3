@@ -629,13 +629,14 @@ MonoBehaviour:
   showWaitingOrders: 0
   showPickupBlips: 1
   showDestinationBlips: 1
-  pickupBlipSprite: {fileID: 0}
-  destinationBlipSprite: {fileID: 0}
+  pickupBlipSprite: {fileID: 21300000, guid: 100ccbeaa30b57e41a3ed5ac209471ad, type: 3}
+  destinationBlipSprite: {fileID: 21300000, guid: 80001a7ade1b4be41ac6815fd1e22561,
+    type: 3}
   preserveBlipSpriteAspect: 1
   pickupBlipSize: {x: 7, y: 7}
   destinationBlipSize: {x: 8, y: 8}
   pickupBlipRotation: 0
-  destinationBlipRotation: 45
+  destinationBlipRotation: 0
   edgeBlipScale: {x: 1.15, y: 1.15}
   pickupTint: {r: 1, g: 1, b: 1, a: 1}
   destinationTint: {r: 1, g: 1, b: 1, a: 1}
@@ -644,9 +645,9 @@ MonoBehaviour:
   - {r: 0.2, g: 1, b: 0.45, a: 1}
   - {r: 1, g: 0.35, b: 0.25, a: 1}
   showPlayerBlip: 1
-  playerBlipSprite: {fileID: 21300000, guid: 9b37956e8da2e7842b48da16b38f6696, type: 3}
+  playerBlipSprite: {fileID: 21300000, guid: 14e4a7e32dbb9dd4c886c4446eaa1516, type: 3}
   playerBlipSize: {x: 12, y: 12}
-  playerBlipTint: {r: 1, g: 1, b: 1, a: 1}
+  playerBlipTint: {r: 0.043137256, g: 0.8862746, b: 0.9921569, a: 1}
   playerBlipRotationOffset: 0
   useMainCameraHeadingForPlayerBlip: 1
   showDistanceLabels: 1
