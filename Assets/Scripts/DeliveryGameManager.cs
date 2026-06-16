@@ -171,6 +171,8 @@ public class DeliveryGameManager : MonoBehaviour
     public AudioClip soundDeliverySuccess;
     [Tooltip("餐點逾時未送達時播放")]
     public AudioClip soundOrderTimeout;
+    [Tooltip("餐點完全受損銷毀時播放")]
+    public AudioClip soundCargoDestroyed;
 
     void Awake()
     {
@@ -725,6 +727,7 @@ public class DeliveryGameManager : MonoBehaviour
     {
         score -= brokenFoodPenalty;
         SetMessage("Food Destroyed! -" + brokenFoodPenalty + " pts");
+        PlaySound(soundCargoDestroyed);
 
         // 清除玩家的攜帶引用（在物件被 Destroy 前）
         if (playerCarrier != null)

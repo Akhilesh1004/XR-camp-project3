@@ -135,12 +135,14 @@ public class WebSwinger : MonoBehaviour
     {
         if (OVRInput.GetDown(swingButton, controller))
         {
+            animator.speed = 1f;
+            animator.Play("shoot_state", 0, 0f);
+            animator.Update(0f); // ➔ 強制 Animator 同幀套用新狀態，避免 Get 讀到上次殘留的 normalizedTime
+            isPausedMidway = false;
+            isWaitingToPause = true;
+
             if (!canShoot)
             {
-                animator.speed = 1f;
-                animator.Play("shoot_state", 0, 0f);
-                isPausedMidway = false;       
-                isWaitingToPause = true;
                 if (WallGrabber.IsGrabbing)
                 {
                     StartPendingSwing();
@@ -163,7 +165,7 @@ public class WebSwinger : MonoBehaviour
                 AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(0);
 
                 // 確保不是 Idle，且我們正在等待暫停，且進度過半了
-                if (!stateInfo.IsName("Idle") && isWaitingToPause && stateInfo.normalizedTime >= 0.6f)
+                if (stateInfo.IsName("shoot_state") && isWaitingToPause && stateInfo.normalizedTime >= 0.6f)
                 {
                     // 改用 speed = 0 暫停，這樣按下的前半段動畫才會是完全流暢的！
                     animator.speed = 0f; 
@@ -187,6 +189,10 @@ public class WebSwinger : MonoBehaviour
 
         if (OVRInput.GetUp(swingButton, controller))
         {
+            // ➔ 若在動畫到達 60% 前就放開（含 Animator 還沒來得及切換 state 的情況），
+            //    直接強制跳到 60% 再繼續，略過中間段
+            if (isWaitingToPause)
+                animator.Play("shoot_state", 0, 0.6f);
             animator.speed = 1f;
             isWaitingToPause = false;
             isPausedMidway = false;
@@ -241,7 +247,8 @@ public class WebSwinger : MonoBehaviour
             ThisHandGrabbing = true;
             
             animator.speed = 1f;
-            animator.Play("grab_state", 0, 0f); 
+            animator.Play("grab_state", 0, 0f);
+            animator.Update(0f); // ➔ 強制同幀套用，避免殘留 normalizedTime 誤觸凍結條件
             isGrabPausedMidway = false;
             isGrabWaitingToPause = true;
         }
@@ -264,6 +271,10 @@ public class WebSwinger : MonoBehaviour
         {
             ThisHandGrabbing = false;
 
+            // ➔ 若在動畫到達 50% 前就放開（含 Animator 還沒來得及切換 state 的情況），
+            //    直接強制跳到 50% 再繼續，略過中間段
+            if (isGrabWaitingToPause)
+                animator.Play("grab_state", 0, 0.5f);
             animator.speed = 1f;
             isGrabWaitingToPause = false;
             isGrabPausedMidway = false;
