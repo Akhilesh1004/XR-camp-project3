@@ -43,19 +43,24 @@ public class DeliveryGameManager : MonoBehaviour
     public class FoodOption
     {
         public string foodName = "Burger";
+        [Tooltip("此食物的最大血量")]
         public int maxHealth = 100;
         public int foodValue = 100;       // 食物價值
         [Tooltip("外送限時 N (分鐘)")]
         public float maxDeliveryTime = 2f; // 外送限時 N 分鐘
         public DeliveryCargo cargoPrefab;
         [Tooltip("此食物專屬的取餐點（點位與食物綁定）")]
-        public Transform restaurantPickupPoint; 
+        public Transform restaurantPickupPoint;
     }
 
     public static DeliveryGameManager Instance { get; private set; }
 
     [Header("玩家")]
     public PlayerDeliveryCarrier playerCarrier;
+
+    [Header("外部網頁追蹤 (Web 即時地圖)")]
+    [Tooltip("用來把玩家世界座標換算成網頁地圖 (NewMap.png) 像素座標，供 /orderStatus API 回傳")]
+    public WorldToMapCalibration mapCalibration;
 
     [Header("遊戲時間")]
     public float gameDuration = 180f;
@@ -67,6 +72,7 @@ public class DeliveryGameManager : MonoBehaviour
     [Tooltip("每隔多少秒自動派發一筆新訂單到等待區")]
     public float orderSpawnInterval = 120f; 
     public int maxWaitingOrders = 3; // 畫面/UI上最多同時顯示幾筆等待接受的訂單
+    public int maxActiveOrders = 3;  // 同時進行中的訂單上限
 
     [Header("計分與懲罰")]
     public int brokenFoodPenalty = 50;
@@ -94,14 +100,9 @@ public class DeliveryGameManager : MonoBehaviour
     public GameObject[] minimapDestinationPrefabs = new GameObject[3];
     
     [Header("訂單預覽(Preview)設定")]
-    [Tooltip("懸停或查看訂單時，在取餐點（餐廳）生成的預覽特效或標記")]
-    public GameObject pickupPreviewPrefab;
-    [Tooltip("懸停或查看訂單時，在目的地生成的預覽特效或標記")]
-    public GameObject destinationPreviewPrefab;
     public float MiniMapHeightOffset = 20f;
-    // 用來記錄目前正在場景上顯示的預覽實體
-    private GameObject currentPickupPreviewInstance;
-    private GameObject currentDestinationPreviewInstance;
+    // 目前正在 hover 預覽的訂單 ID（-1 = 無預覽），供 MinimapBlipController 讀取
+    public int PreviewOrderId { get; private set; } = -1;
 
     [Header("搶無人機餐點 / 送錯餐點設定")]
     public bool allowPickupAnyCargo = true;
@@ -124,8 +125,31 @@ public class DeliveryGameManager : MonoBehaviour
     private List<DeliveryOrder> allOrders = new List<DeliveryOrder>();
     private int orderIdCounter = 0;
     private float orderSpawnTimer;
+
+    // ➔ 訂單狀態歷史記錄 (供外部網頁 /orderStatus 查詢，訂單從 allOrders 移除後仍可查得最後狀態)
+    private class OrderHistoryEntry
+    {
+        public OrderState state;
+        public string foodName;
+    }
+    private Dictionary<int, OrderHistoryEntry> orderHistory = new Dictionary<int, OrderHistoryEntry>();
+
+    private void RecordOrderHistory(DeliveryOrder order)
+    {
+        if (order == null) return;
+
+        if (!orderHistory.TryGetValue(order.orderId, out OrderHistoryEntry entry))
+        {
+            entry = new OrderHistoryEntry();
+            orderHistory[order.orderId] = entry;
+        }
+
+        entry.state = order.state;
+        entry.foodName = order.food != null ? order.food.foodName : "";
+    }
     
     private List<int> usedColorIndices = new List<int>();
+    private HashSet<int> warnedOrderIds = new HashSet<int>();
 
     private float remainingTime;
     private int score = 0;
@@ -141,6 +165,12 @@ public class DeliveryGameManager : MonoBehaviour
     [Header("中央音效系統")]
     [Tooltip("請將掛在 GameManager 物件上的 AudioSource 拖入此處")]
     public AudioSource globalAudioSource;
+    [Tooltip("餐點剩餘時間不足 1 分鐘時播放")]
+    public AudioClip soundTimerWarning;
+    [Tooltip("餐點成功送達時播放")]
+    public AudioClip soundDeliverySuccess;
+    [Tooltip("餐點逾時未送達時播放")]
+    public AudioClip soundOrderTimeout;
 
     void Awake()
     {
@@ -198,6 +228,8 @@ public class DeliveryGameManager : MonoBehaviour
 
         ClearAllOrdersObjects();
         allOrders.Clear();
+        orderHistory.Clear();
+        warnedOrderIds.Clear();
 
         SetMessage("Delivery Start!");
         UpdateUI();
@@ -253,11 +285,10 @@ public class DeliveryGameManager : MonoBehaviour
 
             if (selectedPickup == null) continue;
 
-            // ➔ 【條件 1】：檢查是否已有「相同食物且相同目的地」的未結算訂單（避免一模一樣的單）
-            bool duplicateExists = allOrders.Exists(o => 
-                FoodNamesMatch(o.food.foodName, selectedFood.foodName) &&
+            // ➔ 【條件 1】：同一個目的地不允許有多筆未結算訂單（避免 blip 重疊與送達判斷衝突）
+            bool duplicateExists = allOrders.Exists(o =>
                 o.destinationPoint == selectedDestination &&
-                o.state != OrderState.Completed && 
+                o.state != OrderState.Completed &&
                 o.state != OrderState.Discarded
             );
 
@@ -309,7 +340,8 @@ public class DeliveryGameManager : MonoBehaviour
         }
 
         allOrders.Add(newOrder);
-        NotifyUIOrderListChanged(); 
+        RecordOrderHistory(newOrder);
+        NotifyUIOrderListChanged();
     }
 
     void UpdateOrdersLifecycle()
@@ -330,12 +362,20 @@ public class DeliveryGameManager : MonoBehaviour
             else if (order.state == OrderState.Active)
             {
                 order.activeTimer -= Time.deltaTime;
+
+                if (order.activeTimer <= 60f && !warnedOrderIds.Contains(order.orderId))
+                {
+                    warnedOrderIds.Add(order.orderId);
+                    PlaySound(soundTimerWarning);
+                }
+
                 if (order.activeTimer <= 0f)
                 {
                     order.activeTimer = 0f;
+                    PlaySound(soundOrderTimeout);
                     SetMessage($"Order {order.orderId} Timeout! Delivery Failed.");
                     DiscardOrder(order);
-                    i--; 
+                    i--;
                 }
             }
         }
@@ -355,6 +395,7 @@ public class DeliveryGameManager : MonoBehaviour
                 if (isPointStillFree)
                 {
                     nextInQueue.state = OrderState.WaitingAccept;
+                    RecordOrderHistory(nextInQueue);
                     SetMessage("New Order Available: " + nextInQueue.food.foodName);
                     NotifyUIOrderListChanged();
                 }
@@ -373,9 +414,17 @@ public class DeliveryGameManager : MonoBehaviour
         DeliveryOrder order = allOrders.Find(o => o.orderId == orderId);
         if (order == null || order.state != OrderState.WaitingAccept) return;
 
+        int activeCount = allOrders.FindAll(o => o.state == OrderState.Active).Count;
+        if (activeCount >= maxActiveOrders)
+        {
+            SetMessage($"Cannot accept: already have {activeCount} active orders (max {maxActiveOrders}).");
+            return;
+        }
+
         order.state = OrderState.Active;
-        currentActiveOrder = order; 
+        currentActiveOrder = order;
         order.colorIndex = GetAvailableColorIndex();
+        RecordOrderHistory(order);
 
         SpawnOrderWorldObjects(order);
 
@@ -386,8 +435,9 @@ public class DeliveryGameManager : MonoBehaviour
     public void DiscardOrder(DeliveryOrder order)
     {
         if (order == null) return;
-        
+
         order.state = OrderState.Discarded;
+        RecordOrderHistory(order);
         ClearSingleOrderObjects(order);
         
         SelectFallbackCurrentActiveOrder(order);
@@ -620,7 +670,9 @@ public class DeliveryGameManager : MonoBehaviour
             SetMessage($"Success! {order.food.foodName} | HP:{hpRatio:P0} TimeLeft:{timeRatio:P0} | Earned: +{earnedPoints} pts");
         }
 
+        PlaySound(soundDeliverySuccess);
         order.state = OrderState.Completed;
+        RecordOrderHistory(order);
         ClearSingleOrderObjects(order);
         SelectFallbackCurrentActiveOrder(order);
         allOrders.Remove(order);
@@ -669,6 +721,31 @@ public class DeliveryGameManager : MonoBehaviour
     public void NotifyCargoHealthChanged(DeliveryCargo cargo) { SetMessage("Cargo Damaged! HP: " + cargo.CurrentHealth); UpdateUI(); }
     public void NotifyCargoMessage(string message) { SetMessage(message); UpdateUI(); }
 
+    public void NotifyCargoDestroyed(DeliveryCargo cargo)
+    {
+        score -= brokenFoodPenalty;
+        SetMessage("Food Destroyed! -" + brokenFoodPenalty + " pts");
+
+        // 清除玩家的攜帶引用（在物件被 Destroy 前）
+        if (playerCarrier != null)
+        {
+            playerCarrier.ClearCargoIfMatch(cargo);
+        }
+
+        // 找到對應訂單並丟棄
+        DeliveryOrder order = allOrders.Find(o => o.orderId == cargo.OrderId);
+        if (order != null)
+        {
+            // 先清掉引用，避免 ClearSingleOrderObjects 重複 Destroy 同一物件
+            order.spawnedCargo = null;
+            DiscardOrder(order);
+        }
+
+        Destroy(cargo.gameObject);
+
+        UpdateUI();
+    }
+
     #endregion
 
     #region 外部呼叫接口 (提供給手機、網路或外部工具連線使用)
@@ -681,35 +758,62 @@ public class DeliveryGameManager : MonoBehaviour
         public int destinationIndex;    // 目的地的陣列索引 (0, 1, 2...)
     }
 
-    public bool AddOrderFromExternal(ExternalOrderRequest request)
+    /// <summary>
+    /// 從外部（網頁）建立一筆新訂單。
+    /// 回傳值：成功時回傳新訂單的 orderId (>= 1)；失敗時回傳 -1。
+    /// </summary>
+    public int AddOrderFromExternal(ExternalOrderRequest request)
     {
-        if (!gameActive) return false;
+        if (!gameActive)
+        {
+            Debug.LogWarning($"[External Order] 被拒絕：遊戲尚未開始 (gameActive=false)。foodName={request.foodName}, destinationIndex={request.destinationIndex}");
+            return -1;
+        }
 
         FoodOption targetFood = System.Array.Find(foodOptions, f =>
             FoodNamesMatch(f.foodName, request.foodName)
         );
-        if (targetFood == null) return false;
+        if (targetFood == null)
+        {
+            Debug.LogWarning($"[External Order] 被拒絕：找不到符合的食物選項 foodName=\"{request.foodName}\"。請確認 DeliveryGameManager.foodOptions 中的 foodName 是否與網頁一致。");
+            return -1;
+        }
 
-        if (destinationPoints == null || request.destinationIndex < 0 || request.destinationIndex >= destinationPoints.Length) return false;
+        if (destinationPoints == null || request.destinationIndex < 0 || request.destinationIndex >= destinationPoints.Length)
+        {
+            Debug.LogWarning($"[External Order] 被拒絕：destinationIndex={request.destinationIndex} 超出範圍 (destinationPoints 數量={(destinationPoints == null ? 0 : destinationPoints.Length)})。");
+            return -1;
+        }
         Transform targetDestination = destinationPoints[request.destinationIndex];
 
         Transform targetPickup = (targetFood.restaurantPickupPoint != null) ? targetFood.restaurantPickupPoint : fallbackPickupPoint;
-        if (targetPickup == null) return false;
+        if (targetPickup == null)
+        {
+            Debug.LogWarning($"[External Order] 被拒絕：食物 \"{targetFood.foodName}\" 沒有設定 restaurantPickupPoint，且 fallbackPickupPoint 也是空的。");
+            return -1;
+        }
 
         // 外部呼叫時也一併遵守這兩條安全過濾機制
-        bool duplicateExists = allOrders.Exists(o => 
-            FoodNamesMatch(o.food.foodName, targetFood.foodName) &&
+        bool duplicateExists = allOrders.Exists(o =>
             o.destinationPoint == targetDestination &&
-            o.state != OrderState.Completed && 
+            o.state != OrderState.Completed &&
             o.state != OrderState.Discarded
         );
-        if (duplicateExists) return false;
+        if (duplicateExists)
+        {
+            Debug.LogWarning($"[External Order] 被拒絕：目的地 (index={request.destinationIndex}) 已有未完成的訂單。");
+            return -1;
+        }
 
         bool pickupPointOccupied = allOrders.Exists(o =>
             o.pickupPoint == targetPickup &&
             (o.state == OrderState.WaitingAccept || o.state == OrderState.Active)
         );
-        if (pickupPointOccupied) return false;
+        if (pickupPointOccupied)
+        {
+            Debug.LogWarning($"[External Order] 被拒絕：取餐點 \"{targetPickup.name}\" 目前已有等待接單或進行中的訂單 (地點已被佔用)。");
+            return -1;
+        }
 
         int waitingCount = allOrders.FindAll(o => o.state == OrderState.WaitingAccept).Count;
         orderIdCounter++;
@@ -736,9 +840,80 @@ public class DeliveryGameManager : MonoBehaviour
         }
 
         allOrders.Add(newOrder);
+        RecordOrderHistory(newOrder);
         NotifyUIOrderListChanged();
         UpdateUI();
-        return true;
+        return newOrder.orderId;
+    }
+
+    /// <summary>
+    /// 提供給網頁 /orderStatus API 查詢的訂單與玩家追蹤資訊。
+    /// </summary>
+    [System.Serializable]
+    public struct OrderStatusInfo
+    {
+        public bool found;
+        public string state;       // WaitingAccept / Active / Completed / Discarded / NotFound
+        public string foodName;
+        public bool hasCargo;      // 玩家目前是否攜帶此訂單的餐點
+        public bool delivered;     // 訂單是否已成功送達
+        public bool failed;        // 訂單是否已被丟棄/逾時
+        public bool playerPosValid;
+        public float playerImageX;
+        public float playerImageY;
+    }
+
+    /// <summary>
+    /// 依 orderId 查詢訂單目前狀態，並附帶玩家(外送員)在地圖上的像素座標。
+    /// 即使訂單已完成或被丟棄並從 allOrders 移除，仍可透過歷史記錄查得最後狀態。
+    /// </summary>
+    public OrderStatusInfo GetOrderStatusInfo(int orderId)
+    {
+        OrderStatusInfo info = new OrderStatusInfo();
+
+        DeliveryOrder order = allOrders.Find(o => o.orderId == orderId);
+        OrderState state;
+        string foodName;
+
+        if (order != null)
+        {
+            state = order.state;
+            foodName = order.food != null ? order.food.foodName : "";
+        }
+        else if (orderHistory.TryGetValue(orderId, out OrderHistoryEntry entry))
+        {
+            state = entry.state;
+            foodName = entry.foodName;
+        }
+        else
+        {
+            info.found = false;
+            info.state = "NotFound";
+            return info;
+        }
+
+        info.found = true;
+        info.state = state.ToString();
+        info.foodName = foodName;
+        info.delivered = state == OrderState.Completed;
+        info.failed = state == OrderState.Discarded;
+
+        if (playerCarrier != null && playerCarrier.CarriedCargo != null)
+        {
+            info.hasCargo = playerCarrier.CarriedCargo.OrderId == orderId;
+        }
+
+        if (playerCarrier != null && mapCalibration != null)
+        {
+            if (mapCalibration.TryWorldToImage(playerCarrier.transform.position, out Vector2 imagePos))
+            {
+                info.playerPosValid = true;
+                info.playerImageX = imagePos.x;
+                info.playerImageY = imagePos.y;
+            }
+        }
+
+        return info;
     }
 
     #endregion
@@ -858,45 +1033,19 @@ public class DeliveryGameManager : MonoBehaviour
     /// <param name="orderId">要預覽的訂單 ID</param>
     public void ShowOrderLocationPreview(int orderId)
     {
-        // 先清理舊的預覽，避免重複生成
-        ClearOrderLocationPreview();
-
-        // 尋找對應的訂單
         DeliveryOrder order = allOrders.Find(o => o.orderId == orderId);
-        if (order == null) return;
+        if (order == null || order.state == OrderState.Active) return;
 
-        // 生成取餐點預覽
-        if (pickupPreviewPrefab != null && order.pickupPoint != null)
-        {
-            // 配合你原本的起點高度偏移量，讓預覽也對齊相同高度
-            Vector3 spawnPosition = order.pickupPoint.position + new Vector3(0f, MiniMapHeightOffset, 0f);
-            currentPickupPreviewInstance = Instantiate(pickupPreviewPrefab, spawnPosition, Quaternion.Euler(0f, 180f, 0f));
-        }
-
-        // 生成目的地預覽
-        if (destinationPreviewPrefab != null && order.destinationPoint != null)
-        {
-            Vector3 spawnPosition = order.destinationPoint.position + new Vector3(0f, MiniMapHeightOffset, 0f);
-            currentDestinationPreviewInstance = Instantiate(destinationPreviewPrefab, spawnPosition, Quaternion.Euler(0f, 180f, 0f));
-        }
+        // 只需設定 ID，MinimapBlipController 每幀會自動讀取並顯示對應 blip
+        PreviewOrderId = orderId;
     }
 
     /// <summary>
-    /// 清除目前場景上的所有訂單預覽標記
+    /// 清除 minimap 上的 hover 預覽
     /// </summary>
     public void ClearOrderLocationPreview()
     {
-        if (currentPickupPreviewInstance != null)
-        {
-            Destroy(currentPickupPreviewInstance);
-            currentPickupPreviewInstance = null;
-        }
-
-        if (currentDestinationPreviewInstance != null)
-        {
-            Destroy(currentDestinationPreviewInstance);
-            currentDestinationPreviewInstance = null;
-        }
+        PreviewOrderId = -1;
     }
 
     #endregion

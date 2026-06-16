@@ -29,6 +29,12 @@ public class MinimapBlipController : MonoBehaviour
     public bool showPickupBlips = true;
     public bool showDestinationBlips = true;
 
+    [Header("Waiting Order Preview")]
+    [Tooltip("Hover 到等待中訂單卡片時，在 minimap 上 preview 其取餐點與目的地")]
+    public bool showHoverPreview = true;
+    [Tooltip("Preview blip 的顏色")]
+    public Color waitingPreviewColor = new Color(0.6f, 0.6f, 0.6f, 1f);
+
     [Header("Visual")]
     public Sprite pickupBlipSprite;
     public Sprite destinationBlipSprite;
@@ -167,12 +173,17 @@ public class MinimapBlipController : MonoBehaviour
                 blipsByOrderId.Add(order.orderId, pair);
             }
 
+            // waiting order preview 使用獨立顏色；active order 沿用 orderColors[colorIndex]
+            bool isPreview = order.state == OrderState.WaitingAccept;
+            Color blipColor = isPreview ? waitingPreviewColor : Color.white;
+            int displayColorIndex = isPreview ? -1 : order.colorIndex;
+
             UpdateBlip(
                 pair.pickup,
                 order.pickupPoint,
                 showPickupBlips,
-                order.colorIndex,
-                pickupTint,
+                displayColorIndex,
+                pickupTint * blipColor,
                 pickupBlipSize,
                 pickupBlipRotation,
                 pickupBlipSprite,
@@ -184,8 +195,8 @@ public class MinimapBlipController : MonoBehaviour
                 pair.destination,
                 order.destinationPoint,
                 showDestinationBlips,
-                order.colorIndex,
-                destinationTint,
+                displayColorIndex,
+                destinationTint * blipColor,
                 destinationBlipSize,
                 destinationBlipRotation,
                 destinationBlipSprite,
@@ -212,7 +223,11 @@ public class MinimapBlipController : MonoBehaviour
 
         if (order.state == OrderState.WaitingAccept)
         {
-            return showWaitingOrders;
+            if (showWaitingOrders) return true;
+
+            // Hover preview：只顯示目前正在預覽的那筆
+            return showHoverPreview &&
+                   DeliveryGameManager.Instance.PreviewOrderId == order.orderId;
         }
 
         return false;

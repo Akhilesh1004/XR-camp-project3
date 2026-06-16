@@ -237,7 +237,9 @@
             crs: L.CRS.Simple,
             minZoom: -1,
             maxZoom: 2,
-            attributionControl: false
+            attributionControl: false,
+            maxBounds: imageBounds,         // ➔ 限制可平移範圍在地圖圖片內
+            maxBoundsViscosity: 1.0         // ➔ 1.0 = 完全硬邊界，無法拖出
         });
 
         L.imageOverlay(customImageUrl, imageBounds).addTo(map);
@@ -256,38 +258,35 @@
         ];
 
         let selectedLocationObj = null; // 改為紀錄完整地點物件
+        let selectedMarker = null;       // 紀錄目前被選中的 marker，用來切換顏色
 
-        function selectPlace(placeId) {
-            const loc = locations.find(l => l.id === placeId);
-            if (loc) {
-                selectedLocationObj = loc;
-                document.getElementById('currentLocation').innerText = loc.name;
-                map.closePopup(); 
-            }
+        // ➔ 建立地點 icon（一般狀態 / 被選中狀態）
+        function makeLocationIcon(name, isSelected) {
+            const bg     = isSelected ? '#FCD116' : '#0056C6';
+            const fg     = isSelected ? '#11161B' : '#FFF';
+            const border = isSelected ? '#FFFFFF'  : '#FCD116';
+            return L.divIcon({
+                className: 'custom-text-marker',
+                html: `<div style="background:${bg}; color:${fg}; border:2px solid ${border}; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:0.6rem; white-space:nowrap; box-shadow:0 2px 4px rgba(0,0,0,0.3); text-align:center;">${name}</div>`,
+                iconSize: [30, 20],
+                iconAnchor: [15, 10]
+            });
         }
 
-        // 修改 locations.forEach 裡的綁定，傳入 id 方便查詢
-        // locations.forEach(loc => {
-        //     const marker = L.marker(loc.coords).addTo(map);
-        //     marker.bindPopup(`<b>地點 ${loc.name}</b><br><button onclick="selectPlace('${loc.id}')" style="margin-top:8px; background-color:#0056C6; color:#FFF; border:none; padding:5px 10px; border-radius:4px; font-weight:bold; cursor:pointer;">選擇此地點</button>`);
-        // });
-        // 修改 locations.forEach 裡的綁定
         locations.forEach(loc => {
-            // ➔ 縮小版的純 HTML/CSS 文字標籤
-            const textIcon = L.divIcon({
-                className: 'custom-text-marker',
-                // 調整了 padding 縮小邊距、font-size 縮小字體
-                html: `<div style="background: #0056C6; color: #FFF; border: 2px solid #FCD116; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.6rem; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.3); text-align: center;">${loc.name}</div>`,
-                // ➔ 同步縮小 icon 的感應框與中心點對齊（寬 50px, 高 22px）
-                iconSize: [30, 20],
-                iconAnchor: [15, 10] // 中心點設為寬高的一半，確保精準對齊 [Y, X] 座標
-            });
+            const marker = L.marker(loc.coords, { icon: makeLocationIcon(loc.name, false) }).addTo(map);
+            marker._locData = loc; // 把地點資料掛在 marker 上方便取用
 
-            // 使用縮小版的文字 Icon 產生標籤
-            const marker = L.marker(loc.coords, { icon: textIcon }).addTo(map);
-            
-            // 手機按一下地點就直接選定
             marker.on('click', function() {
+                // ➔ 把上一個選中的 marker 恢復成一般顏色
+                if (selectedMarker && selectedMarker !== marker) {
+                    const prev = selectedMarker._locData;
+                    selectedMarker.setIcon(makeLocationIcon(prev.name, false));
+                }
+                // ➔ 新選中的 marker 變成黃色
+                marker.setIcon(makeLocationIcon(loc.name, true));
+                selectedMarker = marker;
+
                 selectedLocationObj = loc;
                 document.getElementById('currentLocation').innerText = loc.name;
             });
@@ -367,8 +366,19 @@
             })
             .then(response => {
                 if (response.ok) {
-                    alert(`訂單送出成功！\n餐點：${packet.foodName}\n地點索引：${packet.destinationIndex}`);
+                    // ➔ 點餐成功：解析回傳的 orderId，跳轉到送餐追蹤頁面
+                    return response.json().then(data => {
+                        const trackingParams = new URLSearchParams({
+                            orderId: data.orderId,
+                            food: selectedMeal.name,
+                            locName: selectedLocationObj.name,
+                            locX: selectedLocationObj.coords[0],
+                            locY: selectedLocationObj.coords[1]
+                        });
+                        window.location.href = "tracking.html?" + trackingParams.toString();
+                    });
                 } else {
+                    // ➔ 點餐失敗：停留在原頁面，不做任何畫面變更
                     alert("訂單被 Unity 拒絕 (可能地點已被佔用或重複點餐)");
                 }
             })

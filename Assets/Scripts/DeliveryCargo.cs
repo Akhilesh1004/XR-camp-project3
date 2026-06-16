@@ -4,6 +4,7 @@ public class DeliveryCargo : MonoBehaviour
 {
     [Header("餐點資料")]
     public string foodName = "Burger";
+    [Tooltip("後備預設血量，訂單系統生成時會由 FoodOption.maxHealth 覆蓋")]
     public int maxHealth = 100;
 
     [SerializeField]
@@ -35,13 +36,20 @@ public class DeliveryCargo : MonoBehaviour
     [Tooltip("受損狀態外觀。不指定時會自動使用目前 inactive 的第一個直屬子物件")]
     public GameObject damagedVisualRoot;
 
-    [Tooltip("血量低於最大血量的這個比例時，切換到受損外觀")]
-    [Range(0.01f, 0.99f)]
-    public float damagedVisualHealthRatio = 0.5f;
+    [Tooltip("血量低於最大血量的這個比例時，切換成受損外觀（建議高於消失門檻）")]
+    [Range(0.01f, 1f)]
+    public float modelSwitchHealthRatio = 1f;
+
+    [Header("消失音效")]
+    [Tooltip("血量低於門檻時播放的提示音")]
+    public AudioClip destroyedSound;
+    [Range(0f, 1f)]
+    public float destroyedSoundVolume = 1f;
 
     private int orderId = -1;
     private bool isCarried = false;
     private bool showingDamagedVisual = false;
+    private bool hasTriggeredDestroyed = false;
     private bool hasCarriedScale = false;
     private Vector3 carriedScale = Vector3.one;
     private float carriedScaleMultiplier = 1f;
@@ -451,6 +459,14 @@ public class DeliveryCargo : MonoBehaviour
 
     void RefreshDamageVisual()
     {
+        // ➔ 優先判斷血量是否歸零，若是則直接銷毀，不做模型切換
+        if (!hasTriggeredDestroyed && currentHealth <= 0)
+        {
+            TriggerDestroyedState();
+            return;
+        }
+
+        // ➔ 確保有受損模型才嘗試切換外觀
         if (normalVisualRoot == null || damagedVisualRoot == null)
         {
             AutoBindVisualRoots();
@@ -460,25 +476,43 @@ public class DeliveryCargo : MonoBehaviour
             damagedVisualRoot == null ||
             normalVisualRoot == damagedVisualRoot)
         {
-            return;
+            return; // 沒有第二個模型時安全跳出，不影響銷毀邏輯
         }
 
-        bool shouldShowDamaged = currentHealth < maxHealth * damagedVisualHealthRatio;
+        // 血量低於 modelSwitchHealthRatio 門檻時切換成受損外觀
+        bool shouldShowDamaged = currentHealth < maxHealth * modelSwitchHealthRatio;
 
-        if (showingDamagedVisual == shouldShowDamaged &&
-            normalVisualRoot.activeSelf == !shouldShowDamaged &&
-            damagedVisualRoot.activeSelf == shouldShowDamaged)
+        if (showingDamagedVisual != shouldShowDamaged ||
+            normalVisualRoot.activeSelf == shouldShowDamaged ||
+            damagedVisualRoot.activeSelf != shouldShowDamaged)
         {
-            return;
+            showingDamagedVisual = shouldShowDamaged;
+            normalVisualRoot.SetActive(!shouldShowDamaged);
+            damagedVisualRoot.SetActive(shouldShowDamaged);
+
+            if (isCarried && carriedAnchor != null)
+            {
+                SnapToCarriedAnchor();
+            }
+        }
+    }
+
+    void TriggerDestroyedState()
+    {
+        hasTriggeredDestroyed = true;
+
+        if (destroyedSound != null)
+        {
+            AudioSource.PlayClipAtPoint(destroyedSound, transform.position, destroyedSoundVolume);
         }
 
-        showingDamagedVisual = shouldShowDamaged;
-        normalVisualRoot.SetActive(!shouldShowDamaged);
-        damagedVisualRoot.SetActive(shouldShowDamaged);
-
-        if (isCarried && carriedAnchor != null)
+        if (DeliveryGameManager.Instance != null)
         {
-            SnapToCarriedAnchor();
+            DeliveryGameManager.Instance.NotifyCargoDestroyed(this);
+        }
+        else
+        {
+            Destroy(gameObject);
         }
     }
 

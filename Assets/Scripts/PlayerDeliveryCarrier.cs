@@ -397,6 +397,15 @@ public class PlayerDeliveryCarrier : MonoBehaviour
         Destroy(deliveredCargo.gameObject);
     }
 
+    public void ClearCargoIfMatch(DeliveryCargo cargo)
+    {
+        if (carriedCargo == cargo)
+        {
+            carriedCargo = null;
+            isCargoStored = false;
+        }
+    }
+
     public void RemoveCarriedCargoWithoutScoring()
     {
         if (carriedCargo == null)
