@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>送餐追蹤 - 拉拉MOVE</title>
+
+    <link rel="stylesheet" href="leaflet.css" />
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #11161B;
+            color: #E2E8F0;
+        }
+        header {
+            background-color: #0056C6;
+            color: #FCD116;
+            text-align: center;
+            padding: 18px;
+            font-size: 1.5rem;
+            font-weight: 900;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0, 86, 198, 0.3);
+            letter-spacing: 2px;
+            text-shadow: 2px 2px 0px #11161B;
+        }
+        .container {
+            padding: 15px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h3 {
+            margin-top: 10px;
+            border-left: 5px solid #FCD116;
+            padding-left: 10px;
+            color: #FCD116;
+            font-weight: 800;
+        }
+        .section-panel {
+            background: #1E262F;
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            border: 1px solid #2D3748;
+        }
+        #map {
+            width: 100%;
+            height: 350px;
+            border-radius: 8px;
+            margin-top: 10px;
+            background-color: #2D3748;
+            border: 2px solid #334155;
+        }
+        .info-box {
+            background-color: #11161B;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            font-size: 0.95rem;
+            border-left: 5px solid #0056C6;
+        }
+        .info-box strong {
+            color: #94A3B8;
+        }
+        .info-box span {
+            color: #FFFFFF;
+            font-weight: bold;
+        }
+        .status-banner {
+            background-color: #1E262F;
+            border: 2px solid #334155;
+            border-radius: 12px;
+            padding: 18px;
+            text-align: center;
+            font-size: 1.15rem;
+            font-weight: 900;
+            color: #FCD116;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            transition: all 0.3s ease;
+        }
+        .status-banner.success {
+            color: #11161B;
+            background-color: #2EE6A6;
+            border-color: #2EE6A6;
+        }
+        .status-banner.failed {
+            color: #FFFFFF;
+            background-color: #E5484D;
+            border-color: #E5484D;
+        }
+        .step-list {
+            list-style: none;
+            margin: 15px 0 0 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .step-list li {
+            background: #11161B;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #94A3B8;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        .step-list li.done {
+            border-color: #2EE6A6;
+            color: #2EE6A6;
+        }
+        .step-list li.current {
+            border-color: #FCD116;
+            color: #FCD116;
+            box-shadow: 0 0 10px rgba(252, 209, 22, 0.25);
+        }
+        .back-btn {
+            display: block;
+            width: 100%;
+            background-color: #FCD116;
+            color: #11161B;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 900;
+            margin-top: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(252, 209, 22, 0.3);
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+        .back-btn:hover {
+            background-color: #E2BC14;
+            transform: translateY(-1px);
+        }
+        .redirect-note {
+            text-align: center;
+            color: #94A3B8;
+            font-size: 0.85rem;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>拉拉MOVE - 送餐追蹤</header>
+
+    <div class="container">
+
+        <div class="status-banner" id="statusBanner">正在連線到外送員...</div>
+
+        <div class="section-panel">
+            <h3>即時地圖</h3>
+            <div id="map"></div>
+        </div>
+
+        <div class="section-panel">
+            <h3>訂單資訊</h3>
+            <div class="info-box">
+                <div><strong>已選餐點：</strong> <span id="infoFood">-</span></div>
+                <div style="margin-top: 5px;"><strong>您的取餐地點：</strong> <span id="infoLocation">-</span></div>
+                <div style="margin-top: 5px;"><strong>外送員狀態：</strong> <span id="infoState">-</span></div>
+            </div>
+
+            <ul class="step-list">
+                <li id="stepAccepted">① 外送員已接單</li>
+                <li id="stepPicked">② 外送員已取得餐點</li>
+                <li id="stepDelivered">③ 餐點已送達您的位置</li>
+            </ul>
+        </div>
+
+        <button class="back-btn" onclick="goBackToOrder()">返回點餐頁面</button>
+        <div class="redirect-note" id="redirectNote"></div>
+
+    </div>
+
+    <script src="leaflet.js"></script>
+
+    <script>
+        // ==================== [ 解析網址參數 ] ====================
+        const params = new URLSearchParams(window.location.search);
+        const orderId = parseInt(params.get('orderId'), 10);
+        const foodName = params.get('food') || '-';
+        const locName = params.get('locName') || '-';
+        const locX = parseFloat(params.get('locX'));
+        const locY = parseFloat(params.get('locY'));
+
+        document.getElementById('infoFood').innerText = foodName;
+        document.getElementById('infoLocation').innerText = locName;
+
+        // ==================== [ 地圖設定 (與 index.html 相同) ] ====================
+        const customImageUrl = 'NewMap.png';
+        const imageBounds = [[0, 0], [900, 1100]];
+
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -1,
+            maxZoom: 2,
+            attributionControl: false,
+            maxBounds: imageBounds,         // ➔ 限制可平移範圍在地圖圖片內
+            maxBoundsViscosity: 1.0         // ➔ 1.0 = 完全硬邊界
+        });
+
+        L.imageOverlay(customImageUrl, imageBounds).addTo(map);
+        map.fitBounds(imageBounds);
+
+        // ==================== [ 自訂 PNG 圖示設定 ] ====================
+        // ➔ 把 icon_user.png 與 icon_courier.png 放到 StreamingAssets 資料夾即可生效
+        // ➔ 調整 iconSize / iconAnchor 控制圖示大小與錨點（錨點 = 圖示哪個點對齊座標）
+        const myLocationIcon = L.icon({
+            iconUrl: 'icon_user.png',
+            iconSize:   [40, 40],   // 圖示顯示大小（像素）
+            iconAnchor: [20, 40]    // 錨點：[左偏移, 下偏移]，通常設在圖示底部中央
+        });
+
+        const courierIcon = L.icon({
+            iconUrl: 'icon_courier.png',
+            iconSize:   [40, 40],
+            iconAnchor: [20, 40]
+        });
+
+        // ➔ 自己的位置（取餐地點），固定標記
+        let myMarker = null;
+        if (!isNaN(locX) && !isNaN(locY)) {
+            myMarker = L.marker([locX, locY], { icon: myLocationIcon }).addTo(map);
+        }
+
+        // ➔ 外送員即時位置標記
+        let courierMarker = null;
+
+        // ==================== [ 狀態文字轉換 ] ====================
+        function describeState(state, hasCargo, delivered, failed) {
+            if (delivered) return '餐點已送達！';
+            if (failed) return '訂單已逾時或被取消';
+            switch (state) {
+                case 'WaitingAccept': return '等待外送員接單...';
+                case 'InQueue': return '訂單排隊中...';
+                case 'Active': return hasCargo ? '外送員已取餐，正在送往您的位置' : '外送員正在前往取餐點';
+                case 'Completed': return '餐點已送達！';
+                case 'Discarded': return '訂單已逾時或被取消';
+                case 'NotFound': return '找不到此訂單';
+                default: return '查詢中...';
+            }
+        }
+
+        function updateSteps(state, hasCargo, delivered) {
+            const stepAccepted = document.getElementById('stepAccepted');
+            const stepPicked = document.getElementById('stepPicked');
+            const stepDelivered = document.getElementById('stepDelivered');
+
+            const accepted = (state === 'Active' || state === 'Completed');
+            const picked = hasCargo || delivered || state === 'Completed';
+
+            [stepAccepted, stepPicked, stepDelivered].forEach(el => {
+                el.classList.remove('done', 'current');
+            });
+
+            if (accepted) stepAccepted.classList.add('done'); else stepAccepted.classList.add('current');
+            if (accepted) {
+                if (picked) stepPicked.classList.add('done');
+                else stepPicked.classList.add('current');
+            }
+            if (delivered) stepDelivered.classList.add('done');
+            else if (picked) stepDelivered.classList.add('current');
+        }
+
+        // ==================== [ 跳轉回點餐頁面 ] ====================
+        let redirectTimer = null;
+        function goBackToOrder() {
+            window.location.href = 'index.html';
+        }
+
+        function scheduleRedirect(seconds) {
+            if (redirectTimer) return; // 避免重複排程
+            let remaining = seconds;
+            const note = document.getElementById('redirectNote');
+            note.innerText = `將在 ${remaining} 秒後自動返回點餐頁面...`;
+            redirectTimer = setInterval(() => {
+                remaining -= 1;
+                if (remaining <= 0) {
+                    clearInterval(redirectTimer);
+                    goBackToOrder();
+                } else {
+                    note.innerText = `將在 ${remaining} 秒後自動返回點餐頁面...`;
+                }
+            }, 1000);
+        }
+
+        // ==================== [ 輪詢訂單 / 外送員位置 ] ====================
+        let pollingTimer = null;
+
+        function pollStatus() {
+            if (isNaN(orderId)) {
+                document.getElementById('statusBanner').innerText = '找不到訂單編號';
+                document.getElementById('statusBanner').classList.add('failed');
+                scheduleRedirect(5);
+                return;
+            }
+
+            const url = window.location.origin + '/orderStatus?orderId=' + orderId;
+
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    const banner = document.getElementById('statusBanner');
+                    const infoState = document.getElementById('infoState');
+
+                    if (!data.found) {
+                        banner.innerText = '找不到此訂單，可能已結束';
+                        banner.classList.add('failed');
+                        infoState.innerText = '無資料';
+                        if (pollingTimer) clearInterval(pollingTimer);
+                        scheduleRedirect(5);
+                        return;
+                    }
+
+                    infoState.innerText = describeState(data.state, data.hasCargo, data.delivered, data.failed);
+                    banner.innerText = describeState(data.state, data.hasCargo, data.delivered, data.failed);
+
+                    banner.classList.remove('success', 'failed');
+                    if (data.delivered) banner.classList.add('success');
+                    if (data.failed) banner.classList.add('failed');
+
+                    updateSteps(data.state, data.hasCargo, data.delivered);
+
+                    // ➔ 更新外送員在地圖上的即時位置
+                    if (data.playerPosValid) {
+                        const pos = [data.playerImageX, data.playerImageY];
+                        if (courierMarker) {
+                            courierMarker.setLatLng(pos);
+                        } else {
+                            courierMarker = L.marker(pos, { icon: courierIcon }).addTo(map);
+                        }
+                    }
+
+                    // ➔ 訂單完成或失敗時，停止輪詢並準備跳轉回點餐頁
+                    if (data.delivered || data.failed) {
+                        if (pollingTimer) clearInterval(pollingTimer);
+                        scheduleRedirect(5);
+                    }
+                })
+                .catch(err => {
+                    console.error('Error polling order status:', err);
+                });
+        }
+
+        pollStatus();
+        pollingTimer = setInterval(pollStatus, 1500);
+    </script>
+</body>
+</html>

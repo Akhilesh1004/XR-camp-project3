@@ -106,7 +106,7 @@ public class DroneNPC2 : MonoBehaviour
 
     [Header("餐點爆炸傷害")]
     public bool damageCarriedCargoOnExplode = true;
-    public int cargoExplosionDamage = 20;
+    public int cargoExplosionDamage = 50;
     public float cargoExplosionDamageRadius = 3f;
     public LayerMask cargoExplosionPlayerLayer;
 
@@ -1168,10 +1168,11 @@ public class DroneNPC2 : MonoBehaviour
             explosionEffect = destroyedEffectPool.Play(transform.position, Quaternion.identity);
         }
 
-        ApplyCargoExplosionDamage(explosionEffect);
+        // ➔ 先捕獲位置並讓 drone 消失，再套用傷害（同 DroneNPC 的修法）
+        Vector3 explodePosition = transform.position;
 
         DroneAlertSystem.BroadcastDroneNPC2Destroyed(
-            transform.position,
+            explodePosition,
             alertDuration,
             alertDetectRange,
             forcedHunterCountOnDestroyed,
@@ -1186,9 +1187,11 @@ public class DroneNPC2 : MonoBehaviour
         {
             gameObject.SetActive(false);
         }
+
+        ApplyCargoExplosionDamage(explosionEffect, explodePosition);
     }
 
-    void ApplyCargoExplosionDamage(PooledEffect explosionEffect)
+    void ApplyCargoExplosionDamage(PooledEffect explosionEffect, Vector3 position)
     {
         if (!damageCarriedCargoOnExplode)
         {
@@ -1201,7 +1204,7 @@ public class DroneNPC2 : MonoBehaviour
         }
 
         DeliveryDamageSource.DamageCarriedCargoInRadius(
-            transform.position,
+            position,
             cargoExplosionDamageRadius,
             cargoExplosionDamage,
             cargoExplosionPlayerLayer

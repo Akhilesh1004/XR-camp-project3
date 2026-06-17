@@ -36,9 +36,15 @@ public class WristUIController : MonoBehaviour
 
     [Header("獨立分數顯示")]
     [Tooltip("專門拿來顯示獨立分數的 TextMeshPro 元件")]
-    public TextMeshProUGUI scoreTextMeshPro; 
+    public TextMeshProUGUI scoreTextMeshPro;
     [Tooltip("專門拿來顯示獨立分數的傳統 Text 元件 (若沒用 TMP 可以用這個)")]
     public Text scoreStandardText;
+
+    [Header("食物血量顯示")]
+    [Tooltip("顯示「手中食物血量/總血量」的 TextMeshPro 元件")]
+    public TextMeshProUGUI cargoHealthText;
+    [Tooltip("玩家的 PlayerDeliveryCarrier，用來讀取手中食物血量")]
+    public PlayerDeliveryCarrier playerCarrier;
 
     [Header("手腕專屬音效檔案")]
     public AudioClip uiOpenSound;
@@ -128,6 +134,7 @@ public class WristUIController : MonoBehaviour
             UpdateUIDowncountTimers();
             UpdateActiveOrderTimer();
             UpdateIndependentScore();
+            UpdateCargoHealthDisplay();
         }
 
         Button currentHoveredButton = null;
@@ -687,6 +694,21 @@ public class WristUIController : MonoBehaviour
         foreach (Button btn in buttons)
         {
             if (buttonOriginalScales.ContainsKey(btn)) buttonOriginalScales.Remove(btn);
+        }
+    }
+
+    private void UpdateCargoHealthDisplay()
+    {
+        if (cargoHealthText == null) return;
+
+        if (playerCarrier != null && playerCarrier.HasCargo)
+        {
+            DeliveryCargo cargo = playerCarrier.CarriedCargo;
+            cargoHealthText.text = $"Food Health: {cargo.CurrentHealth}/{cargo.MaxHealth}";
+        }
+        else
+        {
+            cargoHealthText.text = "Food Health: --/--";
         }
     }
 
