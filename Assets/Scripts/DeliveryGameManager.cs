@@ -173,6 +173,8 @@ public class DeliveryGameManager : MonoBehaviour
     public AudioClip soundOrderTimeout;
     [Tooltip("餐點完全受損銷毀時播放")]
     public AudioClip soundCargoDestroyed;
+    [Tooltip("遊戲結束音效")]
+    public AudioClip soundTimeOut;
 
     void Awake()
     {
@@ -203,6 +205,7 @@ public class DeliveryGameManager : MonoBehaviour
         if (remainingTime <= 0f)
         {
             remainingTime = 0f;
+            PlaySound(soundTimeOut);
             EndGame();
             return;
         }
