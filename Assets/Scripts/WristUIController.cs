@@ -113,6 +113,21 @@ public class WristUIController : MonoBehaviour
     {
         if (uiCanvasGroup == null || handTransform == null) return;
 
+        // ➔ 按下 Enter 接受第一筆 WaitingAccept 訂單
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
+            foreach (var kvp in activeUIOrderEntries)
+            {
+                if (kvp.Value == null) continue;
+                Button yesBtn = kvp.Value.transform.Find("YesBotton")?.GetComponent<Button>();
+                if (yesBtn != null && yesBtn.interactable)
+                {
+                    yesBtn.onClick.Invoke();
+                }
+                break; // 只處理第一筆
+            }
+        }
+
         // 切換 UI 顯示狀態
         if (OVRInput.GetDown(Button))
         {
